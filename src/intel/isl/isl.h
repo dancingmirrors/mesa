@@ -1288,6 +1288,7 @@ struct isl_device {
    struct {
       uint32_t internal;
       uint32_t external;
+      uint32_t uncached;
       uint32_t l1_hdc_l3_llc;
       uint32_t blitter_src;
       uint32_t blitter_dst;
