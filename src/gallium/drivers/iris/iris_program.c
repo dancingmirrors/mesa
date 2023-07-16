@@ -2959,7 +2959,8 @@ iris_set_max_shader_compiler_threads(struct pipe_screen *pscreen,
                                      unsigned max_threads)
 {
    struct iris_screen *screen = (struct iris_screen *) pscreen;
-   util_queue_adjust_num_threads(&screen->shader_compiler_queue, max_threads);
+   util_queue_adjust_num_threads(&screen->shader_compiler_queue, max_threads,
+                                 false);
 }
 
 static bool
