@@ -936,6 +936,19 @@ elk_fs_reg_alloc::choose_spill_reg()
    if (!interference_graph_supports_spilling) {
       discard_interference_graph();
       build_interference_graph(true);
+
+      /* ra_get_best_spill_node() relies on ra_allocate() having been called
+       * once to set up the stack of trivially colorable and optimistically
+       * colored nodes.  By torching and rebuilding our interference graph,
+       * we also discarded the information needed to pick spill candidates.
+       *
+       * The simplest (if expensive) solution is to call ra_allocate() again
+       * on the new graph.  This can't succeed - allocation already failed on
+       * our old graph which had fewer constraints - but it creates the list
+       * of spill candidates for our new more constrained graph.
+       */
+      ASSERTED bool allocated = ra_allocate(g);
+      assert(!allocated);
    }
 
    if (!have_spill_costs)
