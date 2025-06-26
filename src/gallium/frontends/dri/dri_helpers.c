@@ -736,6 +736,9 @@ dri2_query_dma_buf_formats(__DRIscreen *_screen, int max, int *formats,
           pscreen->is_format_supported(pscreen, map->pipe_format,
                                        screen->target, 0, 0,
                                        PIPE_BIND_SAMPLER_VIEW) ||
+          pscreen->is_format_supported(pscreen, map->pipe_format,
+                                       screen->target, 0, 0,
+                                       PIPE_BIND_SAMPLER_VIEW | PIPE_BIND_SAMPLER_VIEW_SUBOPTIMAL) ||
           dri2_yuv_dma_buf_supported(screen, map)) {
          if (j < max)
             formats[j] = map->dri_fourcc;
