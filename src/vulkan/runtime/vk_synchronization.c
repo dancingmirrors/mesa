@@ -174,8 +174,8 @@ upgrade_image_memory_barrier(const VkImageMemoryBarrier *barrier,
    };
 }
 
-VKAPI_ATTR void VKAPI_CALL
-vk_common_CmdPipelineBarrier(
+static void
+vk_common_upgrade_sync_function(
     VkCommandBuffer                             commandBuffer,
     VkPipelineStageFlags                        srcStageMask,
     VkPipelineStageFlags                        dstStageMask,
@@ -185,7 +185,10 @@ vk_common_CmdPipelineBarrier(
     uint32_t                                    bufferMemoryBarrierCount,
     const VkBufferMemoryBarrier*                pBufferMemoryBarriers,
     uint32_t                                    imageMemoryBarrierCount,
-    const VkImageMemoryBarrier*                 pImageMemoryBarriers)
+    const VkImageMemoryBarrier*                 pImageMemoryBarriers,
+    bool                                        isWaitEvent,
+    uint32_t                                    eventCount,
+    const VkEvent*                              pEvents)
 {
    VK_FROM_HANDLE(vk_command_buffer, cmd_buffer, commandBuffer);
    struct vk_device *device = cmd_buffer->base.device;
@@ -239,11 +242,42 @@ vk_common_CmdPipelineBarrier(
       dep_info.pMemoryBarriers = &exec_barrier;
    }
 
-   device->dispatch_table.CmdPipelineBarrier2(commandBuffer, &dep_info);
+   if (isWaitEvent) {
+      device->dispatch_table.CmdWaitEvents2(commandBuffer, eventCount, pEvents,
+                                            &dep_info);
+   } else {
+      device->dispatch_table.CmdPipelineBarrier2(commandBuffer, &dep_info);
+   }
 
    STACK_ARRAY_FINISH(memory_barriers);
    STACK_ARRAY_FINISH(buffer_barriers);
    STACK_ARRAY_FINISH(image_barriers);
+}
+
+VKAPI_ATTR void VKAPI_CALL
+vk_common_CmdPipelineBarrier(
+    VkCommandBuffer                             commandBuffer,
+    VkPipelineStageFlags                        srcStageMask,
+    VkPipelineStageFlags                        dstStageMask,
+    VkDependencyFlags                           dependencyFlags,
+    uint32_t                                    memoryBarrierCount,
+    const VkMemoryBarrier*                      pMemoryBarriers,
+    uint32_t                                    bufferMemoryBarrierCount,
+    const VkBufferMemoryBarrier*                pBufferMemoryBarriers,
+    uint32_t                                    imageMemoryBarrierCount,
+    const VkImageMemoryBarrier*                 pImageMemoryBarriers)
+{
+   vk_common_upgrade_sync_function(commandBuffer,
+                                   srcStageMask,
+                                   dstStageMask,
+                                   dependencyFlags,
+                                   memoryBarrierCount,
+                                   pMemoryBarriers,
+                                   bufferMemoryBarrierCount,
+                                   pBufferMemoryBarriers,
+                                   imageMemoryBarrierCount,
+                                   pImageMemoryBarriers,
+                                   false, 0, NULL);
 }
 
 VKAPI_ATTR void VKAPI_CALL
@@ -258,10 +292,10 @@ vk_common_CmdSetEvent(
    VkMemoryBarrier2 mem_barrier = {
       .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
       .srcStageMask = (VkPipelineStageFlags2) stageMask,
-      .dstStageMask = (VkPipelineStageFlags2) stageMask,
    };
    VkDependencyInfo dep_info = {
       .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+      .dependencyFlags = VK_DEPENDENCY_ASYMMETRIC_EVENT_BIT_KHR,
       .memoryBarrierCount = 1,
       .pMemoryBarriers = &mem_barrier,
    };
@@ -289,7 +323,7 @@ vk_common_CmdWaitEvents(
     uint32_t                                    eventCount,
     const VkEvent*                              pEvents,
     VkPipelineStageFlags                        srcStageMask,
-    VkPipelineStageFlags                        destStageMask,
+    VkPipelineStageFlags                        dstStageMask,
     uint32_t                                    memoryBarrierCount,
     const VkMemoryBarrier*                      pMemoryBarriers,
     uint32_t                                    bufferMemoryBarrierCount,
@@ -297,55 +331,20 @@ vk_common_CmdWaitEvents(
     uint32_t                                    imageMemoryBarrierCount,
     const VkImageMemoryBarrier*                 pImageMemoryBarriers)
 {
-   VK_FROM_HANDLE(vk_command_buffer, cmd_buffer, commandBuffer);
-   struct vk_device *device = cmd_buffer->base.device;
-
    if (eventCount == 0)
       return;
 
-   STACK_ARRAY(VkDependencyInfo, deps, eventCount);
-
-   /* Note that dstStageMask and srcStageMask in the CmdWaitEvent2() call
-    * are the same.  This is to match the CmdSetEvent2() call from
-    * vk_common_CmdSetEvent().  The actual src->dst stage barrier will
-    * happen as part of the CmdPipelineBarrier() call below.
-    */
-   VkMemoryBarrier2 stage_barrier = {
-      .sType = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
-      .srcStageMask = srcStageMask,
-      .dstStageMask = srcStageMask,
-   };
-
-   for (uint32_t i = 0; i < eventCount; i++) {
-      deps[i] = (VkDependencyInfo) {
-         .sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
-         .memoryBarrierCount = 1,
-         .pMemoryBarriers = &stage_barrier,
-      };
-   }
-   device->dispatch_table.CmdWaitEvents2(commandBuffer, eventCount, pEvents, deps);
-
-   STACK_ARRAY_FINISH(deps);
-
-   /* Setting dependency to 0 because :
-    *
-    *    - For BY_REGION_BIT and VIEW_LOCAL_BIT, events are not allowed inside a
-    *      render pass so these don't apply.
-    *
-    *    - For DEVICE_GROUP_BIT, we have the following bit of spec text:
-    *
-    *        "Semaphore and event dependencies are device-local and only
-    *         execute on the one physical device that performs the
-    *         dependency."
-    */
-   const VkDependencyFlags dep_flags = 0;
-
-   device->dispatch_table.CmdPipelineBarrier(commandBuffer,
-                                             srcStageMask, destStageMask,
-                                             dep_flags,
-                                             memoryBarrierCount, pMemoryBarriers,
-                                             bufferMemoryBarrierCount, pBufferMemoryBarriers,
-                                             imageMemoryBarrierCount, pImageMemoryBarriers);
+   vk_common_upgrade_sync_function(commandBuffer,
+                                   srcStageMask,
+                                   dstStageMask,
+                                   VK_DEPENDENCY_ASYMMETRIC_EVENT_BIT_KHR,
+                                   memoryBarrierCount,
+                                   pMemoryBarriers,
+                                   bufferMemoryBarrierCount,
+                                   pBufferMemoryBarriers,
+                                   imageMemoryBarrierCount,
+                                   pImageMemoryBarriers,
+                                   true, eventCount, pEvents);
 }
 
 VKAPI_ATTR void VKAPI_CALL
