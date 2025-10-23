@@ -781,7 +781,7 @@ anv_get_image_format_features2(const struct intel_device_info *devinfo,
           */
          if (vk_format != VK_FORMAT_G8_B8R8_2PLANE_420_UNORM &&
              vk_format != VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM) {
-            anv_finishme("support more multi-planar formats with DRM modifiers");
+            //anv_finishme("support more multi-planar formats with DRM modifiers");
             return 0;
          }
 
