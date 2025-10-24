@@ -61,7 +61,7 @@ option(
 option(
   'gallium-drivers',
   type : 'array',
-  value : ['auto'],
+  value : ['crocus'],
   choices : [
     'auto', 'kmsro', 'radeonsi', 'r300', 'r600', 'nouveau', 'freedreno',
     'swrast', 'v3d', 'vc4', 'etnaviv', 'tegra', 'i915', 'svga', 'virgl',
@@ -193,7 +193,7 @@ option(
 option(
   'vulkan-drivers',
   type : 'array',
-  value : ['auto'],
+  value : ['intel_hasvk'],
   choices : ['auto', 'amd', 'broadcom', 'freedreno', 'intel', 'intel_hasvk',
              'panfrost', 'swrast', 'imagination-experimental',
              'microsoft-experimental', 'virtio-experimental'],
@@ -374,6 +374,7 @@ option(
   'llvm',
   type : 'feature',
   deprecated: {'true': 'enabled', 'false': 'disabled'},
+  value : 'disabled',
   description : 'Build with LLVM support.'
 )
 
@@ -381,6 +382,7 @@ option(
   'shared-llvm',
   type : 'feature',
   deprecated: {'true': 'enabled', 'false': 'disabled'},
+  value : 'disabled',
   description : 'Whether to link LLVM shared or statically.'
 )
 
@@ -609,7 +611,7 @@ option(
 option(
   'video-codecs',
   type : 'array',
-  value : [],
+  value : ['h264dec'],
   choices: [
     'vc1dec', 'h264dec', 'h264enc', 'h265dec', 'h265enc'
   ],
