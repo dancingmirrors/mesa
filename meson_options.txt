@@ -61,11 +61,11 @@ option(
 option(
   'gallium-drivers',
   type : 'array',
-  value : ['crocus'],
   choices : [
-    'auto', 'kmsro', 'radeonsi', 'r300', 'r600', 'nouveau', 'freedreno',
-    'swrast', 'v3d', 'vc4', 'etnaviv', 'tegra', 'i915', 'svga', 'virgl',
-    'panfrost', 'iris', 'lima', 'zink', 'd3d12', 'asahi', 'crocus'
+#    'auto', 'kmsro', 'radeonsi', 'r300', 'r600', 'nouveau', 'freedreno',
+#    'swrast', 'v3d', 'vc4', 'etnaviv', 'tegra', 'i915', 'svga', 'virgl',
+#    'panfrost', 'iris', 'lima', 'zink', 'd3d12', 'asahi', 'crocus'
+     'crocus', 'swrast'
   ],
   description : 'List of gallium drivers to build. If this is set to auto ' +
                 'all drivers applicable to the target OS/architecture ' +
