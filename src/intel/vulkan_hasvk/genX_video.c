@@ -342,7 +342,14 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
 
    anv_batch_emit(&cmd_buffer->batch, GENX(MFX_AVC_DIRECTMODE_STATE), avc_directmode) {
       /* bind reference frame DMV */
+      #if defined(__GNUC__)
+      #pragma GCC diagnostic push
+      #pragma GCC diagnostic ignored "-Wunused-but-set-variable"
+      #endif
       struct anv_bo *dmv_bo = NULL;
+      #if defined(__GNUC__)
+      #pragma GCC diagnostic pop
+      #endif
       for (unsigned i = 0; i < frame_info->referenceSlotCount; i++) {
          int idx = frame_info->pReferenceSlots[i].slotIndex;
          const struct VkVideoDecodeH264DpbSlotInfoKHR *dpb_slot =
