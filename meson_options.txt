@@ -374,7 +374,7 @@ option(
   'llvm',
   type : 'feature',
   deprecated: {'true': 'enabled', 'false': 'disabled'},
-  value : 'disabled',
+  value : 'enabled',
   description : 'Build with LLVM support.'
 )
 
@@ -382,7 +382,7 @@ option(
   'shared-llvm',
   type : 'feature',
   deprecated: {'true': 'enabled', 'false': 'disabled'},
-  value : 'disabled',
+  value : 'enabled',
   description : 'Whether to link LLVM shared or statically.'
 )
 
