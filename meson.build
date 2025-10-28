@@ -24,7 +24,7 @@ project(
   version : files('VERSION'),
   license : 'MIT',
   meson_version : '>= 0.60',
-  default_options : ['buildtype=debugoptimized', 'b_ndebug=if-release', 'c_std=c11', 'cpp_std=c++17', 'rust_std=2021', 'prefix=/usr/local']
+  default_options : ['buildtype=release', 'b_ndebug=if-release', 'c_std=c11', 'cpp_std=c++17', 'rust_std=2021', 'prefix=/usr/local']
 )
 
 cc = meson.get_compiler('c')
