@@ -2593,7 +2593,8 @@ nir_visitor::visit(ir_texture *ir)
 
    if (ir->offset != NULL) {
       if (ir->offset->type->is_array()) {
-         for (int i = 0; i < ir->offset->type->array_size(); i++) {
+         const int size = MIN2(ir->offset->type->array_size(), 4);
+         for (int i = 0; i < size; i++) {
             const ir_constant *c =
                ir->offset->as_constant()->get_array_element(i);
 
