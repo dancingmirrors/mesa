@@ -397,6 +397,12 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
 
    uint32_t buffer_offset = frame_info->srcBufferOffset & 4095;
 #define HEADER_OFFSET 3
+#if GFX_VERx10 == 70
+   anv_batch_emit(&cmd_buffer->batch, GENX(PIPE_CONTROL), pc) {
+      pc.DWordLength = 2;
+      pc.CommandStreamerStallEnable = 1;
+   }
+#endif
    for (unsigned s = 0; s < h264_pic_info->sliceCount; s++) {
       bool last_slice = s == (h264_pic_info->sliceCount - 1);
       uint32_t current_offset = h264_pic_info->pSliceOffsets[s];
