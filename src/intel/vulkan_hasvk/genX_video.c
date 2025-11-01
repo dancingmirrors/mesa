@@ -113,13 +113,14 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       buf.StreamOutDataDestinationMOCS = anv_mocs(cmd_buffer->device, NULL, 0);
 #elif GFX_VERx10 == 70
       /* IVB: MOCS fields are split into CacheabilityControl and GraphicsDataType */
-      uint32_t mocs = anv_mocs(cmd_buffer->device, buf.PostDeblockingDestinationAddress.bo, 0);
-      buf.PostDeblockingDestinationCacheabilityControl = mocs & 0x3;
-      buf.PostDeblockingDestinationGraphicsDataType = (mocs >> 2) & 0x1;
-      buf.OriginalUncompressedPictureSourceCacheabilityControl = mocs & 0x3;
-      buf.OriginalUncompressedPictureSourceGraphicsDataType = (mocs >> 2) & 0x1;
-      buf.StreamOutDataDestinationCacheabilityControl = mocs & 0x3;
-      buf.StreamOutDataDestinationGraphicsDataType = (mocs >> 2) & 0x1;
+      uint32_t dest_mocs = anv_mocs(cmd_buffer->device, buf.PostDeblockingDestinationAddress.bo, 0);
+      buf.PostDeblockingDestinationCacheabilityControl = dest_mocs & 0x3;
+      buf.PostDeblockingDestinationGraphicsDataType = (dest_mocs >> 2) & 0x1;
+      uint32_t null_mocs = anv_mocs(cmd_buffer->device, NULL, 0);
+      buf.OriginalUncompressedPictureSourceCacheabilityControl = null_mocs & 0x3;
+      buf.OriginalUncompressedPictureSourceGraphicsDataType = (null_mocs >> 2) & 0x1;
+      buf.StreamOutDataDestinationCacheabilityControl = null_mocs & 0x3;
+      buf.StreamOutDataDestinationGraphicsDataType = (null_mocs >> 2) & 0x1;
 #endif
 
 #if GFX_VER == 8
@@ -402,7 +403,8 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
                                                                            &ref_iv->image->vid_dmv_top_surface);
          avc_directmode.DirectMVBufferAddress[idx * 2 + 1] = anv_image_address(ref_iv->image,
                                                                            &ref_iv->image->vid_dmv_top_surface);
-         /* IVB: MOCS fields are split into CacheabilityControl and GraphicsDataType, and are arrays */
+         /* IVB: MOCS fields are split into CacheabilityControl and GraphicsDataType, and are arrays
+          * Two entries per reference slot are needed for top/bottom field support */
          uint32_t dmv_read_mocs = anv_mocs(cmd_buffer->device, ref_iv->image->bindings[0].address.bo, 0);
          avc_directmode.DirectMVBufferCacheabilityControl[idx * 2] = dmv_read_mocs & 0x3;
          avc_directmode.DirectMVBufferGraphicsDataType[idx * 2] = (dmv_read_mocs >> 2) & 0x1;
@@ -426,7 +428,8 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
                                                                        &img->vid_dmv_top_surface);
       avc_directmode.DirectMVBufferWriteAddress[1] = anv_image_address(img,
                                                                        &img->vid_dmv_top_surface);
-      /* IVB: MOCS fields are split into CacheabilityControl and GraphicsDataType, and are arrays */
+      /* IVB: MOCS fields are split into CacheabilityControl and GraphicsDataType, and are arrays
+       * Two entries are needed for top/bottom field support */
       uint32_t dmv_write_mocs = anv_mocs(cmd_buffer->device, img->bindings[0].address.bo, 0);
       avc_directmode.DirectMVBufferWriteCacheabilityControl[0] = dmv_write_mocs & 0x3;
       avc_directmode.DirectMVBufferWriteGraphicsDataType[0] = (dmv_write_mocs >> 2) & 0x1;
