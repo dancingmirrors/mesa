@@ -21,6 +21,43 @@
  * IN THE SOFTWARE.
  */
 
+/*
+ * CHROMA_TEST_VARIANT: compile-time switch for testing different chroma/tiling
+ * interpretations for Ivy Bridge (Gen7) NV12 H.264 decoding.
+ *
+ * To test a different variant, change the value below and recompile.
+ *
+ * Variant 0 (default/baseline): Current code behavior
+ *   - CrVCbUPixelOffsetVDirection = 0
+ *   - XOffsetforUCb = 0, XOffsetforVCr = 0
+ *   - YOffsetforUCb = align(height, 32), YOffsetforVCr = align(height, 32)
+ *   - TiledSurface/TileWalk unchanged
+ *
+ * Variant 1: Flip vertical direction
+ *   - CrVCbUPixelOffsetVDirection = 1
+ *   - Other fields same as baseline
+ *
+ * Variant 2: Half-width X offsets
+ *   - XOffsetforUCb = width / 2, XOffsetforVCr = width / 2
+ *   - Other fields same as baseline
+ *
+ * Variant 3: 16-line Y alignment
+ *   - YOffsetforUCb = align(height, 16), YOffsetforVCr = align(height, 16)
+ *   - Other fields same as baseline
+ *
+ * Variant 4: Force linear tiling
+ *   - TiledSurface = false
+ *   - Other fields same as baseline
+ *
+ * Variant 5: Combined modifications
+ *   - CrVCbUPixelOffsetVDirection = 1
+ *   - XOffsetforUCb = width / 2, XOffsetforVCr = width / 2
+ *   - YOffsetforUCb = align(height, 16), YOffsetforVCr = align(height, 16)
+ */
+#ifndef CHROMA_TEST_VARIANT
+#define CHROMA_TEST_VARIANT 0
+#endif
+
 #include "anv_private.h"
 
 #include "genxml/gen_macros.h"
@@ -90,11 +127,65 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       ss.SurfaceFormat = PLANAR_420_8; // assert on this?
       ss.InterleaveChroma = 1;
       ss.SurfacePitch = img->planes[0].primary_surface.isl.row_pitch_B - 1;
-      ss.TiledSurface = img->planes[0].primary_surface.isl.tiling != ISL_TILING_LINEAR;
-      ss.TileWalk = TW_YMAJOR;
 
+      /* Apply test variant settings for chroma plane offsets and tiling */
+#if CHROMA_TEST_VARIANT == 0
+      /* Variant 0 (baseline): Current code behavior */
+      ss.CrVCbUPixelOffsetVDirection = 0;
+      ss.XOffsetforUCb = 0;
+      ss.XOffsetforVCr = 0;
       ss.YOffsetforUCb = align(img->vk.extent.height, 32);
       ss.YOffsetforVCr = align(img->vk.extent.height, 32);
+      ss.TiledSurface = img->planes[0].primary_surface.isl.tiling != ISL_TILING_LINEAR;
+      ss.TileWalk = TW_YMAJOR;
+#elif CHROMA_TEST_VARIANT == 1
+      /* Variant 1: Flip vertical direction */
+      ss.CrVCbUPixelOffsetVDirection = 1;
+      ss.XOffsetforUCb = 0;
+      ss.XOffsetforVCr = 0;
+      ss.YOffsetforUCb = align(img->vk.extent.height, 32);
+      ss.YOffsetforVCr = align(img->vk.extent.height, 32);
+      ss.TiledSurface = img->planes[0].primary_surface.isl.tiling != ISL_TILING_LINEAR;
+      ss.TileWalk = TW_YMAJOR;
+#elif CHROMA_TEST_VARIANT == 2
+      /* Variant 2: Half-width X offsets */
+      ss.CrVCbUPixelOffsetVDirection = 0;
+      ss.XOffsetforUCb = img->vk.extent.width / 2;
+      ss.XOffsetforVCr = img->vk.extent.width / 2;
+      ss.YOffsetforUCb = align(img->vk.extent.height, 32);
+      ss.YOffsetforVCr = align(img->vk.extent.height, 32);
+      ss.TiledSurface = img->planes[0].primary_surface.isl.tiling != ISL_TILING_LINEAR;
+      ss.TileWalk = TW_YMAJOR;
+#elif CHROMA_TEST_VARIANT == 3
+      /* Variant 3: 16-line Y alignment */
+      ss.CrVCbUPixelOffsetVDirection = 0;
+      ss.XOffsetforUCb = 0;
+      ss.XOffsetforVCr = 0;
+      ss.YOffsetforUCb = align(img->vk.extent.height, 16);
+      ss.YOffsetforVCr = align(img->vk.extent.height, 16);
+      ss.TiledSurface = img->planes[0].primary_surface.isl.tiling != ISL_TILING_LINEAR;
+      ss.TileWalk = TW_YMAJOR;
+#elif CHROMA_TEST_VARIANT == 4
+      /* Variant 4: Force linear tiling */
+      ss.CrVCbUPixelOffsetVDirection = 0;
+      ss.XOffsetforUCb = 0;
+      ss.XOffsetforVCr = 0;
+      ss.YOffsetforUCb = align(img->vk.extent.height, 32);
+      ss.YOffsetforVCr = align(img->vk.extent.height, 32);
+      ss.TiledSurface = false;
+      ss.TileWalk = TW_YMAJOR;
+#elif CHROMA_TEST_VARIANT == 5
+      /* Variant 5: Combined modifications */
+      ss.CrVCbUPixelOffsetVDirection = 1;
+      ss.XOffsetforUCb = img->vk.extent.width / 2;
+      ss.XOffsetforVCr = img->vk.extent.width / 2;
+      ss.YOffsetforUCb = align(img->vk.extent.height, 16);
+      ss.YOffsetforVCr = align(img->vk.extent.height, 16);
+      ss.TiledSurface = img->planes[0].primary_surface.isl.tiling != ISL_TILING_LINEAR;
+      ss.TileWalk = TW_YMAJOR;
+#else
+#error "Invalid CHROMA_TEST_VARIANT value. Must be 0-5."
+#endif
    }
 
    anv_batch_emit(&cmd_buffer->batch, GENX(MFX_PIPE_BUF_ADDR_STATE), buf) {
