@@ -96,7 +96,9 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
 
       ss.YOffsetforUCb = align(img->vk.extent.height, 32);
       ss.XOffsetforUCb = 0;
-      ss.YOffsetforVCr = align(img->vk.extent.height, 32);
+      /* For interleaved chroma (NV12), V/Cr is interleaved with U/Cb,
+       * so YOffsetforVCr must be 0 (relative to chroma plane start) */
+      ss.YOffsetforVCr = 0;
       ss.XOffsetforVCr = 0;
    }
 
