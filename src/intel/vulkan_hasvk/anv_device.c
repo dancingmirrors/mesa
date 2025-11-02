@@ -1552,12 +1552,6 @@ anv_physical_device_init_queue_families(struct anv_physical_device *pdevice)
             .queueCount = c_count,
             .engine_class = INTEL_ENGINE_CLASS_RENDER,
          };
-      if (v_count > 0) {
-         pdevice->queue.families[family_count++] = (struct anv_queue_family) {
-            .queueFlags = VK_QUEUE_VIDEO_DECODE_BIT_KHR,
-            .queueCount = v_count,
-            .engine_class = I915_ENGINE_CLASS_VIDEO,
-         };
       }
       if (v_count > 0) {
          pdevice->queue.families[family_count++] = (struct anv_queue_family) {
@@ -2514,11 +2508,11 @@ VkResult anv_CreateDevice(
             INTEL_BATCH_DECODE_OFFSETS |
             INTEL_BATCH_DECODE_FLOATS;
 
-         intel_batch_decode_ctx_init(decoder,
-                                     &physical_device->compiler->isa,
-                                     &physical_device->info,
-                                     stderr, decode_flags, NULL,
-                                     decode_get_bo, NULL, device);
+         intel_batch_decode_ctx_init_elk(decoder,
+                                         &physical_device->compiler->isa,
+                                         &physical_device->info,
+                                         stderr, decode_flags, NULL,
+                                         decode_get_bo, NULL, device);
 
          decoder->engine = physical_device->queue.families[i].engine_class;
          decoder->dynamic_base = DYNAMIC_STATE_POOL_MIN_ADDRESS;
