@@ -572,6 +572,9 @@ class Parser(object):
 
     def emit_instruction(self):
         name = self.instruction
+        guard = self.gen_prefix(name + "_defined")
+        print('#ifndef %s' % guard)
+        print('#define %s' % guard)
 
         if not self.length is None:
             print('#define %-33s %6d' %
@@ -602,9 +605,13 @@ class Parser(object):
         self.emit_pack_function(self.instruction, self.group)
         if self.repack:
             self.emit_pack_function(self.instruction, self.group, repack=True)
+        print('#endif /* %s */' % guard)
 
     def emit_register(self):
         name = self.register
+        guard = self.gen_prefix(name + "_defined")
+        print('#ifndef %s' % guard)
+        print('#define %s' % guard)
         if not self.reg_num is None:
             print('#define %-33s 0x%04x' %
                   (self.gen_prefix(name + "_num"), self.reg_num))
@@ -615,9 +622,13 @@ class Parser(object):
 
         self.emit_template_struct(self.register, self.group)
         self.emit_pack_function(self.register, self.group)
+        print('#endif /* %s */' % guard)
 
     def emit_struct(self):
         name = self.struct
+        guard = self.gen_prefix(name + "_defined")
+        print('#ifndef %s' % guard)
+        print('#define %s' % guard)
         if not self.length is None:
             print('#define %-33s %6d' %
                   (self.gen_prefix(name + "_length"), self.length))
@@ -626,9 +637,14 @@ class Parser(object):
         self.emit_pack_function(self.struct, self.group)
         if self.repack:
             self.emit_pack_function(self.struct, self.group, repack=True)
+        print('#endif /* %s */' % guard)
 
     def emit_enum(self):
-        print('enum %s {' % self.gen_prefix(self.enum))
+        enum_name = self.gen_prefix(self.enum)
+        guard = enum_name + "_defined"
+        print('#ifndef %s' % guard)
+        print('#define %s' % guard)
+        print('enum %s {' % enum_name)
         for value in self.values:
             if self.prefix:
                 name = self.prefix + "_" + value.name
@@ -636,6 +652,7 @@ class Parser(object):
                 name = value.name
             print('   %-36s = %6d,' % (name.upper(), value.value))
         print('};\n')
+        print('#endif /* %s */' % guard)
 
     def emit_genxml(self, genxml):
         root = genxml.et.getroot()
