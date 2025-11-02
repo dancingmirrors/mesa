@@ -5831,6 +5831,7 @@ void genX(CmdSetEvent2)(
    ANV_FROM_HANDLE(anv_event, event, _event);
 
    if (is_video_queue_cmd_buffer(cmd_buffer)) {
+#if GFX_VER >= 8
       anv_batch_emit(&cmd_buffer->batch, GENX(MI_FLUSH_DW), flush) {
          flush.PostSyncOperation = WriteImmediateData;
          flush.Address = (struct anv_address) {
@@ -5839,6 +5840,19 @@ void genX(CmdSetEvent2)(
          };
          flush.ImmediateData = VK_EVENT_SET;
       }
+#else
+      anv_batch_emit(&cmd_buffer->batch, GENX(PIPE_CONTROL), pc) {
+         pc.CommandStreamerStallEnable = true;
+         pc.DestinationAddressType  = DAT_PPGTT;
+         pc.PostSyncOperation       = WriteImmediateData;
+         pc.Address = (struct anv_address) {
+            cmd_buffer->device->dynamic_state_pool.block_pool.bo,
+            event->state.offset
+         };
+         pc.ImmediateData           = VK_EVENT_SET;
+         anv_debug_dump_pc(pc);
+      }
+#endif
       return;
    }
 
@@ -5874,6 +5888,7 @@ void genX(CmdResetEvent2)(
    ANV_FROM_HANDLE(anv_event, event, _event);
 
    if (is_video_queue_cmd_buffer(cmd_buffer)) {
+#if GFX_VER >= 8
       anv_batch_emit(&cmd_buffer->batch, GENX(MI_FLUSH_DW), flush) {
          flush.PostSyncOperation = WriteImmediateData;
          flush.Address = (struct anv_address) {
@@ -5882,6 +5897,19 @@ void genX(CmdResetEvent2)(
          };
          flush.ImmediateData = VK_EVENT_RESET;
       }
+#else
+      anv_batch_emit(&cmd_buffer->batch, GENX(PIPE_CONTROL), pc) {
+         pc.CommandStreamerStallEnable = true;
+         pc.DestinationAddressType  = DAT_PPGTT;
+         pc.PostSyncOperation       = WriteImmediateData;
+         pc.Address = (struct anv_address) {
+            cmd_buffer->device->dynamic_state_pool.block_pool.bo,
+            event->state.offset
+         };
+         pc.ImmediateData           = VK_EVENT_RESET;
+         anv_debug_dump_pc(pc);
+      }
+#endif
       return;
    }
 
