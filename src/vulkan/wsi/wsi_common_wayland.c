@@ -252,7 +252,7 @@ struct wsi_wl_swapchain {
       VkColorSpaceKHR colorspace;
       VkHdrMetadataEXT hdr_metadata;
       bool has_hdr_metadata;
-      bool owns_color_surface_refcount;
+      bool owns_color_surface_refcount; /* Initialized to false by vk_zalloc */
    } color;
 
    struct wsi_wl_image images[0];
