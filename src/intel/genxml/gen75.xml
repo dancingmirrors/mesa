@@ -1522,6 +1522,27 @@
       <field name="POC List" dword="0" bits="31:0" type="uint" />
     </group>
   </instruction>
+  <instruction name="MFD_AVC_BSD_OBJECT" bias="2" length="6" engine="video">
+    <field name="DWord Length" dword="0" bits="11:0" type="uint" default="4" />
+    <field name="SubOpcode B" dword="0" bits="20:16" type="uint" default="8" />
+    <field name="SubOpcode A" dword="0" bits="23:21" type="uint" default="1" />
+    <field name="Media Command Opcode" dword="0" bits="26:24" type="uint" default="1" />
+    <field name="Pipeline" dword="0" bits="28:27" type="uint" default="2" />
+    <field name="Command Type" dword="0" bits="31:29" type="uint" default="3" />
+    <field name="Indirect BSD Data Length" dword="1" bits="31:0" type="uint" />
+    <field name="Indirect BSD Data Start Address" dword="2" bits="28:0" type="offset" />
+    <field name="Inline Data" dword="3" bits="95:0" type="INLINE_DATA_DESCRIPTION_FOR_MFD_AVC_BSD_OBJECT" />
+  </instruction>
+  <instruction name="MFD_AVC_SLICEADDR" bias="2" length="3" engine="video">
+    <field name="DWord Length" dword="0" bits="11:0" type="uint" default="1" />
+    <field name="SubOpcode B" dword="0" bits="20:16" type="uint" default="7" />
+    <field name="SubOpcode A" dword="0" bits="23:21" type="uint" default="1" />
+    <field name="Media Command Opcode" dword="0" bits="26:24" type="uint" default="1" />
+    <field name="Pipeline" dword="0" bits="28:27" type="uint" default="2" />
+    <field name="Command Type" dword="0" bits="31:29" type="uint" default="3" />
+    <field name="Indirect BSD Data Length" dword="1" bits="31:0" type="uint" />
+    <field name="Indirect BSD Data Start Address" dword="2" bits="28:0" type="offset" />
+  </instruction>
   <instruction name="MFX_AVC_IMG_STATE" bias="2" length="14" engine="video">
     <field name="DWord Length" dword="0" bits="11:0" type="uint" default="12" />
     <field name="SubOpcode B" dword="0" bits="20:16" type="uint" default="0" />
