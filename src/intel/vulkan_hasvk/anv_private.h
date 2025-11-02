@@ -3672,8 +3672,15 @@ static inline uint32_t khr_perf_query_preamble_offset(const struct anv_query_poo
 }
 
 #define ANV_VIDEO_MEM_REQS_H264 4
+#define ANV_VIDEO_MEM_REQS_H264 4
 #define ANV_MB_WIDTH 16
 #define ANV_MB_HEIGHT 16
+
+struct anv_vid_mem {
+   struct anv_device_memory *mem;
+   VkDeviceSize       offset;
+   VkDeviceSize       size;
+};
 
 enum {
    ANV_VID_MEM_H264_INTRA_ROW_STORE,
