@@ -536,7 +536,7 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
 
    uint32_t buffer_offset = frame_info->srcBufferOffset & 4095;
 #define HEADER_OFFSET 3
-#if GFX_VERx10 == 70
+#if GFX_VERx10 == 70 || GFX_VERx10 == 75
    anv_batch_emit(&cmd_buffer->batch, GENX(PIPE_CONTROL), pc) {
       pc.DWordLength = 2;
       pc.CommandStreamerStallEnable = 1;
@@ -573,11 +573,11 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       };
    }
 
-#if GFX_VERx10 == 70
-   /* On Ivy Bridge, we need to flush the data cache after video decode
-    * operations to ensure decoded frame data is visible when used as
+#if GFX_VERx10 == 70 || GFX_VERx10 == 75
+   /* On Ivy Bridge and Haswell, we need to flush the data cache after video
+    * decode operations to ensure decoded frame data is visible when used as
     * reference frames for subsequent P/B frames. Without this flush,
-    * we get cache coherency issues causing visual corruption.
+    * we get cache coherency issues causing visual corruption and GPU hangs.
     */
    anv_batch_emit(&cmd_buffer->batch, GENX(PIPE_CONTROL), pc) {
       pc.CommandStreamerStallEnable = 1;
