@@ -64,23 +64,22 @@ emit_query_mi_flush_availability(struct anv_cmd_buffer *cmd_buffer,
                                  struct anv_address addr,
                                  bool available)
 {
+#if GFX_VER >= 8
    anv_batch_emit(&cmd_buffer->batch, GENX(MI_FLUSH_DW), flush) {
       flush.PostSyncOperation = WriteImmediateData;
       flush.Address = addr;
       flush.ImmediateData = available;
    }
-}
-
-static void
-emit_query_mi_flush_availability(struct anv_cmd_buffer *cmd_buffer,
-                                 struct anv_address addr,
-                                 bool available)
-{
-   anv_batch_emit(&cmd_buffer->batch, GENX(MI_FLUSH_DW), flush) {
-      flush.PostSyncOperation = WriteImmediateData;
-      flush.Address = addr;
-      flush.ImmediateData = available;
+#else
+   anv_batch_emit(&cmd_buffer->batch, GENX(PIPE_CONTROL), pc) {
+      pc.CommandStreamerStallEnable = true;
+      pc.DestinationAddressType = DAT_PPGTT;
+      pc.PostSyncOperation = WriteImmediateData;
+      pc.Address = addr;
+      pc.ImmediateData = available;
+      anv_debug_dump_pc(pc);
    }
+#endif
 }
 
 VkResult genX(CreateQueryPool)(
