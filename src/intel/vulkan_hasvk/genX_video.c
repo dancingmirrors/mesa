@@ -450,6 +450,15 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       #if defined(__GNUC__)
       #pragma GCC diagnostic pop
       #endif
+#if GFX_VERx10 == 75
+      /* HSW: Initialize all MOCS values to non-zero default since the field
+       * is marked nonzero="true". Only slots with actual references will be
+       * updated below. */
+      uint32_t default_mocs = anv_mocs(cmd_buffer->device, NULL, 0);
+      for (unsigned i = 0; i < 16; i++) {
+         avc_directmode.DirectMVBufferMOCS[i] = default_mocs;
+      }
+#endif
       for (unsigned i = 0; i < frame_info->referenceSlotCount; i++) {
          int idx = frame_info->pReferenceSlots[i].slotIndex;
          const struct VkVideoDecodeH264DpbSlotInfoKHR *dpb_slot =
