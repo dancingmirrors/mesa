@@ -3525,7 +3525,7 @@ generate_fragment(struct llvmpipe_context *lp,
          }
 
          for (unsigned s = 0; s < key->min_samples; s++) {
-            /* This is fucked up need to reorganize things */
+            /* This is messed up, need to reorganize things */
             int idx = s * num_fs + i;
             LLVMValueRef sindexi = lp_build_const_int32(gallivm, idx);
             for (unsigned cbuf = 0; cbuf < key->nr_cbufs; cbuf++) {
