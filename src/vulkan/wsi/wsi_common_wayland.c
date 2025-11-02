@@ -1172,7 +1172,7 @@ static void
 wsi_wl_surface_remove_color_refcount(struct wsi_wl_surface *wsi_surface)
 {
    wsi_surface->color.color_surface_refcount--;
-   if (wsi_surface->color.color_surface_refcount == 0) {
+   if (wsi_surface->color.color_surface_refcount == 0 && wsi_surface->color.color_surface) {
       wp_color_management_surface_v1_destroy(wsi_surface->color.color_surface);
       wsi_surface->color.color_surface = NULL;
    }
