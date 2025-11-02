@@ -98,11 +98,6 @@ genX(CmdEndVideoCodingKHR)(VkCommandBuffer commandBuffer,
    cmd_buffer->video.params = NULL;
 }
 
-/* Gen7.5 DirectMV buffer limitation due to pack header generator bug.
- * See comment in MFX_AVC_DIRECTMODE_STATE handling below. */
-#if GFX_VERx10 == 75
-#define ANV_GEN75_MAX_DMV_BUFFERS 15
-#endif
 
 static void
 anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
@@ -486,15 +481,10 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
          avc_directmode.DirectMVBufferCacheabilityControl[bottom_idx] = dmv_read_mocs & 0x3;
          avc_directmode.DirectMVBufferGraphicsDataType[bottom_idx] = (dmv_read_mocs >> 2) & 0x1;
 #elif GFX_VERx10 == 75
-         /* HSW: Single address per reference, no top/bottom split
-          * Note: Due to a bug in the pack header generator, DirectMVBuffer0Address
-          * is not actually used. The pack function uses DirectMVBufferAddress1[0]
-          * for the first buffer at dword 1, so we use DirectMVBufferAddress1[idx]
-          * for all reference frames. This limits us to ANV_GEN75_MAX_DMV_BUFFERS.
-          */
-         if (idx < ANV_GEN75_MAX_DMV_BUFFERS)
-            avc_directmode.DirectMVBufferAddress1[idx] = anv_image_address(ref_iv->image,
-                                                                          &ref_iv->image->vid_dmv_top_surface);
+         /* HSW: Simple array of 16 addresses with per-buffer MOCS */
+         avc_directmode.DirectMVBufferAddress[idx] = anv_image_address(ref_iv->image,
+                                                                       &ref_iv->image->vid_dmv_top_surface);
+         avc_directmode.DirectMVBufferMOCS[idx] = anv_mocs(cmd_buffer->device, ref_iv->image->bindings[0].address.bo, 0);
 #elif GFX_VER == 8
          /* BDW: Simple array of 16 addresses */
          avc_directmode.DirectMVBufferAddress[idx] = anv_image_address(ref_iv->image,
@@ -521,7 +511,6 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       avc_directmode.DirectMVBufferWriteAddress = anv_image_address(img,
                                                                     &img->vid_dmv_top_surface);
 #if GFX_VERx10 == 75
-      avc_directmode.DirectMVBufferMOCS = anv_mocs(cmd_buffer->device, dmv_bo, 0);
       avc_directmode.DirectMVBufferWriteMOCS = anv_mocs(cmd_buffer->device, avc_directmode.DirectMVBufferWriteAddress.bo, 0);
 #elif GFX_VER == 8
       /* TODO(gen8-video): Properly configure DirectMVBufferAttributes and
