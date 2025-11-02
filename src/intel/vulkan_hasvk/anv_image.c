@@ -700,11 +700,11 @@ add_video_buffers(struct anv_device *device,
 
    for (unsigned i = 0; i < profile_list->profileCount; i++) {
       if (profile_list->pProfiles[i].videoCodecOperation == VK_VIDEO_CODEC_OPERATION_DECODE_H264_BIT_KHR) {
-         unsigned w_mb = DIV_ROUND_UP(image->vk.extent.width, ANV_MB_WIDTH);
-         // IVB/HSW: Hardware assumes MB width of 128 (fixed), scales with height
-         // Buffer size: 128 MB_width * h_mb * 64 bytes/MB = 8192 * h_mb bytes
+         /* IVB/HSW: Hardware assumes MB width of 128 (fixed), scales with height
+          * Buffer size: 128 MB_width * h_mb * 64 bytes/MB = 8192 * h_mb bytes
+          */
          unsigned h_mb = DIV_ROUND_UP(image->vk.extent.height, 16);
-         size = 128 * h_mb * 64;  // Fixed width of 128 MBs, 64 bytes per MB
+         size = 128 * h_mb * 64;  /* Fixed width of 128 MBs, 64 bytes per MB */
       }
    }
 
