@@ -98,6 +98,12 @@ genX(CmdEndVideoCodingKHR)(VkCommandBuffer commandBuffer,
    cmd_buffer->video.params = NULL;
 }
 
+/* Gen7.5 DirectMV buffer limitation due to pack header generator bug.
+ * See comment in MFX_AVC_DIRECTMODE_STATE handling below. */
+#if GFX_VERx10 == 75
+#define ANV_GEN75_MAX_DMV_BUFFERS 15
+#endif
+
 static void
 anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
                       const VkVideoDecodeInfoKHR *frame_info)
@@ -484,9 +490,9 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
           * Note: Due to a bug in the pack header generator, DirectMVBuffer0Address
           * is not actually used. The pack function uses DirectMVBufferAddress1[0]
           * for the first buffer at dword 1, so we use DirectMVBufferAddress1[idx]
-          * for all reference frames. This limits us to 15 references (0-14).
+          * for all reference frames. This limits us to ANV_GEN75_MAX_DMV_BUFFERS.
           */
-         if (idx < 15)
+         if (idx < ANV_GEN75_MAX_DMV_BUFFERS)
             avc_directmode.DirectMVBufferAddress1[idx] = anv_image_address(ref_iv->image,
                                                                           &ref_iv->image->vid_dmv_top_surface);
 #elif GFX_VER == 8
@@ -518,8 +524,11 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       avc_directmode.DirectMVBufferMOCS = anv_mocs(cmd_buffer->device, dmv_bo, 0);
       avc_directmode.DirectMVBufferWriteMOCS = anv_mocs(cmd_buffer->device, avc_directmode.DirectMVBufferWriteAddress.bo, 0);
 #elif GFX_VER == 8
-      /* TODO: Set DirectMVBufferAttributes and DirectMVBufferWriteAttributes properly.
-       * For now, leaving them as zero-initialized which may work with default caching. */
+      /* TODO(gen8-video): Properly configure DirectMVBufferAttributes and
+       * DirectMVBufferWriteAttributes for optimal caching behavior.
+       * For now, leaving them as zero-initialized which uses default caching.
+       * This may impact performance but should be functionally correct.
+       */
 #endif
 #endif
 
