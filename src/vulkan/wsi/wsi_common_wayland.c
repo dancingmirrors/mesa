@@ -1161,7 +1161,7 @@ static void
 wsi_wl_surface_add_color_refcount(struct wsi_wl_surface *wsi_surface)
 {
    wsi_surface->color.color_surface_refcount++;
-   if (wsi_surface->color.color_surface_refcount == 1) {
+   if (wsi_surface->color.color_surface_refcount == 1 && !wsi_surface->color.color_surface) {
       wsi_surface->color.color_surface =
          wp_color_manager_v1_get_surface(wsi_surface->display->color_manager,
 					 wsi_surface->wayland_surface.wrapper);
