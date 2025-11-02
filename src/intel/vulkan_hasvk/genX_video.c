@@ -480,13 +480,19 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
          avc_directmode.DirectMVBufferCacheabilityControl[bottom_idx] = dmv_read_mocs & 0x3;
          avc_directmode.DirectMVBufferGraphicsDataType[bottom_idx] = (dmv_read_mocs >> 2) & 0x1;
 #elif GFX_VERx10 == 75
-         /* HSW: Single address per reference, no top/bottom split */
-         if (idx == 0)
-            avc_directmode.DirectMVBuffer0Address = anv_image_address(ref_iv->image,
+         /* HSW: Single address per reference, no top/bottom split
+          * Note: Due to a bug in the pack header generator, DirectMVBuffer0Address
+          * is not actually used. The pack function uses DirectMVBufferAddress1[0]
+          * for the first buffer at dword 1, so we use DirectMVBufferAddress1[idx]
+          * for all reference frames. This limits us to 15 references (0-14).
+          */
+         if (idx < 15)
+            avc_directmode.DirectMVBufferAddress1[idx] = anv_image_address(ref_iv->image,
                                                                           &ref_iv->image->vid_dmv_top_surface);
-         else
-            avc_directmode.DirectMVBufferAddress1[idx - 1] = anv_image_address(ref_iv->image,
-                                                                          &ref_iv->image->vid_dmv_top_surface);
+#elif GFX_VER == 8
+         /* BDW: Simple array of 16 addresses */
+         avc_directmode.DirectMVBufferAddress[idx] = anv_image_address(ref_iv->image,
+                                                                       &ref_iv->image->vid_dmv_top_surface);
 #endif
          avc_directmode.POCList[2 * idx] = ref_info->PicOrderCnt[0];
          avc_directmode.POCList[2 * idx + 1] = ref_info->PicOrderCnt[1];
@@ -511,6 +517,9 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
 #if GFX_VERx10 == 75
       avc_directmode.DirectMVBufferMOCS = anv_mocs(cmd_buffer->device, dmv_bo, 0);
       avc_directmode.DirectMVBufferWriteMOCS = anv_mocs(cmd_buffer->device, avc_directmode.DirectMVBufferWriteAddress.bo, 0);
+#elif GFX_VER == 8
+      /* TODO: Set DirectMVBufferAttributes and DirectMVBufferWriteAttributes properly.
+       * For now, leaving them as zero-initialized which may work with default caching. */
 #endif
 #endif
 
