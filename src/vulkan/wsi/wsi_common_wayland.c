@@ -252,6 +252,7 @@ struct wsi_wl_swapchain {
       VkColorSpaceKHR colorspace;
       VkHdrMetadataEXT hdr_metadata;
       bool has_hdr_metadata;
+      bool owns_color_surface_refcount;
    } color;
 
    struct wsi_wl_image images[0];
@@ -1245,10 +1246,15 @@ wsi_wl_swapchain_update_colorspace(struct wsi_wl_swapchain *chain)
    bool needs_color_surface_new = needs_color_surface(display, chain->color.colorspace);
    bool needs_color_surface_old = surface->color.color_surface &&
       needs_color_surface(display, surface->color.colorspace);
-   if (!needs_color_surface_old && needs_color_surface_new) {
+   
+   /* Manage refcount based on whether this chain needs the color surface.
+    * Each swapchain that needs the color surface must hold a refcount. */
+   if (needs_color_surface_new && !chain->color.owns_color_surface_refcount) {
       wsi_wl_surface_add_color_refcount(surface);
-   } else if (needs_color_surface_old && !needs_color_surface_new) {
+      chain->color.owns_color_surface_refcount = true;
+   } else if (!needs_color_surface_new && chain->color.owns_color_surface_refcount) {
       wsi_wl_surface_remove_color_refcount(surface);
+      chain->color.owns_color_surface_refcount = false;
    }
 
    struct wayland_hdr_metadata wayland_hdr_metadata = {
@@ -3355,8 +3361,7 @@ wsi_wl_swapchain_chain_free(struct wsi_wl_swapchain *chain,
       wl_callback_destroy(chain->frame);
    if (chain->tearing_control)
       wp_tearing_control_v1_destroy(chain->tearing_control);
-   if (needs_color_surface(wsi_wl_surface->display, chain->color.colorspace) &&
-       wsi_wl_surface->color.color_surface) {
+   if (chain->color.owns_color_surface_refcount) {
       wsi_wl_surface_remove_color_refcount(wsi_wl_surface);
    }
 
