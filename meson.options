@@ -83,7 +83,7 @@ option(
 option(
   'gallium-drivers',
   type : 'array',
-  value : ['disabled'],
+  value : ['crocus'],
   choices : [
     'all', 'auto',
     'asahi', 'crocus', 'd3d12', 'ethosu', 'etnaviv', 'freedreno', 'i915', 'iris',
