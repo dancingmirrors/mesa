@@ -31,6 +31,8 @@
 #if GFX_VERx10 == 70
 #include "util/bitpack_helpers.h"
 
+#define __gen_uint(v, s, e) util_bitpack_uint(v, s, e)
+
 struct GFX7_PIPE_CONTROL {
    uint32_t                             DWordLength;
    uint32_t                             CommandStreamerStallEnable;
