@@ -1576,6 +1576,21 @@
       </field>
     </group>
   </instruction>
+  <instruction name="MFD_AVC_PICID_STATE" bias="2" length="10" engine="video">
+    <field name="DWord Length" dword="0" bits="11:0" type="uint" default="8" />
+    <field name="SubOpcode B" dword="0" bits="20:16" type="uint" default="5" />
+    <field name="SubOpcode A" dword="0" bits="23:21" type="uint" default="1" />
+    <field name="Media Command Opcode" dword="0" bits="26:24" type="uint" default="1" />
+    <field name="Pipeline" dword="0" bits="28:27" type="uint" default="2" />
+    <field name="Command Type" dword="0" bits="31:29" type="uint" default="3" />
+    <field name="PictureID Remapping Disable" dword="1" bits="0:0" type="uint">
+      <value name="Use 16 bits Picture ID" value="0" />
+      <value name="Use 4 bits FrameStoreID" value="1" />
+    </field>
+    <group count="16" dword="2" size="16">
+      <field name="Picture ID" dword="0" bits="15:0" type="uint" />
+    </group>
+  </instruction>
   <instruction name="MFD_AVC_SLICEADDR" bias="2" length="3" engine="video">
     <field name="DWord Length" dword="0" bits="11:0" type="uint" default="1" />
     <field name="SubOpcode B" dword="0" bits="20:16" type="uint" default="7" />
@@ -2728,6 +2743,25 @@
     <field name="Command Type" dword="0" bits="31:29" type="uint" default="0" />
     <field name="Register Address" dword="1" bits="22:2" type="offset" />
     <field name="Memory Address" dword="2" bits="31:2" type="address" />
+  </instruction>
+  <instruction name="MI_FLUSH_DW" bias="2" length="4" engine="video">
+    <field name="DWord Length" dword="0" bits="5:0" type="uint" default="2" />
+    <field name="Video Pipeline Cache Invalidate" dword="0" bits="7:7" type="bool" />
+    <field name="Notify Enable" dword="0" bits="8:8" type="bool" />
+    <field name="Post-Sync Operation" dword="0" bits="15:14" type="uint" />
+    <field name="Synchronize GFDT Surface" dword="0" bits="17:17" type="bool" />
+    <field name="TLB Invalidate" dword="0" bits="18:18" type="bool" />
+    <field name="Store Data Index" dword="0" bits="21:21" type="bool" />
+    <field name="MI Command Opcode" dword="0" bits="28:23" type="uint" default="38" />
+    <field name="Command Type" dword="0" bits="31:29" type="uint" default="0" />
+    <field name="Destination Address Type" dword="1" bits="2:2" type="uint" prefix="DAT">
+      <value name="PPGTT" value="0" />
+      <value name="GGTT" value="1" />
+    </field>
+    <field name="Address" dword="1" bits="31:3" type="address" />
+    <group count="2" dword="2" size="32">
+      <field name="Immediate Data" dword="0" bits="31:0" type="uint" />
+    </group>
   </instruction>
   <instruction name="MI_PREDICATE" bias="1" length="1">
     <field name="Compare Operation" dword="0" bits="1:0" type="uint" prefix="COMPARE">

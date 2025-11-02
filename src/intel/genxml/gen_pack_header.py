@@ -419,7 +419,7 @@ class Value(object):
         self.dont_use = int(attrs["dont_use"]) != 0 if "dont_use" in attrs else False
 
 class Parser(object):
-    def __init__(self, opencl, repack):
+    def __init__(self, opencl, repack, engines=None):
         self.instruction = None
         self.structs = {}
         # Set of enum names we've seen.
@@ -427,6 +427,7 @@ class Parser(object):
         self.registers = {}
         self.opencl = opencl
         self.repack = repack
+        self.engines = engines if engines else set()
 
     def gen_prefix(self, name):
         if name[0] == "_":
@@ -436,6 +437,9 @@ class Parser(object):
     def gen_guard(self):
         if self.opencl:
             return self.gen_prefix("{0}_CL_PACK_H".format(self.platform))
+        # Add suffix for video-only or other engine-specific headers
+        if self.engines == {'video'}:
+            return self.gen_prefix("{0}_VIDEO_PACK_H".format(self.platform))
         return self.gen_prefix("{0}_PACK_H".format(self.platform))
 
     def process_item(self, item):
@@ -678,7 +682,7 @@ def main():
     genxml.filter_engines(engines)
     if pargs.include_symbols:
         genxml.filter_symbols(pargs.include_symbols.split(','))
-    p = Parser(pargs.opencl, pargs.repack)
+    p = Parser(pargs.opencl, pargs.repack, engines)
     p.emit_genxml(genxml)
 
 if __name__ == '__main__':
