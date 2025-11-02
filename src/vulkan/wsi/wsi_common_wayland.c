@@ -30,7 +30,6 @@
 #include <errno.h>
 #include <string.h>
 #include <poll.h>
-#include <limits.h>
 #include <sys/mman.h>
 #include <sys/types.h>
 
@@ -1161,8 +1160,9 @@ needs_color_surface(struct wsi_wl_display *display, VkColorSpaceKHR colorspace)
 static void
 wsi_wl_surface_add_color_refcount(struct wsi_wl_surface *wsi_surface)
 {
-   /* Sanity check: prevent overflow */
-   if (wsi_surface->color.color_surface_refcount >= INT_MAX)
+   /* Sanity check: prevent excessive refcounts that indicate a logic error.
+    * A reasonable upper limit is 256 swapchains per surface. */
+   if (wsi_surface->color.color_surface_refcount >= 256)
       return;
 
    wsi_surface->color.color_surface_refcount++;
@@ -1176,9 +1176,16 @@ wsi_wl_surface_add_color_refcount(struct wsi_wl_surface *wsi_surface)
 static void
 wsi_wl_surface_remove_color_refcount(struct wsi_wl_surface *wsi_surface)
 {
-   /* Sanity check: don't let refcount go negative */
-   if (wsi_surface->color.color_surface_refcount <= 0)
+   /* Sanity check: refcount should never be negative or zero when removing.
+    * This catches double-free bugs and other logic errors. */
+   if (wsi_surface->color.color_surface_refcount == 0)
       return;
+
+   /* Detect and handle corrupted negative refcount */
+   if (wsi_surface->color.color_surface_refcount < 0) {
+      wsi_surface->color.color_surface_refcount = 0;
+      return;
+   }
 
    wsi_surface->color.color_surface_refcount--;
    if (wsi_surface->color.color_surface_refcount == 0 && wsi_surface->color.color_surface) {
