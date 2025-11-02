@@ -14,6 +14,7 @@ project(
     'cpp_std=c++17',
     'rust_std=2021',
     'build.rust_std=2021',
+    'prefix=/usr/local',
   ],
 )
 
@@ -147,37 +148,39 @@ with_any_opengl = with_opengl or with_gles1 or with_gles2
 system_has_kms_drm = ['openbsd', 'netbsd', 'freebsd', 'gnu/kfreebsd', 'dragonfly', 'linux', 'sunos', 'android', 'managarm'].contains(host_machine.system())
 
 gallium_drivers = get_option('gallium-drivers')
-if gallium_drivers.contains('auto')
+if gallium_drivers.contains('disabled')
+    gallium_drivers = ['disabled']
+elif gallium_drivers.contains('auto')
   if system_has_kms_drm
     # TODO: Sparc
     # TODO: handle llvm being disabled or auto when setting default_drivers
     if ['x86', 'x86_64'].contains(host_machine.cpu_family())
       gallium_drivers = [
         'r300', 'r600', 'radeonsi', 'nouveau', 'virgl', 'svga', 'llvmpipe', 'softpipe',
-        'iris', 'crocus', 'i915', 'zink'
+        'iris', 'crocus', 'i915', 'zink', 'disabled'
       ]
     elif ['arm', 'aarch64'].contains(host_machine.cpu_family())
       gallium_drivers = [
         'v3d', 'vc4', 'freedreno', 'etnaviv', 'nouveau', 'svga',
         'tegra', 'virgl', 'lima', 'panfrost', 'llvmpipe', 'softpipe', 'iris',
-        'zink'
+        'zink', 'disabled'
       ]
     elif ['mips', 'mips64', 'ppc', 'ppc64', 'riscv32', 'riscv64'].contains(host_machine.cpu_family())
       gallium_drivers = [
-        'r300', 'r600', 'radeonsi', 'nouveau', 'virgl', 'llvmpipe', 'softpipe', 'zink'
+        'r300', 'r600', 'radeonsi', 'nouveau', 'virgl', 'llvmpipe', 'softpipe', 'zink', 'disabled'
       ]
     elif ['loongarch64'].contains(host_machine.cpu_family())
       gallium_drivers = [
-        'r300', 'r600', 'radeonsi', 'nouveau', 'virgl', 'etnaviv', 'llvmpipe', 'softpipe', 'zink'
+        'r300', 'r600', 'radeonsi', 'nouveau', 'virgl', 'etnaviv', 'llvmpipe', 'softpipe', 'zink', 'disabled'
       ]
     else
       error('Unknown architecture @0@. Please pass -Dgallium-drivers to set driver options. Patches gladly accepted to fix this.'.format(
             host_machine.cpu_family()))
     endif
   elif ['windows'].contains(host_machine.system())
-    gallium_drivers = ['llvmpipe', 'softpipe', 'zink', 'd3d12']
+    gallium_drivers = ['llvmpipe', 'softpipe', 'zink', 'd3d12', 'disabled']
   elif ['darwin', 'cygwin', 'haiku'].contains(host_machine.system())
-    gallium_drivers = ['llvmpipe', 'softpipe']
+    gallium_drivers = ['llvmpipe', 'softpipe', 'disabled']
   else
     error('Unknown OS @0@. Please pass -Dgallium-drivers to set driver options. Patches gladly accepted to fix this.'.format(
           host_machine.system()))
