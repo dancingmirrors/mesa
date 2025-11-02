@@ -30,6 +30,7 @@
 #include <errno.h>
 #include <string.h>
 #include <poll.h>
+#include <limits.h>
 #include <sys/mman.h>
 #include <sys/types.h>
 
@@ -1160,6 +1161,10 @@ needs_color_surface(struct wsi_wl_display *display, VkColorSpaceKHR colorspace)
 static void
 wsi_wl_surface_add_color_refcount(struct wsi_wl_surface *wsi_surface)
 {
+   /* Sanity check: prevent overflow */
+   if (wsi_surface->color.color_surface_refcount >= INT_MAX)
+      return;
+
    wsi_surface->color.color_surface_refcount++;
    if (wsi_surface->color.color_surface_refcount == 1 && !wsi_surface->color.color_surface) {
       wsi_surface->color.color_surface =
@@ -1171,6 +1176,10 @@ wsi_wl_surface_add_color_refcount(struct wsi_wl_surface *wsi_surface)
 static void
 wsi_wl_surface_remove_color_refcount(struct wsi_wl_surface *wsi_surface)
 {
+   /* Sanity check: don't let refcount go negative */
+   if (wsi_surface->color.color_surface_refcount <= 0)
+      return;
+
    wsi_surface->color.color_surface_refcount--;
    if (wsi_surface->color.color_surface_refcount == 0 && wsi_surface->color.color_surface) {
       wp_color_management_surface_v1_destroy(wsi_surface->color.color_surface);
@@ -1356,6 +1365,12 @@ wsi_wl_swapchain_update_colorspace(struct wsi_wl_swapchain *chain)
       } else {
          return VK_ERROR_SURFACE_LOST_KHR;
       }
+   }
+
+   /* Sanity check: ensure color surface exists before using it */
+   if (!chain->wsi_wl_surface->color.color_surface) {
+      wp_image_description_v1_destroy(image_desc);
+      return VK_ERROR_SURFACE_LOST_KHR;
    }
 
    wp_color_management_surface_v1_set_image_description(chain->wsi_wl_surface->color.color_surface,
