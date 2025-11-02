@@ -218,6 +218,11 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
          vid->vid_mem[ANV_VID_MEM_H264_BSD_MPC_ROW_SCRATCH].offset };
 #if GFX_VERx10 == 75
       bsp.BSDMPCRowStoreScratchBufferMOCS = anv_mocs(cmd_buffer->device, vid->vid_mem[ANV_VID_MEM_H264_BSD_MPC_ROW_SCRATCH].mem->bo, 0);
+#elif GFX_VERx10 == 70
+      /* IVB: MOCS fields are split into CacheabilityControl and GraphicsDataType */
+      uint32_t bsd_mocs = anv_mocs(cmd_buffer->device, vid->vid_mem[ANV_VID_MEM_H264_BSD_MPC_ROW_SCRATCH].mem->bo, 0);
+      bsp.BSDMPCRowStoreScratchBufferCacheabilityControl = bsd_mocs & 0x3;
+      bsp.BSDMPCRowStoreScratchBufferGraphicsDataType = (bsd_mocs >> 2) & 0x1;
 #endif
 
       bsp.MPRRowStoreScratchBufferAddress = (struct anv_address) { vid->vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
@@ -226,6 +231,14 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
 #if GFX_VERx10 == 75
       bsp.MPRRowStoreScratchBufferMOCS = anv_mocs(cmd_buffer->device,  vid->vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo, 0);
       bsp.BitplaneReadBufferMOCS = anv_mocs(cmd_buffer->device, NULL, 0);
+#elif GFX_VERx10 == 70
+      /* IVB: MOCS fields are split into CacheabilityControl and GraphicsDataType */
+      uint32_t mpr_mocs = anv_mocs(cmd_buffer->device, vid->vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo, 0);
+      bsp.MPRRowStoreScratchBufferCacheabilityControl = mpr_mocs & 0x3;
+      bsp.MPRRowStoreScratchBufferGraphicsDataType = (mpr_mocs >> 2) & 0x1;
+      uint32_t bitplane_mocs = anv_mocs(cmd_buffer->device, NULL, 0);
+      bsp.BitplaneReadBufferCacheabilityControl = bitplane_mocs & 0x3;
+      bsp.BitplaneReadBufferGraphicsDataType = (bitplane_mocs >> 2) & 0x1;
 #endif
    }
 
