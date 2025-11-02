@@ -26,23 +26,23 @@
 #include "genxml/gen_macros.h"
 #include "genxml/genX_video_pack.h"
 
-/* For gen7, we need PIPE_CONTROL for cache flush workarounds.
+/* For gen7 and gen7.5, we need PIPE_CONTROL for cache flush workarounds.
  * Since it's not in the video pack, we forward declare it here. */
-#if GFX_VERx10 == 70
+#if GFX_VERx10 == 70 || GFX_VERx10 == 75
 #include "util/bitpack_helpers.h"
 
 #define __gen_uint(v, s, e) util_bitpack_uint(v, s, e)
 
-struct GFX7_PIPE_CONTROL {
+struct GENX(PIPE_CONTROL) {
    uint32_t                             DWordLength;
    uint32_t                             CommandStreamerStallEnable;
    uint32_t                             DCFlushEnable;
 };
 
 static inline void
-GFX7_PIPE_CONTROL_pack(__attribute__((unused)) __gen_user_data *data,
+GENX(PIPE_CONTROL_pack)(__attribute__((unused)) __gen_user_data *data,
                        __attribute__((unused)) void * restrict dst,
-                       __attribute__((unused)) const struct GFX7_PIPE_CONTROL * restrict values)
+                       __attribute__((unused)) const struct GENX(PIPE_CONTROL) * restrict values)
 {
    uint32_t * restrict dw = (uint32_t * restrict) dst;
 
@@ -62,9 +62,9 @@ GFX7_PIPE_CONTROL_pack(__attribute__((unused)) __gen_user_data *data,
    dw[4] = 0;
 }
 
-#define GFX7_PIPE_CONTROL_length 5
-#define GFX7_PIPE_CONTROL_length_bias 2
-#define GFX7_PIPE_CONTROL_header \
+#define GENX(PIPE_CONTROL_length) 5
+#define GENX(PIPE_CONTROL_length_bias) 2
+#define GENX(PIPE_CONTROL_header) \
    .DWordLength = 3
 
 #endif
