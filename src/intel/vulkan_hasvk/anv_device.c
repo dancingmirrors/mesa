@@ -1617,7 +1617,8 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
    }
 
    bool is_alpha = true;
-   bool warn = !debug_get_bool_option("MESA_VK_IGNORE_CONFORMANCE_WARNING", false);
+   //bool warn = !debug_get_bool_option("MESA_VK_IGNORE_CONFORMANCE_WARNING", false);
+   bool warn = false;
    if (devinfo.platform == INTEL_PLATFORM_HSW) {
       if (warn)
          mesa_logw("Haswell Vulkan support is incomplete");
