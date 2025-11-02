@@ -50,6 +50,30 @@
 
 #include "vk_util.h"
 
+static enum anv_pipe_bits
+convert_pc_to_bits(struct GENX(PIPE_CONTROL) *pc) {
+   enum anv_pipe_bits bits = 0;
+   bits |= (pc->DepthCacheFlushEnable) ?  ANV_PIPE_DEPTH_CACHE_FLUSH_BIT : 0;
+   bits |= (pc->DCFlushEnable) ?  ANV_PIPE_DATA_CACHE_FLUSH_BIT : 0;
+   bits |= (pc->RenderTargetCacheFlushEnable) ?  ANV_PIPE_RENDER_TARGET_CACHE_FLUSH_BIT : 0;
+   bits |= (pc->VFCacheInvalidationEnable) ?  ANV_PIPE_VF_CACHE_INVALIDATE_BIT : 0;
+   bits |= (pc->StateCacheInvalidationEnable) ?  ANV_PIPE_STATE_CACHE_INVALIDATE_BIT : 0;
+   bits |= (pc->ConstantCacheInvalidationEnable) ?  ANV_PIPE_CONSTANT_CACHE_INVALIDATE_BIT : 0;
+   bits |= (pc->TextureCacheInvalidationEnable) ?  ANV_PIPE_TEXTURE_CACHE_INVALIDATE_BIT : 0;
+   bits |= (pc->InstructionCacheInvalidateEnable) ?  ANV_PIPE_INSTRUCTION_CACHE_INVALIDATE_BIT : 0;
+   bits |= (pc->StallAtPixelScoreboard) ?  ANV_PIPE_STALL_AT_SCOREBOARD_BIT : 0;
+   bits |= (pc->DepthStallEnable) ?  ANV_PIPE_DEPTH_STALL_BIT : 0;
+   bits |= (pc->CommandStreamerStallEnable) ?  ANV_PIPE_CS_STALL_BIT : 0;
+   return bits;
+}
+
+#define anv_debug_dump_pc(pc) \
+   if (INTEL_DEBUG(DEBUG_PIPE_CONTROL)) { \
+      fputs("pc: emit PC=( ", stderr); \
+      anv_dump_pipe_bits(convert_pc_to_bits(&(pc))); \
+      fprintf(stderr, ") reason: %s\n", __func__); \
+   }
+
 static struct anv_address
 anv_query_address(struct anv_query_pool *pool, uint32_t query)
 {
@@ -64,23 +88,22 @@ emit_query_mi_flush_availability(struct anv_cmd_buffer *cmd_buffer,
                                  struct anv_address addr,
                                  bool available)
 {
+#if GFX_VER >= 8
    anv_batch_emit(&cmd_buffer->batch, GENX(MI_FLUSH_DW), flush) {
       flush.PostSyncOperation = WriteImmediateData;
       flush.Address = addr;
       flush.ImmediateData = available;
    }
-}
-
-static void
-emit_query_mi_flush_availability(struct anv_cmd_buffer *cmd_buffer,
-                                 struct anv_address addr,
-                                 bool available)
-{
-   anv_batch_emit(&cmd_buffer->batch, GENX(MI_FLUSH_DW), flush) {
-      flush.PostSyncOperation = WriteImmediateData;
-      flush.Address = addr;
-      flush.ImmediateData = available;
+#else
+   anv_batch_emit(&cmd_buffer->batch, GENX(PIPE_CONTROL), pc) {
+      pc.CommandStreamerStallEnable = true;
+      pc.DestinationAddressType = DAT_PPGTT;
+      pc.PostSyncOperation = WriteImmediateData;
+      pc.Address = addr;
+      pc.ImmediateData = available;
+      anv_debug_dump_pc(pc);
    }
+#endif
 }
 
 VkResult genX(CreateQueryPool)(

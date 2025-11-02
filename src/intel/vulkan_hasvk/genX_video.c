@@ -24,7 +24,50 @@
 #include "anv_private.h"
 
 #include "genxml/gen_macros.h"
-#include "genxml/genX_pack.h"
+#include "genxml/genX_video_pack.h"
+
+/* For gen7, we need PIPE_CONTROL for cache flush workarounds.
+ * Since it's not in the video pack, we forward declare it here. */
+#if GFX_VERx10 == 70
+#include "util/bitpack_helpers.h"
+
+#define __gen_uint(v, s, e) util_bitpack_uint(v, s, e)
+
+struct GFX7_PIPE_CONTROL {
+   uint32_t                             DWordLength;
+   uint32_t                             CommandStreamerStallEnable;
+   uint32_t                             DCFlushEnable;
+};
+
+static inline void
+GFX7_PIPE_CONTROL_pack(__attribute__((unused)) __gen_user_data *data,
+                       __attribute__((unused)) void * restrict dst,
+                       __attribute__((unused)) const struct GFX7_PIPE_CONTROL * restrict values)
+{
+   uint32_t * restrict dw = (uint32_t * restrict) dst;
+
+   dw[0] =
+      __gen_uint(values->DWordLength, 0, 7) |
+      __gen_uint(0x3, 16, 23) |  /* 3D Command Sub Opcode */
+      __gen_uint(0x0, 24, 26) |   /* 3D Command Opcode */
+      __gen_uint(0x3, 27, 28) |   /* Command SubType */
+      __gen_uint(0x3, 29, 31);    /* Command Type */
+
+   dw[1] =
+      __gen_uint(values->CommandStreamerStallEnable, 20, 20) |
+      __gen_uint(values->DCFlushEnable, 5, 5);
+
+   dw[2] = 0;
+   dw[3] = 0;
+   dw[4] = 0;
+}
+
+#define GFX7_PIPE_CONTROL_length 5
+#define GFX7_PIPE_CONTROL_length_bias 2
+#define GFX7_PIPE_CONTROL_header \
+   .DWordLength = 3
+
+#endif
 
 void
 genX(CmdBeginVideoCodingKHR)(VkCommandBuffer commandBuffer,
