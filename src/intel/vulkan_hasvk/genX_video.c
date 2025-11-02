@@ -412,25 +412,32 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
             vk_find_struct_const(frame_info->pReferenceSlots[i].pNext, VIDEO_DECODE_H264_DPB_SLOT_INFO_KHR);
          const struct anv_image_view *ref_iv = anv_image_view_from_handle(frame_info->pReferenceSlots[i].pPictureResource->imageViewBinding);
          const StdVideoDecodeH264ReferenceInfo *ref_info = dpb_slot->pStdReferenceInfo;
+
          if (i == 0) {
             dmv_bo = anv_image_address(ref_iv->image,
                                        &ref_iv->image->vid_dmv_top_surface).bo;
          }
-#if GFX_VERx10 == 70
-         avc_directmode.DirectMVBufferAddress[idx * 2] = anv_image_address(ref_iv->image,
-                                                                           &ref_iv->image->vid_dmv_top_surface);
-         avc_directmode.DirectMVBufferAddress[idx * 2 + 1] = anv_image_address(ref_iv->image,
-                                                                           &ref_iv->image->vid_dmv_top_surface);
-         /* IVB: MOCS fields are split into CacheabilityControl and GraphicsDataType, and are arrays
-          * Two entries per reference slot are needed for top/bottom field support */
-         uint32_t dmv_read_mocs = anv_mocs(cmd_buffer->device, ref_iv->image->bindings[0].address.bo, 0);
-         avc_directmode.DirectMVBufferCacheabilityControl[idx * 2] = dmv_read_mocs & 0x3;
-         avc_directmode.DirectMVBufferGraphicsDataType[idx * 2] = (dmv_read_mocs >> 2) & 0x1;
-         avc_directmode.DirectMVBufferCacheabilityControl[idx * 2 + 1] = dmv_read_mocs & 0x3;
-         avc_directmode.DirectMVBufferGraphicsDataType[idx * 2 + 1] = (dmv_read_mocs >> 2) & 0x1;
-#endif
 
-#if GFX_VERx10 == 75
+#if GFX_VERx10 == 70
+         /* IVB: Each reference slot needs TWO entries (top/bottom field) in grouped arrays */
+         uint32_t top_idx = idx * 2;
+         uint32_t bottom_idx = idx * 2 + 1;
+
+         struct anv_address dmv_addr = anv_image_address(ref_iv->image,
+                                                         &ref_iv->image->vid_dmv_top_surface);
+         uint32_t dmv_read_mocs = anv_mocs(cmd_buffer->device, ref_iv->image->bindings[0].address.bo, 0);
+
+         /* Top field */
+         avc_directmode.DirectMVBufferAddress[top_idx] = dmv_addr;
+         avc_directmode.DirectMVBufferCacheabilityControl[top_idx] = dmv_read_mocs & 0x3;
+         avc_directmode.DirectMVBufferGraphicsDataType[top_idx] = (dmv_read_mocs >> 2) & 0x1;
+
+         /* Bottom field (typically same as top for decode) */
+         avc_directmode.DirectMVBufferAddress[bottom_idx] = dmv_addr;
+         avc_directmode.DirectMVBufferCacheabilityControl[bottom_idx] = dmv_read_mocs & 0x3;
+         avc_directmode.DirectMVBufferGraphicsDataType[bottom_idx] = (dmv_read_mocs >> 2) & 0x1;
+#elif GFX_VERx10 == 75
+         /* HSW: Single address per reference, no top/bottom split */
          if (idx == 0)
             avc_directmode.DirectMVBuffer0Address = anv_image_address(ref_iv->image,
                                                                           &ref_iv->image->vid_dmv_top_surface);
@@ -441,19 +448,21 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
          avc_directmode.POCList[2 * idx] = ref_info->PicOrderCnt[0];
          avc_directmode.POCList[2 * idx + 1] = ref_info->PicOrderCnt[1];
       }
+
 #if GFX_VERx10 == 70
-      avc_directmode.DirectMVBufferWriteAddress[0] = anv_image_address(img,
-                                                                       &img->vid_dmv_top_surface);
-      avc_directmode.DirectMVBufferWriteAddress[1] = anv_image_address(img,
-                                                                       &img->vid_dmv_top_surface);
-      /* IVB: MOCS fields are split into CacheabilityControl and GraphicsDataType, and are arrays
-       * Two entries are needed for top/bottom field support */
+      /* IVB: Write buffer also uses grouped arrays with two entries */
       uint32_t dmv_write_mocs = anv_mocs(cmd_buffer->device, img->bindings[0].address.bo, 0);
+      struct anv_address write_addr = anv_image_address(img, &img->vid_dmv_top_surface);
+
+      avc_directmode.DirectMVBufferWriteAddress[0] = write_addr;
       avc_directmode.DirectMVBufferWriteCacheabilityControl[0] = dmv_write_mocs & 0x3;
       avc_directmode.DirectMVBufferWriteGraphicsDataType[0] = (dmv_write_mocs >> 2) & 0x1;
+
+      avc_directmode.DirectMVBufferWriteAddress[1] = write_addr;
       avc_directmode.DirectMVBufferWriteCacheabilityControl[1] = dmv_write_mocs & 0x3;
       avc_directmode.DirectMVBufferWriteGraphicsDataType[1] = (dmv_write_mocs >> 2) & 0x1;
 #else
+      /* HSW and later */
       avc_directmode.DirectMVBufferWriteAddress = anv_image_address(img,
                                                                     &img->vid_dmv_top_surface);
 #if GFX_VERx10 == 75
@@ -461,6 +470,7 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       avc_directmode.DirectMVBufferWriteMOCS = anv_mocs(cmd_buffer->device, avc_directmode.DirectMVBufferWriteAddress.bo, 0);
 #endif
 #endif
+
       avc_directmode.POCList[32] = h264_pic_info->pStdPictureInfo->PicOrderCnt[0];
       avc_directmode.POCList[33] = h264_pic_info->pStdPictureInfo->PicOrderCnt[1];
    }
