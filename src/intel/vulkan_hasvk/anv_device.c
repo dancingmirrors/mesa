@@ -88,7 +88,7 @@ static const driOptionDescription anv_dri_options[] = {
    DRI_CONF_SECTION_END
 };
 
-/* This is probably far to big but it reflects the max size used for messages
+/* This is probably far too big but it reflects the max size used for messages
  * in OpenGLs KHR_debug.
  */
 #define MAX_DEBUG_MESSAGE_LENGTH    4096
@@ -268,6 +268,9 @@ get_device_extensions(const struct anv_physical_device *device,
       .KHR_timeline_semaphore                = true,
       .KHR_uniform_buffer_standard_layout    = true,
       .KHR_variable_pointers                 = true,
+      .KHR_video_queue                       = true,
+      .KHR_video_decode_queue                = true,
+      .KHR_video_decode_h264                 = VIDEO_CODEC_H264DEC,
       .KHR_vulkan_memory_model               = true,
       .KHR_workgroup_memory_explicit_layout  = true,
       .KHR_zero_initialize_workgroup_memory  = true,
@@ -1465,11 +1468,12 @@ anv_physical_device_free_disk_cache(struct anv_physical_device *device)
 }
 
 static void
-anv_override_engine_counts(int *gc_count, int *g_count, int *c_count)
+anv_override_engine_counts(int *gc_count, int *g_count, int *c_count, int *v_count)
 {
    int gc_override = -1;
    int g_override = -1;
    int c_override = -1;
+   int v_override = -1;
    const char *env_ = os_get_option("HASVK_QUEUE_OVERRIDE");
 
    if (env_ == NULL)
@@ -1485,6 +1489,8 @@ anv_override_engine_counts(int *gc_count, int *g_count, int *c_count)
          g_override = strtol(next + 2, NULL, 0);
       } else if (strncmp(next, "c=", 2) == 0) {
          c_override = strtol(next + 2, NULL, 0);
+      } else if (strncmp(next, "v=", 2) == 0) {
+         v_override = strtol(next + 2, NULL, 0);
       } else {
          mesa_logw("Ignoring unsupported ANV_QUEUE_OVERRIDE token: %s", next);
       }
@@ -1500,6 +1506,8 @@ anv_override_engine_counts(int *gc_count, int *g_count, int *c_count)
                 "Vulkan specification");
    if (c_override >= 0)
       *c_count = c_override;
+   if (v_override >= 0)
+      *v_count = v_override;
 }
 
 static void
@@ -1511,10 +1519,14 @@ anv_physical_device_init_queue_families(struct anv_physical_device *pdevice)
       int gc_count =
          intel_engines_count(pdevice->engine_info,
                              INTEL_ENGINE_CLASS_RENDER);
+      int v_count =
+         intel_engines_count(pdevice->engine_info,
+                             I915_ENGINE_CLASS_VIDEO);
+
       int g_count = 0;
       int c_count = 0;
 
-      anv_override_engine_counts(&gc_count, &g_count, &c_count);
+      anv_override_engine_counts(&gc_count, &g_count, &c_count, &v_count);
 
       if (gc_count > 0) {
          pdevice->queue.families[family_count++] = (struct anv_queue_family) {
@@ -1539,6 +1551,19 @@ anv_physical_device_init_queue_families(struct anv_physical_device *pdevice)
                           VK_QUEUE_TRANSFER_BIT,
             .queueCount = c_count,
             .engine_class = INTEL_ENGINE_CLASS_RENDER,
+         };
+      if (v_count > 0) {
+         pdevice->queue.families[family_count++] = (struct anv_queue_family) {
+            .queueFlags = VK_QUEUE_VIDEO_DECODE_BIT_KHR,
+            .queueCount = v_count,
+            .engine_class = I915_ENGINE_CLASS_VIDEO,
+         };
+      }
+      if (v_count > 0) {
+         pdevice->queue.families[family_count++] = (struct anv_queue_family) {
+            .queueFlags = VK_QUEUE_VIDEO_DECODE_BIT_KHR,
+            .queueCount = v_count,
+            .engine_class = I915_ENGINE_CLASS_VIDEO,
          };
       }
       /* Increase count below when other families are added as a reminder to
@@ -2064,7 +2089,19 @@ void anv_GetPhysicalDeviceQueueFamilyProperties2(
                properties->priorityCount = count;
                break;
             }
-
+            case VK_STRUCTURE_TYPE_QUEUE_FAMILY_QUERY_RESULT_STATUS_PROPERTIES_KHR: {
+               VkQueueFamilyQueryResultStatusPropertiesKHR *prop =
+                  (VkQueueFamilyQueryResultStatusPropertiesKHR *)ext;
+               prop->queryResultStatusSupport = VK_TRUE;
+               break;
+            }
+            case VK_STRUCTURE_TYPE_QUEUE_FAMILY_VIDEO_PROPERTIES_KHR: {
+               VkQueueFamilyVideoPropertiesKHR *prop =
+                  (VkQueueFamilyVideoPropertiesKHR *)ext;
+               if (queue_family->queueFlags & VK_QUEUE_VIDEO_DECODE_BIT_KHR)
+                  prop->videoCodecOperations = VK_VIDEO_CODEC_OPERATION_DECODE_H264_BIT_KHR;
+               break;
+            }
             default:
                vk_debug_ignored_stype(ext->sType);
             }
@@ -2468,18 +2505,26 @@ VkResult anv_CreateDevice(
       goto fail_alloc;
 
    if (INTEL_DEBUG(DEBUG_BATCH)) {
-      const unsigned decode_flags = INTEL_BATCH_DECODE_DEFAULT_FLAGS;
+      for (unsigned i = 0; i < physical_device->queue.family_count; i++) {
+         struct intel_batch_decode_ctx *decoder = &device->decoder[i];
 
-      intel_batch_decode_ctx_init_elk(&device->decoder_ctx,
-                                      &physical_device->compiler->isa,
-                                      &physical_device->info,
-                                      stderr, decode_flags, NULL,
-                                      decode_get_bo, NULL, device);
+         const unsigned decode_flags =
+            INTEL_BATCH_DECODE_FULL |
+            (INTEL_DEBUG(DEBUG_COLOR) ? INTEL_BATCH_DECODE_IN_COLOR : 0) |
+            INTEL_BATCH_DECODE_OFFSETS |
+            INTEL_BATCH_DECODE_FLOATS;
 
-      device->decoder_ctx.dynamic_base = DYNAMIC_STATE_POOL_MIN_ADDRESS;
-      device->decoder_ctx.surface_base = SURFACE_STATE_POOL_MIN_ADDRESS;
-      device->decoder_ctx.instruction_base =
-         INSTRUCTION_STATE_POOL_MIN_ADDRESS;
+         intel_batch_decode_ctx_init(decoder,
+                                     &physical_device->compiler->isa,
+                                     &physical_device->info,
+                                     stderr, decode_flags, NULL,
+                                     decode_get_bo, NULL, device);
+
+         decoder->engine = physical_device->queue.families[i].engine_class;
+         decoder->dynamic_base = DYNAMIC_STATE_POOL_MIN_ADDRESS;
+         decoder->surface_base = SURFACE_STATE_POOL_MIN_ADDRESS;
+         decoder->instruction_base = INSTRUCTION_STATE_POOL_MIN_ADDRESS;
+      }
    }
 
    anv_device_set_physical(device, physical_device);
@@ -2768,6 +2813,8 @@ void anv_DestroyDevice(
    if (!device)
       return;
 
+   struct anv_physical_device *pdevice = device->physical;
+
    anv_device_utrace_finish(device);
 
    anv_device_finish_blorp(device);
@@ -2815,8 +2862,10 @@ void anv_DestroyDevice(
 
    intel_gem_destroy_context(device->fd, device->context_id);
 
-   if (INTEL_DEBUG(DEBUG_BATCH))
-      intel_batch_decode_ctx_finish(&device->decoder_ctx);
+   if (INTEL_DEBUG(DEBUG_BATCH)) {
+      for (unsigned i = 0; i < pdevice->queue.family_count; i++)
+         intel_batch_decode_ctx_finish(&device->decoder[i]);
+   }
 
    close(device->fd);
 
