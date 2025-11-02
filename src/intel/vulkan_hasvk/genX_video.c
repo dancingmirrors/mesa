@@ -490,6 +490,18 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
 #endif
       };
    }
+
+#if GFX_VERx10 == 70
+   /* On Ivy Bridge, we need to flush the data cache after video decode
+    * operations to ensure decoded frame data is visible when used as
+    * reference frames for subsequent P/B frames. Without this flush,
+    * we get cache coherency issues causing visual corruption.
+    */
+   anv_batch_emit(&cmd_buffer->batch, GENX(PIPE_CONTROL), pc) {
+      pc.CommandStreamerStallEnable = 1;
+      pc.DCFlushEnable = 1;
+   }
+#endif
 }
 
 void
