@@ -226,7 +226,7 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
 #endif
 
       bsp.MPRRowStoreScratchBufferAddress = (struct anv_address) { vid->vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
-         vid->vid_mem[ANV_VID_MEM_H264_BSD_MPC_ROW_SCRATCH].offset };
+         vid->vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].offset };
 
 #if GFX_VERx10 == 75
       bsp.MPRRowStoreScratchBufferMOCS = anv_mocs(cmd_buffer->device,  vid->vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo, 0);
