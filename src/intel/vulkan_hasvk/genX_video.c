@@ -25,6 +25,7 @@
 
 #include "genxml/gen_macros.h"
 #include "genxml/genX_pack.h"
+#include "genxml/genX_video_pack.h"
 
 void
 genX(CmdBeginVideoCodingKHR)(VkCommandBuffer commandBuffer,
