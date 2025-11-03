@@ -697,8 +697,12 @@ isl_format_for_pipe_format(enum pipe_format pf)
 static bool
 format_info_exists(enum isl_format format)
 {
-   //assert(format != ISL_FORMAT_UNSUPPORTED);
-   //assert(format < ISL_NUM_FORMATS);
+   /* ISL_FORMAT_UNSUPPORTED is used as a sentinel value throughout the
+    * codebase to indicate unsupported formats. It's defined as UINT16_MAX,
+    * which is outside the range of valid format indices. The bounds check
+    * below handles this gracefully by returning false for out-of-range
+    * values, including ISL_FORMAT_UNSUPPORTED.
+    */
    return format < ARRAY_SIZE(format_info) && format_info[format].exists;
 }
 
