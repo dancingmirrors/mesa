@@ -31,7 +31,7 @@
 #include "vk_format.h"
 
 #include "genxml/gen_macros.h"
-#include "genxml/genX_pack.h"
+#include "genxml/hasvk_genX_pack.h"
 
 static uint32_t
 get_depth_format(struct anv_cmd_buffer *cmd_buffer)
