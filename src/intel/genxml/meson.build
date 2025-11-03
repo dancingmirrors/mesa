@@ -118,6 +118,7 @@ endforeach
 
 # Generate hasvk-specific pack headers
 # Output names match the input file names (hasvk_gen7_pack.h, etc.)
+# Include all engines (render,blitter,compute,video) since hasvk needs video decode
 foreach f : gen_xml_hasvk_files
   _base = f.split('.')[0]
   _name = '@0@_pack.h'.format(_base)
@@ -125,7 +126,7 @@ foreach f : gen_xml_hasvk_files
     _name,
     input : ['gen_pack_header.py', f],
     output : _name,
-    command : [prog_python, '@INPUT@', '--engines=render,blitter,compute'],
+    command : [prog_python, '@INPUT@', '--engines=render,blitter,compute,video'],
     capture : true,
     depend_files: gen_pack_header_deps
   )
