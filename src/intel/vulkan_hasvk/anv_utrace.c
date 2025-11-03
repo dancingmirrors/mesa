@@ -71,20 +71,20 @@ anv_utrace_delete_flush_data(struct u_trace_context *utctx,
 static void
 anv_device_utrace_emit_copy_ts_buffer(struct u_trace_context *utctx,
                                       void *cmdstream,
-                                      void *ts_from, uint64_t from_offset_B,
-                                      void *ts_to, uint64_t to_offset_B,
-                                      uint64_t size_B)
+                                      void *ts_from, uint32_t from_offset,
+                                      void *ts_to, uint32_t to_offset,
+                                      uint32_t count)
 {
    struct anv_device *device =
       container_of(utctx, struct anv_device, ds.trace_context);
    struct anv_utrace_flush_copy *flush = cmdstream;
    struct anv_address from_addr = (struct anv_address) {
-      .bo = ts_from, .offset = from_offset_B };
+      .bo = ts_from, .offset = from_offset * sizeof(uint64_t) };
    struct anv_address to_addr = (struct anv_address) {
-      .bo = ts_to, .offset = to_offset_B };
+      .bo = ts_to, .offset = to_offset * sizeof(uint64_t) };
 
    anv_genX(device->info, emit_so_memcpy)(&flush->memcpy_state,
-                                           to_addr, from_addr, size_B);
+                                           to_addr, from_addr, count * sizeof(uint64_t));
 }
 
 VkResult
@@ -148,8 +148,7 @@ anv_device_utrace_flush_cmd_buffers(struct anv_queue *queue,
                                                    &flush->batch);
       for (uint32_t i = 0; i < cmd_buffer_count; i++) {
          if (cmd_buffers[i]->usage_flags & VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT) {
-           intel_ds_queue_flush_data(&queue->ds, &cmd_buffers[i]->trace,
-                                     &flush->ds, device->vk.current_frame, false);
+            u_trace_flush(&cmd_buffers[i]->trace, flush, false);
          } else {
             u_trace_clone_append(u_trace_begin_iterator(&cmd_buffers[i]->trace),
                                  u_trace_end_iterator(&cmd_buffers[i]->trace),
@@ -160,8 +159,7 @@ anv_device_utrace_flush_cmd_buffers(struct anv_queue *queue,
       }
       anv_genX(device->info, emit_so_memcpy_fini)(&flush->memcpy_state);
 
-      intel_ds_queue_flush_data(&queue->ds, &flush->ds.trace, &flush->ds,
-                                device->vk.current_frame, true);
+      u_trace_flush(&flush->ds.trace, flush, true);
 
       if (flush->batch.status != VK_SUCCESS) {
          result = flush->batch.status;
@@ -170,9 +168,7 @@ anv_device_utrace_flush_cmd_buffers(struct anv_queue *queue,
    } else {
       for (uint32_t i = 0; i < cmd_buffer_count; i++) {
          assert(cmd_buffers[i]->usage_flags & VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
-         intel_ds_queue_flush_data(&queue->ds, &cmd_buffers[i]->trace,
-                                   &flush->ds, device->vk.current_frame,
-                                   i == (cmd_buffer_count - 1));
+         u_trace_flush(&cmd_buffers[i]->trace, flush, i == (cmd_buffer_count - 1));
       }
    }
 
@@ -196,7 +192,7 @@ anv_device_utrace_flush_cmd_buffers(struct anv_queue *queue,
 }
 
 static void *
-anv_utrace_create_buffer(struct u_trace_context *utctx, uint64_t size_B)
+anv_utrace_create_ts_buffer(struct u_trace_context *utctx, uint32_t size_b)
 {
    struct anv_device *device =
       container_of(utctx, struct anv_device, ds.trace_context);
@@ -204,7 +200,7 @@ anv_utrace_create_buffer(struct u_trace_context *utctx, uint64_t size_B)
    struct anv_bo *bo = NULL;
    UNUSED VkResult result =
       anv_bo_pool_alloc(&device->utrace_bo_pool,
-                        align(size_B, 4096),
+                        align(size_b, 4096),
                         &bo);
    assert(result == VK_SUCCESS);
 
@@ -212,7 +208,7 @@ anv_utrace_create_buffer(struct u_trace_context *utctx, uint64_t size_B)
 }
 
 static void
-anv_utrace_destroy_buffer(struct u_trace_context *utctx, void *timestamps)
+anv_utrace_destroy_ts_buffer(struct u_trace_context *utctx, void *timestamps)
 {
    struct anv_device *device =
       container_of(utctx, struct anv_device, ds.trace_context);
@@ -223,8 +219,8 @@ anv_utrace_destroy_buffer(struct u_trace_context *utctx, void *timestamps)
 
 static void
 anv_utrace_record_ts(struct u_trace *ut, void *cs,
-                     void *timestamps, uint64_t offset_B,
-                     uint32_t flags)
+                     void *timestamps, unsigned idx,
+                     bool end_of_pipe)
 {
    struct anv_cmd_buffer *cmd_buffer =
       container_of(ut, struct anv_cmd_buffer, trace);
@@ -232,20 +228,18 @@ anv_utrace_record_ts(struct u_trace *ut, void *cs,
    struct anv_bo *bo = timestamps;
 
    enum anv_timestamp_capture_type capture_type =
-      (flags & INTEL_DS_TRACEPOINT_FLAG_END_OF_PIPE) ?
-      ANV_TIMESTAMP_CAPTURE_END_OF_PIPE :
-      ANV_TIMESTAMP_CAPTURE_TOP_OF_PIPE;
+      (end_of_pipe) ? ANV_TIMESTAMP_CAPTURE_END_OF_PIPE
+                    : ANV_TIMESTAMP_CAPTURE_TOP_OF_PIPE;
    device->physical->cmd_emit_timestamp(&cmd_buffer->batch, device,
                                         (struct anv_address) {
                                            .bo = bo,
-                                           .offset = offset_B, },
+                                           .offset = idx * sizeof(uint64_t) },
                                         capture_type);
 }
 
 static uint64_t
 anv_utrace_read_ts(struct u_trace_context *utctx,
-                   void *timestamps, uint64_t offset_B,
-                   uint32_t flags, void *flush_data)
+                   void *timestamps, unsigned idx, void *flush_data)
 {
    struct anv_device *device =
       container_of(utctx, struct anv_device, ds.trace_context);
@@ -253,7 +247,7 @@ anv_utrace_read_ts(struct u_trace_context *utctx,
    struct anv_utrace_flush_copy *flush = flush_data;
 
    /* Only need to stall on results for the first entry: */
-   if (offset_B == 0) {
+   if (idx == 0) {
       UNUSED VkResult result =
          vk_sync_wait(&device->vk,
                       flush->sync,
@@ -263,49 +257,13 @@ anv_utrace_read_ts(struct u_trace_context *utctx,
       assert(result == VK_SUCCESS);
    }
 
-   uint64_t *ts = bo->map + offset_B;
+   uint64_t *ts = bo->map;
 
    /* Don't translate the no-timestamp marker: */
-   if (*ts == U_TRACE_NO_TIMESTAMP)
+   if (ts[idx] == U_TRACE_NO_TIMESTAMP)
       return U_TRACE_NO_TIMESTAMP;
 
-   return intel_device_info_timebase_scale(device->info, *ts);
-}
-
-static void
-anv_utrace_capture_data(struct u_trace *ut,
-                        void *cs,
-                        void *dst_buffer,
-                        uint64_t dst_offset_B,
-                        void *src_buffer,
-                        uint64_t src_offset_B,
-                        uint32_t size_B)
-{
-   struct anv_device *device =
-      container_of(ut->utctx, struct anv_device, ds.trace_context);
-   struct anv_cmd_buffer *cmd_buffer =
-      container_of(ut, struct anv_cmd_buffer, trace);
-   /* cmd_buffer is only valid if cs == NULL */
-   struct anv_batch *batch = cs != NULL ? cs : &cmd_buffer->batch;
-   struct anv_address dst_addr = {
-      .bo = dst_buffer,
-      .offset = dst_offset_B,
-   };
-   struct anv_address src_addr = {
-      .bo = src_buffer,
-      .offset = src_offset_B,
-   };
-
-   device->physical->cmd_capture_data(batch, device, dst_addr, src_addr, size_B);
-}
-
-static const void *
-anv_utrace_get_data(struct u_trace_context *utctx, void *buffer,
-                    uint64_t offset_B, uint32_t size_B)
-{
-   struct anv_bo *bo = buffer;
-
-   return bo->map + offset_B;
+   return intel_device_info_timebase_scale(device->info, ts[idx]);
 }
 
 void
@@ -313,18 +271,14 @@ anv_device_utrace_init(struct anv_device *device)
 {
    anv_bo_pool_init(&device->utrace_bo_pool, device, "utrace");
    intel_ds_device_init(&device->ds, device->info, device->fd,
-                        device->physical->local_minor,
+                        device->physical->local_minor - 128,
                         INTEL_DS_API_VULKAN);
    u_trace_context_init(&device->ds.trace_context,
                         &device->ds,
-                        sizeof(uint64_t),
-                        0,
-                        anv_utrace_create_buffer,
-                        anv_utrace_destroy_buffer,
+                        anv_utrace_create_ts_buffer,
+                        anv_utrace_destroy_ts_buffer,
                         anv_utrace_record_ts,
                         anv_utrace_read_ts,
-                        anv_utrace_capture_data,
-                        anv_utrace_get_data,
                         anv_utrace_delete_flush_data);
 
    for (uint32_t q = 0; q < device->queue_count; q++) {
@@ -339,7 +293,7 @@ anv_device_utrace_init(struct anv_device *device)
 void
 anv_device_utrace_finish(struct anv_device *device)
 {
-   intel_ds_device_process(&device->ds, true);
+   u_trace_context_process(&device->ds.trace_context, true);
    intel_ds_device_fini(&device->ds);
    anv_bo_pool_finish(&device->utrace_bo_pool);
 }

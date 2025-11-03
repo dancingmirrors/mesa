@@ -37,7 +37,6 @@
 
 #include "vk_standard_sample_locations.h"
 #include "vk_util.h"
-#include "vk_format.h"
 
 static VkResult
 init_render_queue_state(struct anv_queue *queue)
@@ -106,9 +105,6 @@ void
 genX(init_physical_device_state)(ASSERTED struct anv_physical_device *pdevice)
 {
    assert(pdevice->info.verx10 == GFX_VERx10);
-
-   pdevice->cmd_emit_timestamp = genX(cmd_emit_timestamp);
-   pdevice->cmd_capture_data = genX(cmd_capture_data);
 }
 
 VkResult
@@ -151,7 +147,7 @@ genX(emit_l3_config)(struct anv_batch *batch,
 
    anv_batch_write_reg(batch, L3_ALLOCATION_REG, l3cr) {
       if (cfg == NULL) {
-         UNREACHABLE("Invalid L3$ config");
+         unreachable("Invalid L3$ config");
       } else {
          l3cr.SLMEnable = cfg->n[INTEL_L3P_SLM];
          assert(cfg->n[INTEL_L3P_IS] == 0);
@@ -256,7 +252,14 @@ genX(emit_multisample)(struct anv_batch *batch, uint32_t samples,
       ms.NumberofMultisamples       = __builtin_ffs(samples) - 1;
 
       ms.PixelLocation              = CENTER;
-#if GFX_VER < 8
+#if GFX_VER >= 8
+      /* The PRM says that this bit is valid only for DX9:
+       *
+       *    SW can choose to set this bit only for DX9 API. DX10/OGL API's
+       *    should not have any effect by setting or not setting this bit.
+       */
+      ms.PixelPositionOffsetEnable  = false;
+#else
       switch (samples) {
       case 1:
          INTEL_SAMPLE_POS_1X_ARRAY(ms.Sample, sl->locations);
@@ -306,14 +309,14 @@ genX(emit_sample_pattern)(struct anv_batch *batch,
        * lit sample and that it's the same for all samples in a pixel; they
        * have no requirement that it be the one closest to center.
        */
-      for (uint32_t i = 1; i <= 8; i *= 2) {
+      for (uint32_t i = 1; i <= (GFX_VER >= 9 ? 16 : 8); i *= 2) {
          switch (i) {
          case VK_SAMPLE_COUNT_1_BIT:
-            /* We don't do 1x MSAA, and we can't support custom sample
-             * positions without MSAA, so always program the default for this
-             * case.
-             */
-            INTEL_SAMPLE_POS_1X(sp._1xSample);
+            if (sl && sl->per_pixel == i) {
+               INTEL_SAMPLE_POS_1X_ARRAY(sp._1xSample, sl->locations);
+            } else {
+               INTEL_SAMPLE_POS_1X(sp._1xSample);
+            }
             break;
          case VK_SAMPLE_COUNT_2_BIT:
             if (sl && sl->per_pixel == i) {
@@ -336,8 +339,17 @@ genX(emit_sample_pattern)(struct anv_batch *batch,
                INTEL_SAMPLE_POS_8X(sp._8xSample);
             }
             break;
+#if GFX_VER >= 9
+         case VK_SAMPLE_COUNT_16_BIT:
+            if (sl && sl->per_pixel == i) {
+               INTEL_SAMPLE_POS_16X_ARRAY(sp._16xSample, sl->locations);
+            } else {
+               INTEL_SAMPLE_POS_16X(sp._16xSample);
+            }
+            break;
+#endif
          default:
-            UNREACHABLE("Invalid sample count");
+            unreachable("Invalid sample count");
          }
       }
    }
@@ -349,7 +361,7 @@ vk_to_intel_tex_filter(VkFilter filter, bool anisotropyEnable)
 {
    switch (filter) {
    default:
-      UNREACHABLE("Invalid filter");
+      unreachable("Invalid filter");
    case VK_FILTER_NEAREST:
       return anisotropyEnable ? MAPFILTER_ANISOTROPIC : MAPFILTER_NEAREST;
    case VK_FILTER_LINEAR:
@@ -430,28 +442,23 @@ VkResult genX(CreateSampler)(
       border_color_offset = sampler->custom_border_color.offset;
    }
 
-   const struct vk_format_ycbcr_info *ycbcr_info = NULL;
    vk_foreach_struct_const(ext, pCreateInfo->pNext) {
       switch (ext->sType) {
       case VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_INFO: {
          VkSamplerYcbcrConversionInfo *pSamplerConversion =
             (VkSamplerYcbcrConversionInfo *) ext;
-         VK_FROM_HANDLE(vk_ycbcr_conversion, conversion,
-                        pSamplerConversion->conversion);
+         ANV_FROM_HANDLE(anv_ycbcr_conversion, conversion,
+                         pSamplerConversion->conversion);
 
          /* Ignore conversion for non-YUV formats. This fulfills a requirement
           * for clients that want to utilize same code path for images with
           * external formats (VK_FORMAT_UNDEFINED) and "regular" RGBA images
           * where format is known.
           */
-         if (conversion == NULL)
+         if (conversion == NULL || !conversion->format->can_ycbcr)
             break;
 
-         ycbcr_info = vk_format_get_ycbcr_info(conversion->state.format);
-         if (ycbcr_info == NULL)
-            break;
-
-         sampler->n_planes = ycbcr_info->n_planes;
+         sampler->n_planes = conversion->format->n_planes;
          sampler->conversion = conversion;
          break;
       }
@@ -490,7 +497,7 @@ VkResult genX(CreateSampler)(
       case VK_STRUCTURE_TYPE_SAMPLER_BORDER_COLOR_COMPONENT_MAPPING_CREATE_INFO_EXT:
          break;
       default:
-         vk_debug_ignored_stype(ext->sType);
+         anv_debug_ignored_stype(ext->sType);
          break;
       }
    }
@@ -513,23 +520,19 @@ VkResult genX(CreateSampler)(
 
    for (unsigned p = 0; p < sampler->n_planes; p++) {
       const bool plane_has_chroma =
-         ycbcr_info && ycbcr_info->planes[p].has_chroma;
+         sampler->conversion && sampler->conversion->format->planes[p].has_chroma;
       const VkFilter min_filter =
-         plane_has_chroma ? sampler->conversion->state.chroma_filter : pCreateInfo->minFilter;
+         plane_has_chroma ? sampler->conversion->chroma_filter : pCreateInfo->minFilter;
       const VkFilter mag_filter =
-         plane_has_chroma ? sampler->conversion->state.chroma_filter : pCreateInfo->magFilter;
+         plane_has_chroma ? sampler->conversion->chroma_filter : pCreateInfo->magFilter;
       const bool enable_min_filter_addr_rounding = min_filter != VK_FILTER_NEAREST;
       const bool enable_mag_filter_addr_rounding = mag_filter != VK_FILTER_NEAREST;
       /* From Broadwell PRM, SAMPLER_STATE:
        *   "Mip Mode Filter must be set to MIPFILTER_NONE for Planar YUV surfaces."
        */
-      enum isl_format plane0_isl_format = sampler->conversion ?
-         anv_get_format(sampler->conversion->state.format)->planes[0].isl_format :
-         ISL_FORMAT_UNSUPPORTED;
-      const bool isl_format_is_planar_yuv =
-         plane0_isl_format != ISL_FORMAT_UNSUPPORTED &&
-         isl_format_is_yuv(plane0_isl_format) &&
-         isl_format_is_planar(plane0_isl_format);
+      const bool isl_format_is_planar_yuv = sampler->conversion &&
+         isl_format_is_yuv(sampler->conversion->format->planes[0].isl_format) &&
+         isl_format_is_planar(sampler->conversion->format->planes[0].isl_format);
 
       const uint32_t mip_filter_mode =
          isl_format_is_planar_yuv ?

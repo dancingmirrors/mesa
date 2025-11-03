@@ -32,7 +32,7 @@
 #undef __gen_combine_address
 
 #include "common/intel_l3_config.h"
-#include "blorp/blorp_genX_exec_elk.h"
+#include "blorp/blorp_genX_exec.h"
 
 #include "ds/intel_tracepoints.h"
 
@@ -57,8 +57,7 @@ static void blorp_measure_end(struct blorp_batch *_batch,
                          params->num_samples,
                          params->shader_pipeline,
                          params->dst.view.format,
-                         params->src.view.format,
-                         (_batch->flags & BLORP_BATCH_PREDICATE_ENABLE));
+                         params->src.view.format);
 }
 
 static void *
@@ -86,6 +85,15 @@ blorp_surface_reloc(struct blorp_batch *batch, uint32_t ss_offset,
    struct anv_cmd_buffer *cmd_buffer = batch->driver_batch;
    VkResult result;
 
+   if (ANV_ALWAYS_SOFTPIN) {
+      result = anv_reloc_list_add_bo(&cmd_buffer->surface_relocs,
+                                     &cmd_buffer->vk.pool->alloc,
+                                     address.buffer);
+      if (unlikely(result != VK_SUCCESS))
+         anv_batch_set_error(&cmd_buffer->batch, result);
+      return;
+   }
+
    uint64_t address_u64 = 0;
    result = anv_reloc_list_add(&cmd_buffer->surface_relocs,
                                &cmd_buffer->vk.pool->alloc,
@@ -104,8 +112,16 @@ static uint64_t
 blorp_get_surface_address(struct blorp_batch *blorp_batch,
                           struct blorp_address address)
 {
-   /* We'll let blorp_surface_reloc write the address. */
-   return 0;
+   if (ANV_ALWAYS_SOFTPIN) {
+      struct anv_address anv_addr = {
+         .bo = address.buffer,
+         .offset = address.offset,
+      };
+      return anv_address_physical(anv_addr);
+   } else {
+      /* We'll let blorp_surface_reloc write the address. */
+      return 0;
+   }
 }
 
 static struct blorp_address
@@ -149,7 +165,7 @@ blorp_alloc_general_state(struct blorp_batch *batch,
    return state.map;
 }
 
-static bool
+static void
 blorp_alloc_binding_table(struct blorp_batch *batch, unsigned num_entries,
                           unsigned state_size, unsigned state_alignment,
                           uint32_t *bt_offset,
@@ -164,7 +180,7 @@ blorp_alloc_binding_table(struct blorp_batch *batch, unsigned num_entries,
       anv_cmd_buffer_alloc_blorp_binding_table(cmd_buffer, num_entries,
                                                &state_offset, &bt_state);
    if (result != VK_SUCCESS)
-      return false;
+      return;
 
    uint32_t *bt_map = bt_state.map;
    *bt_offset = bt_state.offset;
@@ -176,8 +192,6 @@ blorp_alloc_binding_table(struct blorp_batch *batch, unsigned num_entries,
       surface_offsets[i] = surface_state.offset;
       surface_maps[i] = surface_state.map;
    }
-
-   return true;
 }
 
 static uint32_t
@@ -248,13 +262,6 @@ blorp_flush_range(struct blorp_batch *batch, void *start, size_t size)
 {
    /* We don't need to flush states anymore, since everything will be snooped.
     */
-}
-
-static void
-blorp_pre_emit_urb_config(struct blorp_batch *blorp_batch,
-                          struct intel_urb_config *urb_cfg)
-{
-   /* Dummy. */
 }
 
 static const struct intel_l3_config *
@@ -361,16 +368,4 @@ genX(blorp_exec)(struct blorp_batch *batch,
       blorp_exec_on_compute(batch, params);
    else
       blorp_exec_on_render(batch, params);
-}
-
-static void
-blorp_emit_pre_draw(struct blorp_batch *batch, const struct blorp_params *params)
-{
-   /* "Not implemented" */
-}
-
-static void
-blorp_emit_post_draw(struct blorp_batch *batch, const struct blorp_params *params)
-{
-   /* "Not implemented" */
 }

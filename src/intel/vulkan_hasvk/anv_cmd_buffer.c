@@ -84,7 +84,6 @@ anv_cmd_state_reset(struct anv_cmd_buffer *cmd_buffer)
 
 static VkResult
 anv_create_cmd_buffer(struct vk_command_pool *pool,
-                      VkCommandBufferLevel level,
                       struct vk_command_buffer **cmd_buffer_out)
 {
    struct anv_device *device =
@@ -98,7 +97,7 @@ anv_create_cmd_buffer(struct vk_command_pool *pool,
       return vk_error(pool, VK_ERROR_OUT_OF_HOST_MEMORY);
 
    result = vk_command_buffer_init(pool, &cmd_buffer->vk,
-                                   &anv_cmd_buffer_ops, level);
+                                   &anv_cmd_buffer_ops, 0);
    if (result != VK_SUCCESS)
       goto fail_alloc;
 
@@ -248,7 +247,7 @@ mem_update(void *dst, const void *src, size_t size)
 
 static void
 set_dirty_for_bind_map(struct anv_cmd_buffer *cmd_buffer,
-                       mesa_shader_stage stage,
+                       gl_shader_stage stage,
                        const struct anv_pipeline_bind_map *map)
 {
    assert(stage < ARRAY_SIZE(cmd_buffer->state.surface_sha1s));
@@ -319,7 +318,7 @@ void anv_CmdBindPipeline(
    }
 
    default:
-      UNREACHABLE("invalid bind point");
+      unreachable("invalid bind point");
       break;
    }
 }
@@ -340,7 +339,7 @@ anv_cmd_buffer_bind_descriptor_set(struct anv_cmd_buffer *cmd_buffer,
     *
     *    "Each element of pDescriptorSets must not have been allocated from a
     *     VkDescriptorPool with the
-    *     VK_DESCRIPTOR_POOL_CREATE_HOST_ONLY_BIT_EXT flag set"
+    *     VK_DESCRIPTOR_POOL_CREATE_HOST_ONLY_BIT_VALVE flag set"
     */
    assert(!set->pool || !set->pool->host_only);
 
@@ -352,7 +351,10 @@ anv_cmd_buffer_bind_descriptor_set(struct anv_cmd_buffer *cmd_buffer,
 
    switch (bind_point) {
    case VK_PIPELINE_BIND_POINT_GRAPHICS:
-      stages &= VK_SHADER_STAGE_ALL_GRAPHICS;
+      stages &= VK_SHADER_STAGE_ALL_GRAPHICS |
+                (cmd_buffer->device->vk.enabled_extensions.NV_mesh_shader ?
+                      (VK_SHADER_STAGE_TASK_BIT_NV |
+                       VK_SHADER_STAGE_MESH_BIT_NV) : 0);
       pipe_state = &cmd_buffer->state.gfx.base;
       break;
 
@@ -362,7 +364,7 @@ anv_cmd_buffer_bind_descriptor_set(struct anv_cmd_buffer *cmd_buffer,
       break;
 
    default:
-      UNREACHABLE("invalid bind point");
+      unreachable("invalid bind point");
    }
 
    VkShaderStageFlags dirty_stages = 0;
@@ -517,7 +519,7 @@ anv_isl_format_for_descriptor_type(const struct anv_device *device,
       return ISL_FORMAT_RAW;
 
    default:
-      UNREACHABLE("Invalid descriptor type");
+      unreachable("Invalid descriptor type");
    }
 }
 
@@ -579,7 +581,7 @@ anv_cmd_buffer_cs_push_constants(struct anv_cmd_buffer *cmd_buffer)
    const struct brw_cs_prog_data *cs_prog_data = get_cs_prog_data(pipeline);
    const struct anv_push_range *range = &pipeline->cs->bind_map.push_ranges[0];
 
-   const struct intel_cs_dispatch_info dispatch =
+   const struct brw_cs_dispatch_info dispatch =
       brw_cs_get_dispatch_info(devinfo, cs_prog_data, NULL);
    const unsigned total_push_constants_size =
       brw_cs_push_const_total_size(cs_prog_data, dispatch.threads);
@@ -664,7 +666,7 @@ anv_cmd_buffer_push_descriptor_set(struct anv_cmd_buffer *cmd_buffer,
       break;
 
    default:
-      UNREACHABLE("invalid bind point");
+      unreachable("invalid bind point");
    }
 
    struct anv_push_descriptor_set **push_set =

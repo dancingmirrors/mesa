@@ -39,7 +39,9 @@ VkResult anv_image_bind_from_gralloc(struct anv_device *device,
    return VK_ERROR_EXTENSION_NOT_PRESENT;
 }
 
-unsigned anv_ahb_format_for_vk_format(VkFormat vk_format)
+uint64_t
+anv_ahw_usage_from_vk_usage(const VkImageCreateFlags vk_create,
+                            const VkImageUsageFlags vk_usage)
 {
    return 0;
 }

@@ -29,23 +29,22 @@
 #include "nir/nir_serialize.h"
 #include "anv_private.h"
 #include "nir/nir_xfb_info.h"
-#include "vk_util.h"
+#include "vulkan/util/vk_util.h"
 
 static bool
 anv_shader_bin_serialize(struct vk_pipeline_cache_object *object,
                          struct blob *blob);
 
 struct vk_pipeline_cache_object *
-anv_shader_bin_deserialize(struct vk_pipeline_cache *cache,
+anv_shader_bin_deserialize(struct vk_device *device,
                            const void *key_data, size_t key_size,
                            struct blob_reader *blob);
 
 static void
-anv_shader_bin_destroy(struct vk_device *_device,
-                       struct vk_pipeline_cache_object *object)
+anv_shader_bin_destroy(struct vk_pipeline_cache_object *object)
 {
    struct anv_device *device =
-      container_of(_device, struct anv_device, vk);
+      container_of(object->device, struct anv_device, vk);
    struct anv_shader_bin *shader =
       container_of(object, struct anv_shader_bin, base);
 
@@ -67,7 +66,7 @@ const struct vk_pipeline_cache_object_ops *const anv_cache_import_ops[2] = {
 
 struct anv_shader_bin *
 anv_shader_bin_create(struct anv_device *device,
-                      mesa_shader_stage stage,
+                      gl_shader_stage stage,
                       const void *key_data, uint32_t key_size,
                       const void *kernel_data, uint32_t kernel_size,
                       const struct brw_stage_prog_data *prog_data_in,
@@ -81,7 +80,7 @@ anv_shader_bin_create(struct anv_device *device,
    VK_MULTIALLOC_DECL_SIZE(&ma, void, obj_key_data, key_size);
    VK_MULTIALLOC_DECL_SIZE(&ma, struct brw_stage_prog_data, prog_data,
                                 prog_data_size);
-   VK_MULTIALLOC_DECL(&ma, struct intel_shader_reloc, prog_data_relocs,
+   VK_MULTIALLOC_DECL(&ma, struct brw_shader_reloc, prog_data_relocs,
                            prog_data_in->num_relocs);
    VK_MULTIALLOC_DECL(&ma, uint32_t, prog_data_param, prog_data_in->nr_params);
 
@@ -114,17 +113,17 @@ anv_shader_bin_create(struct anv_device *device,
                                prog_data_in->const_data_offset;
 
    int rv_count = 0;
-   struct intel_shader_reloc_value reloc_values[5];
-   reloc_values[rv_count++] = (struct intel_shader_reloc_value) {
-      .id = INTEL_SHADER_RELOC_CONST_DATA_ADDR_LOW,
+   struct brw_shader_reloc_value reloc_values[5];
+   reloc_values[rv_count++] = (struct brw_shader_reloc_value) {
+      .id = BRW_SHADER_RELOC_CONST_DATA_ADDR_LOW,
       .value = shader_data_addr,
    };
-   reloc_values[rv_count++] = (struct intel_shader_reloc_value) {
-      .id = INTEL_SHADER_RELOC_CONST_DATA_ADDR_HIGH,
+   reloc_values[rv_count++] = (struct brw_shader_reloc_value) {
+      .id = BRW_SHADER_RELOC_CONST_DATA_ADDR_HIGH,
       .value = shader_data_addr >> 32,
    };
-   reloc_values[rv_count++] = (struct intel_shader_reloc_value) {
-      .id = INTEL_SHADER_RELOC_SHADER_START_OFFSET,
+   reloc_values[rv_count++] = (struct brw_shader_reloc_value) {
+      .id = BRW_SHADER_RELOC_SHADER_START_OFFSET,
       .value = shader->kernel.offset,
    };
    brw_write_shader_relocs(&device->physical->compiler->isa,
@@ -217,14 +216,14 @@ anv_shader_bin_serialize(struct vk_pipeline_cache_object *object,
 }
 
 struct vk_pipeline_cache_object *
-anv_shader_bin_deserialize(struct vk_pipeline_cache *cache,
+anv_shader_bin_deserialize(struct vk_device *vk_device,
                            const void *key_data, size_t key_size,
                            struct blob_reader *blob)
 {
    struct anv_device *device =
-      container_of(cache->base.device, struct anv_device, vk);
+      container_of(vk_device, struct anv_device, vk);
 
-   mesa_shader_stage stage = blob_read_uint32(blob);
+   gl_shader_stage stage = blob_read_uint32(blob);
 
    uint32_t kernel_size = blob_read_uint32(blob);
    const void *kernel_data = blob_read_bytes(blob, kernel_size);
@@ -306,7 +305,7 @@ anv_device_search_for_kernel(struct anv_device *device,
 struct anv_shader_bin *
 anv_device_upload_kernel(struct anv_device *device,
                          struct vk_pipeline_cache *cache,
-                         mesa_shader_stage stage,
+                         gl_shader_stage stage,
                          const void *key_data, uint32_t key_size,
                          const void *kernel_data, uint32_t kernel_size,
                          const struct brw_stage_prog_data *prog_data,

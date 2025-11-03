@@ -88,7 +88,7 @@ emit_common_so_memcpy(struct anv_batch *batch, struct anv_device *device,
    const unsigned entry_size[4] = { DIV_ROUND_UP(32, 64), 1, 1, 1 };
 
    genX(emit_urb_setup)(device, batch, l3_config,
-                        VK_SHADER_STAGE_VERTEX_BIT, entry_size);
+                        VK_SHADER_STAGE_VERTEX_BIT, entry_size, NULL);
 
 #if GFX_VER >= 8
    anv_batch_emit(batch, GENX(3DSTATE_VF_TOPOLOGY), topo) {
@@ -116,7 +116,7 @@ emit_so_memcpy(struct anv_batch *batch, struct anv_device *device,
    case 8:  format = ISL_FORMAT_R32G32_UINT;       break;
    case 16: format = ISL_FORMAT_R32G32B32A32_UINT; break;
    default:
-      UNREACHABLE("Invalid size");
+      unreachable("Invalid size");
    }
 
    uint32_t *dw;
@@ -151,7 +151,7 @@ emit_so_memcpy(struct anv_batch *batch, struct anv_device *device,
 
    anv_batch_emit(batch, GENX(3DSTATE_SO_BUFFER), sob) {
       sob.SOBufferIndex = 0;
-      sob.MOCS = anv_mocs(device, dst.bo, ISL_SURF_USAGE_STREAM_OUT_BIT),
+      sob.MOCS = anv_mocs(device, dst.bo, 0),
       sob.SurfaceBaseAddress = dst;
 
 #if GFX_VER >= 8

@@ -73,14 +73,24 @@ anv_CreateVideoSessionParametersKHR(VkDevice _device,
                                      VkVideoSessionParametersKHR *pVideoSessionParameters)
 {
    ANV_FROM_HANDLE(anv_device, device, _device);
-   
-   struct vk_video_session_parameters *params =
-      vk_video_session_parameters_create(&device->vk, pCreateInfo, pAllocator, 
-                                         sizeof(struct anv_video_session_params));
+   ANV_FROM_HANDLE(anv_video_session, vid, pCreateInfo->videoSession);
+   ANV_FROM_HANDLE(anv_video_session_params, templ, pCreateInfo->videoSessionParametersTemplate);
+   struct anv_video_session_params *params =
+      vk_alloc2(&device->vk.alloc, pAllocator, sizeof(*params), 8, VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
    if (!params)
       return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
 
-   *pVideoSessionParameters = vk_video_session_parameters_to_handle(params);
+   VkResult result = vk_video_session_parameters_init(&device->vk,
+                                                      &params->vk,
+                                                      &vid->vk,
+                                                      templ ? &templ->vk : NULL,
+                                                      pCreateInfo);
+   if (result != VK_SUCCESS) {
+      vk_free2(&device->vk.alloc, pAllocator, params);
+      return result;
+   }
+
+   *pVideoSessionParameters = anv_video_session_params_to_handle(params);
    return VK_SUCCESS;
 }
 
@@ -90,9 +100,11 @@ anv_DestroyVideoSessionParametersKHR(VkDevice _device,
                                       const VkAllocationCallbacks *pAllocator)
 {
    ANV_FROM_HANDLE(anv_device, device, _device);
-   VK_FROM_HANDLE(vk_video_session_parameters, params, _params);
-   
-   vk_video_session_parameters_destroy(&device->vk, pAllocator, params);
+   ANV_FROM_HANDLE(anv_video_session_params, params, _params);
+   if (!_params)
+      return;
+   vk_video_session_parameters_finish(&device->vk, &params->vk);
+   vk_free2(&device->vk.alloc, pAllocator, params);
 }
 
 VkResult
@@ -198,7 +210,7 @@ anv_GetVideoSessionMemoryRequirementsKHR(VkDevice _device,
       *pVideoSessionMemoryRequirementsCount = ANV_VIDEO_MEM_REQS_H264;
       break;
    default:
-      UNREACHABLE("unknown codec");
+      unreachable("unknown codec");
    }
    if (!mem_reqs)
       return VK_SUCCESS;
@@ -209,7 +221,7 @@ anv_GetVideoSessionMemoryRequirementsKHR(VkDevice _device,
       get_h264_video_session_mem_reqs(vid, mem_reqs, memory_types);
       break;
    default:
-      UNREACHABLE("unknown codec");
+      unreachable("unknown codec");
    }
 
    return VK_SUCCESS;
@@ -249,7 +261,7 @@ anv_BindVideoSessionMemoryKHR(VkDevice _device,
       }
       break;
    default:
-      UNREACHABLE("unknown codec");
+      unreachable("unknown codec");
    }
    return VK_SUCCESS;
 }
