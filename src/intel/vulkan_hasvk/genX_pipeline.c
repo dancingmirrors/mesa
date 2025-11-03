@@ -28,7 +28,7 @@
 #include "genxml/genX_rt_pack.h"
 
 #include "common/intel_compute_slm.h"
-#include "common/intel_genX_state.h"
+#include "common/intel_genX_state_brw.h"
 #include "common/intel_l3_config.h"
 #include "common/intel_sample_positions.h"
 #include "nir/nir_xfb_info.h"
