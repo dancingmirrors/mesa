@@ -1,6 +1,29 @@
 # Copyright © 2017-2019 Intel Corporation
 # SPDX-License-Identifier: MIT
 
+# Generate hasvk-specific genxml headers from old XML files
+genxml_hasvk_xml_files = [
+  '../genxml_hasvk/gen7.xml',
+  '../genxml_hasvk/gen75.xml',
+  '../genxml_hasvk/gen8.xml',
+]
+
+genxml_hasvk_generated_files = []
+foreach f : genxml_hasvk_xml_files
+  _name = '@0@_pack.h'.format(fs.stem(f))
+  genxml_hasvk_generated_files += custom_target(
+    _name,
+    input : [files('../genxml_hasvk/gen_pack_header.py'), f],
+    output : _name,
+    command : [prog_python, '@INPUT@'],
+    capture : true,
+  )
+endforeach
+
+idep_genxml_hasvk = declare_dependency(
+  sources : genxml_hasvk_generated_files
+)
+
 anv_hasvk_entrypoints = custom_target(
   'anv_hasvk_entrypoints',
   input : [vk_entrypoints_gen, vk_api_xml],
@@ -80,7 +103,7 @@ foreach g : [['70', ['gfx7_cmd_buffer.c']],
     ],
     gnu_symbol_visibility : 'hidden',
     dependencies : [
-      dep_libdrm, dep_valgrind, idep_nir_headers, idep_genxml,
+      dep_libdrm, dep_valgrind, idep_nir_headers, idep_genxml_hasvk,
       idep_vulkan_util_headers, idep_vulkan_wsi_headers,
       idep_vulkan_runtime_headers, idep_intel_driver_ds_headers,
       idep_mesautil,
@@ -122,7 +145,7 @@ libanv_files = files(
 anv_deps = [
   dep_libdrm,
   dep_valgrind,
-  idep_genxml,
+  idep_genxml_hasvk,
   idep_mesautil,
   idep_nir_headers,
   idep_vulkan_util_headers,
@@ -184,7 +207,7 @@ libvulkan_intel_hasvk = shared_library(
   ],
   dependencies : [
     dep_thread, dep_dl, dep_m, anv_deps, idep_libintel_common,
-    idep_nir, idep_genxml, idep_vulkan_util, idep_vulkan_wsi,
+    idep_nir, idep_genxml_hasvk, idep_vulkan_util, idep_vulkan_wsi,
     idep_vulkan_runtime, idep_mesautil, idep_xmlconfig,
     idep_intel_driver_ds, idep_intel_dev, idep_intel_blorp,
     idep_intel_compiler_brw, idep_intel_decoder_brw,

@@ -41,7 +41,6 @@
 #define VG(x) ((void)0)
 #endif
 
-#include "common/intel_clflush.h"
 #include "common/intel_decoder.h"
 #include "common/intel_engine.h"
 #include "common/intel_gem.h"
