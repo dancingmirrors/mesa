@@ -2929,11 +2929,11 @@ anv_cmd_graphic_state_update_has_uint_rt(struct anv_cmd_graphics_state *state)
 }
 
 #define ANV_DECL_GET_GRAPHICS_PROG_DATA_FUNC(prefix, stage)             \
-static inline const struct brw_##prefix##_prog_data *                   \
+static inline const struct elk_##prefix##_prog_data *                   \
 get_##prefix##_prog_data(const struct anv_graphics_pipeline *pipeline)  \
 {                                                                       \
    if (anv_pipeline_has_stage(pipeline, stage)) {                       \
-      return (const struct brw_##prefix##_prog_data *)                  \
+      return (const struct elk_##prefix##_prog_data *)                  \
              pipeline->shaders[stage]->prog_data;                       \
    } else {                                                             \
       return NULL;                                                      \
