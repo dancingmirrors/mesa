@@ -32,7 +32,7 @@ bool
 anv_nir_compute_push_layout(nir_shader *nir,
                             const struct anv_physical_device *pdevice,
                             enum brw_robustness_flags robust_flags,
-                            struct elk_stage_prog_data *prog_data,
+                            struct brw_stage_prog_data *prog_data,
                             struct anv_pipeline_bind_map *map,
                             void *mem_ctx)
 {
@@ -241,7 +241,7 @@ anv_nir_compute_push_layout(nir_shader *nir,
 }
 
 void
-anv_nir_validate_push_layout(struct elk_stage_prog_data *prog_data,
+anv_nir_validate_push_layout(struct brw_stage_prog_data *prog_data,
                              struct anv_pipeline_bind_map *map)
 {
 #ifndef NDEBUG

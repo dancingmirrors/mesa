@@ -471,7 +471,7 @@ anv_pipeline_lower_nir(struct anv_pipeline *pipeline,
    const struct anv_physical_device *pdevice = pipeline->device->physical;
    const struct brw_compiler *compiler = pdevice->compiler;
 
-   struct elk_stage_prog_data *prog_data = &stage->prog_data.base;
+   struct brw_stage_prog_data *prog_data = &stage->prog_data.base;
    nir_shader *nir = stage->nir;
 
    if (nir->info.stage == MESA_SHADER_FRAGMENT) {
@@ -1002,8 +1002,8 @@ anv_pipeline_add_executables(struct anv_pipeline *pipeline,
        * the anv_pipeline_stage may not be fully populated if we successfully
        * looked up the shader in a cache.
        */
-      const struct elk_wm_prog_data *wm_prog_data =
-         (const struct elk_wm_prog_data *)bin->prog_data;
+      const struct brw_wm_prog_data *wm_prog_data =
+         (const struct brw_wm_prog_data *)bin->prog_data;
       struct brw_compile_stats *stats = bin->stats;
 
       if (wm_prog_data->dispatch_8) {
@@ -1947,7 +1947,7 @@ VkResult anv_GetPipelineExecutableStatisticsKHR(
    const struct anv_pipeline_executable *exe =
       anv_pipeline_get_executable(pipeline, pExecutableInfo->executableIndex);
 
-   const struct elk_stage_prog_data *prog_data;
+   const struct brw_stage_prog_data *prog_data;
    switch (pipeline->type) {
    case ANV_PIPELINE_GRAPHICS: {
       prog_data = anv_pipeline_to_graphics(pipeline)->shaders[exe->stage]->prog_data;

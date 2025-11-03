@@ -1806,7 +1806,7 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
    device->always_flush_cache = INTEL_DEBUG(DEBUG_STALL) ||
       driQueryOptionb(&instance->dri_options, "always_flush_cache");
 
-   device->compiler = elk_compiler_create(NULL, &device->info);
+   device->compiler = brw_compiler_create(NULL, &device->info);
    if (device->compiler == NULL) {
       result = vk_error(instance, VK_ERROR_OUT_OF_HOST_MEMORY);
       goto fail_base;
@@ -2509,7 +2509,7 @@ VkResult anv_CreateDevice(
             INTEL_BATCH_DECODE_OFFSETS |
             INTEL_BATCH_DECODE_FLOATS;
 
-         intel_batch_decode_ctx_init_elk(decoder,
+         intel_batch_decode_ctx_init(decoder,
                                          &physical_device->compiler->isa,
                                          &physical_device->info,
                                          stderr, decode_flags, NULL,
