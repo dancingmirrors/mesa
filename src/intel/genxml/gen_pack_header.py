@@ -73,11 +73,17 @@ class Field(object):
         if "name" in attrs:
             self.name = safe_name(attrs["name"])
 
-        dword = int(attrs["dword"])
-        end_bit, start_bit = map(int, attrs["bits"].split(":"))
-
-        self.start = dword * 32 + start_bit
-        self.end = dword * 32 + end_bit
+        # Support both old format (start/end) and new format (dword/bits)
+        if "start" in attrs:
+            # Old format: absolute bit positions
+            self.start = int(attrs["start"])
+            self.end = int(attrs["end"])
+        else:
+            # New format: dword and bit range
+            dword = int(attrs["dword"])
+            end_bit, start_bit = map(int, attrs["bits"].split(":"))
+            self.start = dword * 32 + start_bit
+            self.end = dword * 32 + end_bit
 
         self.type = attrs["type"]
         self.nonzero = bool_from_str(attrs.get("nonzero", "false"))
@@ -467,10 +473,15 @@ class Parser(object):
             self.group = Group(self, None, 0, 1, size)
 
         elif name == "group":
-            dword = int(attrs["dword"])
-            offset_bits = int(attrs.get("offset_bits", 0))
-            start = dword * 32 + offset_bits
-
+            # Support both old format (start) and new format (dword/offset_bits)
+            if "start" in attrs:
+                # Old format: absolute bit position
+                start = int(attrs["start"])
+            else:
+                # New format: dword and optional offset_bits
+                dword = int(attrs["dword"])
+                offset_bits = int(attrs.get("offset_bits", 0))
+                start = dword * 32 + offset_bits
 
             group = Group(self, self.group,
                           start, int(attrs["count"]), int(attrs["size"]))
