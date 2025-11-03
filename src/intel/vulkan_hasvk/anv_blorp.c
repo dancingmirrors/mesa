@@ -89,7 +89,7 @@ anv_device_init_blorp(struct anv_device *device)
 {
    const struct blorp_config config = {};
 
-   blorp_init(&device->blorp, device, &device->isl_dev,
+   blorp_init_elk(&device->blorp, device, &device->isl_dev,
                   device->physical->compiler, &config);
    device->blorp.lookup_shader = lookup_blorp_shader;
    device->blorp.upload_shader = upload_blorp_shader;
