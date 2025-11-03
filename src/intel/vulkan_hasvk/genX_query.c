@@ -32,7 +32,7 @@
 #include "util/os_time.h"
 
 #include "genxml/gen_macros.h"
-#include "genxml/genX_pack.h"
+#include "genxml/hasvk_genX_pack.h"
 
 /* We reserve :
  *    - GPR 14 for perf queries
