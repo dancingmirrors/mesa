@@ -51,6 +51,7 @@
 #include "blorp/blorp.h"
 #include "compiler/brw/brw_compiler.h"
 #include "compiler/brw/brw_rt.h"
+#include "compiler/elk/elk_compiler.h" /* for elk_compile_stats */
 #include "ds/intel_driver_ds.h"
 #include "util/bitset.h"
 #include "util/bitscan.h"
@@ -973,7 +974,7 @@ anv_device_upload_kernel(struct anv_device *device,
                          const void *kernel_data, uint32_t kernel_size,
                          const struct brw_stage_prog_data *prog_data,
                          uint32_t prog_data_size,
-                         const struct brw_compile_stats *stats,
+                         const struct elk_compile_stats *stats,
                          uint32_t num_stats,
                          const struct nir_xfb_info *xfb_info,
                          const struct anv_pipeline_bind_map *bind_map);
@@ -2735,7 +2736,7 @@ struct anv_shader_bin {
    const struct brw_stage_prog_data *prog_data;
    uint32_t prog_data_size;
 
-   struct brw_compile_stats stats[3];
+   struct elk_compile_stats stats[3];
    uint32_t num_stats;
 
    struct nir_xfb_info *xfb_info;
@@ -2750,7 +2751,7 @@ anv_shader_bin_create(struct anv_device *device,
                       const void *kernel, uint32_t kernel_size,
                       const struct brw_stage_prog_data *prog_data,
                       uint32_t prog_data_size,
-                      const struct brw_compile_stats *stats, uint32_t num_stats,
+                      const struct elk_compile_stats *stats, uint32_t num_stats,
                       const struct nir_xfb_info *xfb_info,
                       const struct anv_pipeline_bind_map *bind_map);
 
@@ -2769,7 +2770,7 @@ anv_shader_bin_unref(struct anv_device *device, struct anv_shader_bin *shader)
 struct anv_pipeline_executable {
    mesa_shader_stage stage;
 
-   struct brw_compile_stats stats;
+   struct elk_compile_stats stats;
 
    char *nir;
    char *disasm;
