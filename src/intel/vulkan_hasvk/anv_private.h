@@ -972,7 +972,7 @@ anv_device_upload_kernel(struct anv_device *device,
                          mesa_shader_stage stage,
                          const void *key_data, uint32_t key_size,
                          const void *kernel_data, uint32_t kernel_size,
-                         const struct brw_stage_prog_data *prog_data,
+                         const struct elk_stage_prog_data *prog_data,
                          uint32_t prog_data_size,
                          const struct elk_compile_stats *stats,
                          uint32_t num_stats,
@@ -2733,7 +2733,7 @@ struct anv_shader_bin {
    struct anv_state kernel;
    uint32_t kernel_size;
 
-   const struct brw_stage_prog_data *prog_data;
+   const struct elk_stage_prog_data *prog_data;
    uint32_t prog_data_size;
 
    struct elk_compile_stats stats[3];
@@ -2749,7 +2749,7 @@ anv_shader_bin_create(struct anv_device *device,
                       mesa_shader_stage stage,
                       const void *key, uint32_t key_size,
                       const void *kernel, uint32_t kernel_size,
-                      const struct brw_stage_prog_data *prog_data,
+                      const struct elk_stage_prog_data *prog_data,
                       uint32_t prog_data_size,
                       const struct elk_compile_stats *stats, uint32_t num_stats,
                       const struct nir_xfb_info *xfb_info,
@@ -2946,14 +2946,14 @@ ANV_DECL_GET_GRAPHICS_PROG_DATA_FUNC(tes, MESA_SHADER_TESS_EVAL)
 ANV_DECL_GET_GRAPHICS_PROG_DATA_FUNC(gs, MESA_SHADER_GEOMETRY)
 ANV_DECL_GET_GRAPHICS_PROG_DATA_FUNC(wm, MESA_SHADER_FRAGMENT)
 
-static inline const struct brw_cs_prog_data *
+static inline const struct elk_cs_prog_data *
 get_cs_prog_data(const struct anv_compute_pipeline *pipeline)
 {
    assert(pipeline->cs);
-   return (const struct brw_cs_prog_data *) pipeline->cs->prog_data;
+   return (const struct elk_cs_prog_data *) pipeline->cs->prog_data;
 }
 
-static inline const struct brw_vue_prog_data *
+static inline const struct elk_vue_prog_data *
 anv_pipeline_get_last_vue_prog_data(const struct anv_graphics_pipeline *pipeline)
 {
    if (anv_pipeline_has_stage(pipeline, MESA_SHADER_GEOMETRY))

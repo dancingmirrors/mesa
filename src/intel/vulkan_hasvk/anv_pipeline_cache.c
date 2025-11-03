@@ -70,7 +70,7 @@ anv_shader_bin_create(struct anv_device *device,
                       mesa_shader_stage stage,
                       const void *key_data, uint32_t key_size,
                       const void *kernel_data, uint32_t kernel_size,
-                      const struct brw_stage_prog_data *prog_data_in,
+                      const struct elk_stage_prog_data *prog_data_in,
                       uint32_t prog_data_size,
                       const struct brw_compile_stats *stats, uint32_t num_stats,
                       const nir_xfb_info *xfb_info_in,
@@ -79,7 +79,7 @@ anv_shader_bin_create(struct anv_device *device,
    VK_MULTIALLOC(ma);
    VK_MULTIALLOC_DECL(&ma, struct anv_shader_bin, shader, 1);
    VK_MULTIALLOC_DECL_SIZE(&ma, void, obj_key_data, key_size);
-   VK_MULTIALLOC_DECL_SIZE(&ma, struct brw_stage_prog_data, prog_data,
+   VK_MULTIALLOC_DECL_SIZE(&ma, struct elk_stage_prog_data, prog_data,
                                 prog_data_size);
    VK_MULTIALLOC_DECL(&ma, struct intel_shader_reloc, prog_data_relocs,
                            prog_data_in->num_relocs);
@@ -309,7 +309,7 @@ anv_device_upload_kernel(struct anv_device *device,
                          mesa_shader_stage stage,
                          const void *key_data, uint32_t key_size,
                          const void *kernel_data, uint32_t kernel_size,
-                         const struct brw_stage_prog_data *prog_data,
+                         const struct elk_stage_prog_data *prog_data,
                          uint32_t prog_data_size,
                          const struct brw_compile_stats *stats,
                          uint32_t num_stats,
