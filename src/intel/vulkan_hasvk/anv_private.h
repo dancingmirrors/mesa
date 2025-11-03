@@ -1064,7 +1064,7 @@ struct anv_device {
     pthread_mutex_t                             mutex;
 
     struct intel_batch_decode_ctx               decoder[ANV_MAX_QUEUE_FAMILIES];
-/*
+    /*
      * When decoding a anv_cmd_buffer, we might need to search for BOs through
      * the cmd_buffer's list.
      */
