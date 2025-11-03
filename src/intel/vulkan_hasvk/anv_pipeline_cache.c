@@ -70,16 +70,16 @@ anv_shader_bin_create(struct anv_device *device,
                       mesa_shader_stage stage,
                       const void *key_data, uint32_t key_size,
                       const void *kernel_data, uint32_t kernel_size,
-                      const struct elk_stage_prog_data *prog_data_in,
+                      const struct brw_stage_prog_data *prog_data_in,
                       uint32_t prog_data_size,
-                      const struct elk_compile_stats *stats, uint32_t num_stats,
+                      const struct brw_compile_stats *stats, uint32_t num_stats,
                       const nir_xfb_info *xfb_info_in,
                       const struct anv_pipeline_bind_map *bind_map)
 {
    VK_MULTIALLOC(ma);
    VK_MULTIALLOC_DECL(&ma, struct anv_shader_bin, shader, 1);
    VK_MULTIALLOC_DECL_SIZE(&ma, void, obj_key_data, key_size);
-   VK_MULTIALLOC_DECL_SIZE(&ma, struct elk_stage_prog_data, prog_data,
+   VK_MULTIALLOC_DECL_SIZE(&ma, struct brw_stage_prog_data, prog_data,
                                 prog_data_size);
    VK_MULTIALLOC_DECL(&ma, struct intel_shader_reloc, prog_data_relocs,
                            prog_data_in->num_relocs);
@@ -127,7 +127,7 @@ anv_shader_bin_create(struct anv_device *device,
       .id = INTEL_SHADER_RELOC_SHADER_START_OFFSET,
       .value = shader->kernel.offset,
    };
-   elk_write_shader_relocs(&device->physical->compiler->isa,
+   brw_write_shader_relocs(&device->physical->compiler->isa,
                            shader->kernel.map, prog_data_in,
                            reloc_values, rv_count);
 
@@ -234,7 +234,7 @@ anv_shader_bin_deserialize(struct vk_pipeline_cache *cache,
    if (blob->overrun)
       return NULL;
 
-   union elk_any_prog_data prog_data;
+   union brw_any_prog_data prog_data;
    memcpy(&prog_data, prog_data_bytes,
           MIN2(sizeof(prog_data), prog_data_size));
    prog_data.base.relocs =
@@ -242,7 +242,7 @@ anv_shader_bin_deserialize(struct vk_pipeline_cache *cache,
                             sizeof(prog_data.base.relocs[0]));
 
    uint32_t num_stats = blob_read_uint32(blob);
-   const struct elk_compile_stats *stats =
+   const struct brw_compile_stats *stats =
       blob_read_bytes(blob, num_stats * sizeof(stats[0]));
 
    const nir_xfb_info *xfb_info = NULL;
@@ -309,9 +309,9 @@ anv_device_upload_kernel(struct anv_device *device,
                          mesa_shader_stage stage,
                          const void *key_data, uint32_t key_size,
                          const void *kernel_data, uint32_t kernel_size,
-                         const struct elk_stage_prog_data *prog_data,
+                         const struct brw_stage_prog_data *prog_data,
                          uint32_t prog_data_size,
-                         const struct elk_compile_stats *stats,
+                         const struct brw_compile_stats *stats,
                          uint32_t num_stats,
                          const nir_xfb_info *xfb_info,
                          const struct anv_pipeline_bind_map *bind_map)

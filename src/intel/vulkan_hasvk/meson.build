@@ -72,7 +72,7 @@ foreach g : [['70', ['gfx7_cmd_buffer.c']],
     'anv_per_hw_ver@0@'.format(_gfx_ver),
     [anv_per_hw_ver_files, g[1], anv_hasvk_entrypoints[0]],
     include_directories : [
-      inc_include, inc_src, inc_intel,
+      inc_include, inc_src, inc_mapi, inc_mesa, inc_gallium, inc_compiler, inc_intel,
     ],
     c_args : [
       no_override_init_args, sse2_args,
@@ -83,7 +83,7 @@ foreach g : [['70', ['gfx7_cmd_buffer.c']],
       dep_libdrm, dep_valgrind, idep_nir_headers, idep_genxml,
       idep_vulkan_util_headers, idep_vulkan_wsi_headers,
       idep_vulkan_runtime_headers, idep_intel_driver_ds_headers,
-      idep_intel_blorp_elk, idep_mesautil,
+      idep_mesautil,
     ],
   )
 endforeach
@@ -163,7 +163,7 @@ libanv_hasvk_common = static_library(
     gen_xml_pack,
   ],
   include_directories : [
-    inc_include, inc_src, inc_intel,
+    inc_include, inc_src, inc_mapi, inc_mesa, inc_gallium, inc_intel, inc_compiler,
     inc_util,
   ],
   c_args : anv_flags,
@@ -176,18 +176,17 @@ libvulkan_intel_hasvk = shared_library(
   'vulkan_intel_hasvk',
   [files('anv_gem.c'), anv_hasvk_entrypoints[0]],
   include_directories : [
-    inc_include, inc_src, inc_intel,
+    inc_include, inc_src, inc_mapi, inc_mesa, inc_gallium, inc_intel, inc_compiler,
   ],
   link_whole : [libanv_hasvk_common, libanv_per_hw_ver_libs],
   link_with : [
-    libisl, libintel_perf,
+    libintel_compiler, libisl, libblorp, libintel_perf,
   ],
   dependencies : [
     dep_thread, dep_dl, dep_m, anv_deps, idep_libintel_common,
     idep_nir, idep_genxml, idep_vulkan_util, idep_vulkan_wsi,
     idep_vulkan_runtime, idep_mesautil, idep_xmlconfig,
-    idep_intel_driver_ds, idep_intel_dev, idep_intel_blorp_elk,
-    idep_intel_decoder_elk, idep_intel_compiler_elk,
+    idep_intel_driver_ds, idep_intel_dev,
   ],
   c_args : anv_flags,
   gnu_symbol_visibility : 'hidden',
@@ -216,18 +215,17 @@ if with_tests and host_machine.cpu_family().startswith('x86')
     'vulkan_intel_hasvk_test',
     [files('anv_gem_stubs.c'), anv_hasvk_entrypoints[0]],
     include_directories : [
-      inc_include, inc_src, inc_intel,
+      inc_include, inc_src, inc_mapi, inc_mesa, inc_gallium, inc_intel, inc_compiler,
     ],
     link_whole : libanv_hasvk_common,
     link_with : [
-      libanv_per_hw_ver_libs, libintel_common,
-      libisl, libintel_perf,
+      libanv_per_hw_ver_libs, libintel_compiler, libintel_common,
+      libisl, libblorp, libintel_perf,
     ],
     dependencies : [
       dep_thread, dep_dl, dep_m, anv_deps,
       idep_nir, idep_vulkan_util, idep_vulkan_wsi, idep_vulkan_runtime,
-      idep_mesautil, idep_intel_dev, idep_intel_blorp_elk,
-      idep_intel_decoder_elk, idep_intel_compiler_elk,
+      idep_mesautil, idep_intel_dev,
     ],
     c_args : anv_flags,
     gnu_symbol_visibility : 'hidden',
@@ -257,7 +255,7 @@ if with_tests and host_machine.cpu_family().startswith('x86')
         idep_vulkan_runtime, idep_intel_driver_ds, idep_intel_dev,
       ],
       include_directories : [
-        inc_include, inc_src, inc_intel,
+        inc_include, inc_src, inc_mapi, inc_mesa, inc_gallium, inc_intel, inc_compiler,
       ],
     ),
     suite : ['intel'],

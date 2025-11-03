@@ -23,7 +23,7 @@
 
 #include "anv_nir.h"
 #include "nir/nir_builder.h"
-#include "compiler/elk/elk_nir.h"
+#include "compiler/brw/brw_nir.h"
 #include "util/mesa-sha1.h"
 #include "util/set.h"
 
@@ -1223,7 +1223,7 @@ compare_binding_infos(const void *_a, const void *_b)
 bool
 anv_nir_apply_pipeline_layout(nir_shader *shader,
                               const struct anv_physical_device *pdevice,
-                              enum elk_robustness_flags robust_flags,
+                              enum brw_robustness_flags robust_flags,
                               const struct anv_pipeline_layout *layout,
                               struct anv_pipeline_bind_map *map)
 {
