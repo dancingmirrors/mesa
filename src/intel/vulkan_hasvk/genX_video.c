@@ -24,8 +24,8 @@
 #include "anv_private.h"
 
 #include "genxml/gen_macros.h"
-#include "genxml/genX_pack.h"
-#include "genxml/genX_video_pack.h"
+#include "genxml/hasvk_genX_pack.h"
+#include "genxml/hasvk_genX_video_pack.h"
 
 void
 genX(CmdBeginVideoCodingKHR)(VkCommandBuffer commandBuffer,
@@ -55,7 +55,6 @@ genX(CmdEndVideoCodingKHR)(VkCommandBuffer commandBuffer,
    cmd_buffer->video.vid = NULL;
    cmd_buffer->video.params = NULL;
 }
-
 
 static void
 anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
@@ -408,15 +407,6 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       #if defined(__GNUC__)
       #pragma GCC diagnostic pop
       #endif
-#if GFX_VERx10 == 75
-      /* HSW: Initialize all MOCS values to non-zero default since the field
-       * is marked nonzero="true". Only slots with actual references will be
-       * updated below. */
-      uint32_t default_mocs = anv_mocs(cmd_buffer->device, NULL, 0);
-      for (unsigned i = 0; i < 16; i++) {
-         avc_directmode.DirectMVBufferMOCS[i] = default_mocs;
-      }
-#endif
       for (unsigned i = 0; i < frame_info->referenceSlotCount; i++) {
          int idx = frame_info->pReferenceSlots[i].slotIndex;
          const struct VkVideoDecodeH264DpbSlotInfoKHR *dpb_slot =
@@ -448,14 +438,13 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
          avc_directmode.DirectMVBufferCacheabilityControl[bottom_idx] = dmv_read_mocs & 0x3;
          avc_directmode.DirectMVBufferGraphicsDataType[bottom_idx] = (dmv_read_mocs >> 2) & 0x1;
 #elif GFX_VERx10 == 75
-         /* HSW: Simple array of 16 addresses with per-buffer MOCS */
-         avc_directmode.DirectMVBufferAddress[idx] = anv_image_address(ref_iv->image,
-                                                                       &ref_iv->image->vid_dmv_top_surface);
-         avc_directmode.DirectMVBufferMOCS[idx] = anv_mocs(cmd_buffer->device, ref_iv->image->bindings[0].address.bo, 0);
-#elif GFX_VER == 8
-         /* BDW: Simple array of 16 addresses */
-         avc_directmode.DirectMVBufferAddress[idx] = anv_image_address(ref_iv->image,
-                                                                       &ref_iv->image->vid_dmv_top_surface);
+         /* HSW: Single address per reference, no top/bottom split */
+         if (idx == 0)
+            avc_directmode.DirectMVBuffer0Address = anv_image_address(ref_iv->image,
+                                                                          &ref_iv->image->vid_dmv_top_surface);
+         else
+            avc_directmode.DirectMVBufferAddress1[idx - 1] = anv_image_address(ref_iv->image,
+                                                                          &ref_iv->image->vid_dmv_top_surface);
 #endif
          avc_directmode.POCList[2 * idx] = ref_info->PicOrderCnt[0];
          avc_directmode.POCList[2 * idx + 1] = ref_info->PicOrderCnt[1];
@@ -478,13 +467,8 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       avc_directmode.DirectMVBufferWriteAddress = anv_image_address(img,
                                                                     &img->vid_dmv_top_surface);
 #if GFX_VERx10 == 75
+      avc_directmode.DirectMVBufferMOCS = anv_mocs(cmd_buffer->device, dmv_bo, 0);
       avc_directmode.DirectMVBufferWriteMOCS = anv_mocs(cmd_buffer->device, avc_directmode.DirectMVBufferWriteAddress.bo, 0);
-#elif GFX_VER == 8
-      /* TODO(gen8-video): Properly configure DirectMVBufferAttributes and
-       * DirectMVBufferWriteAttributes for optimal caching behavior.
-       * For now, leaving them as zero-initialized which uses default caching.
-       * This may impact performance but should be functionally correct.
-       */
 #endif
 #endif
 
@@ -494,7 +478,7 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
 
    uint32_t buffer_offset = frame_info->srcBufferOffset & 4095;
 #define HEADER_OFFSET 3
-#if GFX_VERx10 == 70 || GFX_VERx10 == 75
+#if GFX_VERx10 == 70
    anv_batch_emit(&cmd_buffer->batch, GENX(PIPE_CONTROL), pc) {
       pc.DWordLength = 2;
       pc.CommandStreamerStallEnable = 1;
@@ -531,11 +515,11 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       };
    }
 
-#if GFX_VERx10 == 70 || GFX_VERx10 == 75
-   /* On Ivy Bridge and Haswell, we need to flush the data cache after video
-    * decode operations to ensure decoded frame data is visible when used as
+#if GFX_VERx10 == 70
+   /* On Ivy Bridge, we need to flush the data cache after video decode
+    * operations to ensure decoded frame data is visible when used as
     * reference frames for subsequent P/B frames. Without this flush,
-    * we get cache coherency issues causing visual corruption and GPU hangs.
+    * we get cache coherency issues causing visual corruption.
     */
    anv_batch_emit(&cmd_buffer->batch, GENX(PIPE_CONTROL), pc) {
       pc.CommandStreamerStallEnable = 1;

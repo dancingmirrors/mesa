@@ -60,7 +60,7 @@
 #include "common/intel_uuid.h"
 #include "perf/intel_perf.h"
 
-#include "genxml/gen70_pack.h"
+#include "genxml/hasvk_gen7_pack.h"
 #include "genxml/genX_bits.h"
 
 static const driOptionDescription anv_dri_options[] = {
