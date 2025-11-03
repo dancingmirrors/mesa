@@ -580,9 +580,9 @@ anv_cmd_buffer_cs_push_constants(struct anv_cmd_buffer *cmd_buffer)
    const struct anv_push_range *range = &pipeline->cs->bind_map.push_ranges[0];
 
    const struct intel_cs_dispatch_info dispatch =
-      brw_cs_get_dispatch_info(devinfo, cs_prog_data, NULL);
+      elk_cs_get_dispatch_info(devinfo, cs_prog_data, NULL);
    const unsigned total_push_constants_size =
-      brw_cs_push_const_total_size(cs_prog_data, dispatch.threads);
+      elk_cs_push_const_total_size(cs_prog_data, dispatch.threads);
    if (total_push_constants_size == 0)
       return (struct anv_state) { .offset = 0 };
 
