@@ -28,7 +28,7 @@
 #include "genxml/genX_rt_pack.h"
 
 #include "common/intel_compute_slm.h"
-#include "common/intel_genX_state_brw.h"
+#include "common/intel_genX_state_elk.h"
 #include "common/intel_l3_config.h"
 #include "common/intel_sample_positions.h"
 #include "nir/nir_xfb_info.h"
@@ -1883,7 +1883,7 @@ genX(compute_pipeline_emit)(struct anv_compute_pipeline *pipeline)
    anv_pipeline_setup_l3_config(&pipeline->base, cs_prog_data->base.total_shared > 0);
 
    const struct intel_cs_dispatch_info dispatch =
-      brw_cs_get_dispatch_info(devinfo, cs_prog_data, NULL);
+      elk_cs_get_dispatch_info(devinfo, cs_prog_data, NULL);
    const uint32_t vfe_curbe_allocation =
       ALIGN(cs_prog_data->push.per_thread.regs * dispatch.threads +
             cs_prog_data->push.cross_thread.regs, 2);
