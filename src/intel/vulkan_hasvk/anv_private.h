@@ -842,7 +842,7 @@ struct anv_physical_device {
     char                                        path[20];
     struct intel_device_info                      info;
     bool                                        supports_48bit_addresses;
-    struct brw_compiler *                       compiler;
+    struct elk_compiler *                       compiler;
     struct isl_device                           isl_dev;
     struct intel_perf_config *                    perf;
    /* True if hardware support is incomplete/alpha */
