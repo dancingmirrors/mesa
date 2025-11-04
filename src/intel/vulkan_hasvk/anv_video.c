@@ -160,7 +160,8 @@ anv_GetPhysicalDeviceVideoFormatPropertiesKHR(VkPhysicalDevice physicalDevice,
    pVideoFormatProperties[0].componentMapping.b = VK_COMPONENT_SWIZZLE_IDENTITY;
    pVideoFormatProperties[0].componentMapping.a = VK_COMPONENT_SWIZZLE_IDENTITY;
    pVideoFormatProperties[0].imageCreateFlags = VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT | 
-                                                 VK_IMAGE_CREATE_EXTENDED_USAGE_BIT;
+                                                 VK_IMAGE_CREATE_EXTENDED_USAGE_BIT |
+                                                 VK_IMAGE_CREATE_ALIAS_BIT;
    pVideoFormatProperties[0].imageType = VK_IMAGE_TYPE_2D;
    pVideoFormatProperties[0].imageTiling = VK_IMAGE_TILING_OPTIMAL;
    pVideoFormatProperties[0].imageUsageFlags = usage_flags;
