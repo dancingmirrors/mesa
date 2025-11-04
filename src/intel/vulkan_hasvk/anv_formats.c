@@ -728,7 +728,9 @@ anv_get_image_format_features2(const struct intel_device_info *devinfo,
          VK_FORMAT_FEATURE_2_BLIT_DST_BIT |
          VK_FORMAT_FEATURE_2_COLOR_ATTACHMENT_BIT |
          VK_FORMAT_FEATURE_2_COLOR_ATTACHMENT_BLEND_BIT |
-         VK_FORMAT_FEATURE_2_STORAGE_IMAGE_BIT;
+         VK_FORMAT_FEATURE_2_STORAGE_IMAGE_BIT |
+         VK_FORMAT_FEATURE_2_STORAGE_READ_WITHOUT_FORMAT_BIT |
+         VK_FORMAT_FEATURE_2_STORAGE_WRITE_WITHOUT_FORMAT_BIT;
 
       flags &= ~disallowed_ycbcr_image_features;
    }
