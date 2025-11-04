@@ -68,6 +68,18 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
    const StdVideoH264SequenceParameterSet *sps = vk_video_find_h264_dec_std_sps(&params->vk, h264_pic_info->pStdPictureInfo->seq_parameter_set_id);
    const StdVideoH264PictureParameterSet *pps = vk_video_find_h264_dec_std_pps(&params->vk, h264_pic_info->pStdPictureInfo->pic_parameter_set_id);
 
+   /* Create mapping from DPB slot index to reference picture array index.
+    * This is needed because hardware reference picture arrays are indexed
+    * sequentially (0, 1, 2...) but DPB slot indices can be non-sequential.
+    */
+   uint8_t dpb_slots[17] = { 0, };
+
+   for (unsigned i = 0; i < frame_info->referenceSlotCount; i++) {
+      int idx = frame_info->pReferenceSlots[i].slotIndex;
+      if (idx >= 0 && idx < 17)
+         dpb_slots[idx] = i;
+   }
+
    anv_batch_emit(&cmd_buffer->batch, GENX(MI_FLUSH_DW), flush) {
       flush.DWordLength = 2;
       flush.VideoPipelineCacheInvalidate = 1;
@@ -164,14 +176,14 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
 #endif
       for (unsigned i = 0; i < frame_info->referenceSlotCount; i++) {
          const struct anv_image_view *ref_iv = anv_image_view_from_handle(frame_info->pReferenceSlots[i].pPictureResource->imageViewBinding);
-         int idx = frame_info->pReferenceSlots[i].slotIndex;
-         buf.ReferencePictureAddress[idx] = anv_image_address(ref_iv->image,
+         /* Use iteration index i for hardware reference picture arrays */
+         buf.ReferencePictureAddress[i] = anv_image_address(ref_iv->image,
                                                             &ref_iv->image->planes[0].primary_surface.memory_range);
 #if GFX_VERx10 == 70
          /* IVB: MOCS fields are split into CacheabilityControl and GraphicsDataType */
          uint32_t ref_mocs = anv_mocs(cmd_buffer->device, ref_iv->image->bindings[0].address.bo, 0);
-         buf.ReferencePictureCacheabilityControl[idx] = ref_mocs & 0x3;
-         buf.ReferencePictureGraphicsDataType[idx] = (ref_mocs >> 2) & 0x1;
+         buf.ReferencePictureCacheabilityControl[i] = ref_mocs & 0x3;
+         buf.ReferencePictureGraphicsDataType[i] = (ref_mocs >> 2) & 0x1;
 #elif GFX_VERx10 == 80
          if (i == 0)
             ref_bo = ref_iv->image->bindings[0].address.bo;
@@ -246,7 +258,14 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
          const struct VkVideoDecodeH264DpbSlotInfoKHR *dpb_slot =
             vk_find_struct_const(frame_info->pReferenceSlots[i].pNext, VIDEO_DECODE_H264_DPB_SLOT_INFO_KHR);
          const StdVideoDecodeH264ReferenceInfo *ref_info = dpb_slot->pStdReferenceInfo;
-         int idx = frame_info->pReferenceSlots[i].slotIndex;
+         int slot_idx = frame_info->pReferenceSlots[i].slotIndex;
+
+         if (slot_idx < 0)
+            continue;
+
+         /* Map DPB slot index to reference picture array index */
+         int idx = dpb_slots[slot_idx];
+
          avc_dpb.NonExistingFrame[idx] = ref_info->flags.is_non_existing;
          avc_dpb.LongTermFrame[idx] = ref_info->flags.used_for_long_term_reference;
          if (!ref_info->flags.top_field_flag && !ref_info->flags.bottom_field_flag)
@@ -406,7 +425,14 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       #pragma GCC diagnostic pop
       #endif
       for (unsigned i = 0; i < frame_info->referenceSlotCount; i++) {
-         int idx = frame_info->pReferenceSlots[i].slotIndex;
+         int slot_idx = frame_info->pReferenceSlots[i].slotIndex;
+
+         if (slot_idx < 0)
+            continue;
+
+         /* Map DPB slot index to reference picture array index */
+         int idx = dpb_slots[slot_idx];
+
          const struct VkVideoDecodeH264DpbSlotInfoKHR *dpb_slot =
             vk_find_struct_const(frame_info->pReferenceSlots[i].pNext, VIDEO_DECODE_H264_DPB_SLOT_INFO_KHR);
          const struct anv_image_view *ref_iv = anv_image_view_from_handle(frame_info->pReferenceSlots[i].pPictureResource->imageViewBinding);
