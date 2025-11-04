@@ -88,22 +88,11 @@ emit_query_mi_flush_availability(struct anv_cmd_buffer *cmd_buffer,
                                  struct anv_address addr,
                                  bool available)
 {
-#if GFX_VER >= 8
    anv_batch_emit(&cmd_buffer->batch, GENX(MI_FLUSH_DW), flush) {
       flush.PostSyncOperation = WriteImmediateData;
       flush.Address = addr;
       flush.ImmediateData = available;
    }
-#else
-   anv_batch_emit(&cmd_buffer->batch, GENX(PIPE_CONTROL), pc) {
-      pc.CommandStreamerStallEnable = true;
-      pc.DestinationAddressType = DAT_PPGTT;
-      pc.PostSyncOperation = WriteImmediateData;
-      pc.Address = addr;
-      pc.ImmediateData = available;
-      anv_debug_dump_pc(pc);
-   }
-#endif
 }
 
 VkResult genX(CreateQueryPool)(
@@ -1143,7 +1132,6 @@ void genX(CmdBeginQueryIndexedEXT)(
       break;
    }
 #endif
-
    case VK_QUERY_TYPE_PERFORMANCE_QUERY_INTEL: {
       anv_batch_emit(&cmd_buffer->batch, GENX(PIPE_CONTROL), pc) {
          pc.CommandStreamerStallEnable = true;
@@ -1152,7 +1140,9 @@ void genX(CmdBeginQueryIndexedEXT)(
       emit_perf_intel_query(cmd_buffer, pool, &b, query_addr, false);
       break;
    }
-
+   case VK_QUERY_TYPE_RESULT_STATUS_ONLY_KHR:
+      emit_query_mi_flush_availability(cmd_buffer, query_addr, false);
+      break;
    default:
       UNREACHABLE("");
    }
@@ -1320,6 +1310,9 @@ void genX(CmdEndQueryIndexedEXT)(
       emit_query_mi_availability(&b, query_addr, true);
       break;
    }
+   case VK_QUERY_TYPE_RESULT_STATUS_ONLY_KHR:
+      emit_query_mi_flush_availability(cmd_buffer, query_addr, true);
+      break;
 
    default:
       UNREACHABLE("");
@@ -1372,8 +1365,6 @@ void genX(CmdWriteTimestamp2)(
          pc.PostSyncOperation       = WriteTimestamp;
          pc.Address                 = anv_address_add(query_addr, 8);
 
-         if (GFX_VER == 9 && cmd_buffer->device->info->gt == 4)
-            pc.CommandStreamerStallEnable = true;
       }
       emit_query_pc_availability(cmd_buffer, query_addr, true);
    }
