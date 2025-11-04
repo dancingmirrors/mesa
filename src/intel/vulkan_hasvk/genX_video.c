@@ -93,14 +93,9 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       ss.SurfacePitch = img->planes[0].primary_surface.isl.row_pitch_B - 1;
       ss.TiledSurface = img->planes[0].primary_surface.isl.tiling != ISL_TILING_LINEAR;
       ss.TileWalk = TW_YMAJOR;
-      ss.CrVCbUPixelOffsetVDirection = 0;
 
-      ss.YOffsetforUCb = align(img->vk.extent.height, 32);
-      ss.XOffsetforUCb = 0;
-      /* For interleaved chroma (NV12), V/Cr is interleaved with U/Cb,
-       * so YOffsetforVCr must be 0 (relative to chroma plane start) */
-      ss.YOffsetforVCr = 0;
-      ss.XOffsetforVCr = 0;
+      ss.YOffsetforUCb = ss.YOffsetforVCr =
+         img->planes[1].primary_surface.memory_range.offset / img->planes[0].primary_surface.isl.row_pitch_B;
    }
 
    anv_batch_emit(&cmd_buffer->batch, GENX(MFX_PIPE_BUF_ADDR_STATE), buf) {
