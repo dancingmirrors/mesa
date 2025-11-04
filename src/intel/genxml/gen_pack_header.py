@@ -73,17 +73,11 @@ class Field(object):
         if "name" in attrs:
             self.name = safe_name(attrs["name"])
 
-        # Support both old format (start/end) and new format (dword/bits)
-        if "start" in attrs:
-            # Old format: absolute bit positions
-            self.start = int(attrs["start"])
-            self.end = int(attrs["end"])
-        else:
-            # New format: dword and bit range
-            dword = int(attrs["dword"])
-            end_bit, start_bit = map(int, attrs["bits"].split(":"))
-            self.start = dword * 32 + start_bit
-            self.end = dword * 32 + end_bit
+        dword = int(attrs["dword"])
+        end_bit, start_bit = map(int, attrs["bits"].split(":"))
+
+        self.start = dword * 32 + start_bit
+        self.end = dword * 32 + end_bit
 
         self.type = attrs["type"]
         self.nonzero = bool_from_str(attrs.get("nonzero", "false"))
@@ -425,7 +419,7 @@ class Value(object):
         self.dont_use = int(attrs["dont_use"]) != 0 if "dont_use" in attrs else False
 
 class Parser(object):
-    def __init__(self, opencl, repack, engines=None):
+    def __init__(self, opencl, repack):
         self.instruction = None
         self.structs = {}
         # Set of enum names we've seen.
@@ -433,7 +427,6 @@ class Parser(object):
         self.registers = {}
         self.opencl = opencl
         self.repack = repack
-        self.engines = engines if engines else set()
 
     def gen_prefix(self, name):
         if name[0] == "_":
@@ -443,9 +436,6 @@ class Parser(object):
     def gen_guard(self):
         if self.opencl:
             return self.gen_prefix("{0}_CL_PACK_H".format(self.platform))
-        # Add suffix for video-only or other engine-specific headers
-        if self.engines == {'video'}:
-            return self.gen_prefix("{0}_VIDEO_PACK_H".format(self.platform))
         return self.gen_prefix("{0}_PACK_H".format(self.platform))
 
     def process_item(self, item):
@@ -473,15 +463,10 @@ class Parser(object):
             self.group = Group(self, None, 0, 1, size)
 
         elif name == "group":
-            # Support both old format (start) and new format (dword/offset_bits)
-            if "start" in attrs:
-                # Old format: absolute bit position
-                start = int(attrs["start"])
-            else:
-                # New format: dword and optional offset_bits
-                dword = int(attrs["dword"])
-                offset_bits = int(attrs.get("offset_bits", 0))
-                start = dword * 32 + offset_bits
+            dword = int(attrs["dword"])
+            offset_bits = int(attrs.get("offset_bits", 0))
+            start = dword * 32 + offset_bits
+
 
             group = Group(self, self.group,
                           start, int(attrs["count"]), int(attrs["size"]))
@@ -583,9 +568,6 @@ class Parser(object):
 
     def emit_instruction(self):
         name = self.instruction
-        guard = self.gen_prefix(name + "_defined")
-        print('#ifndef %s' % guard)
-        print('#define %s' % guard)
 
         if not self.length is None:
             print('#define %-33s %6d' %
@@ -616,13 +598,9 @@ class Parser(object):
         self.emit_pack_function(self.instruction, self.group)
         if self.repack:
             self.emit_pack_function(self.instruction, self.group, repack=True)
-        print('#endif /* %s */' % guard)
 
     def emit_register(self):
         name = self.register
-        guard = self.gen_prefix(name + "_defined")
-        print('#ifndef %s' % guard)
-        print('#define %s' % guard)
         if not self.reg_num is None:
             print('#define %-33s 0x%04x' %
                   (self.gen_prefix(name + "_num"), self.reg_num))
@@ -633,13 +611,9 @@ class Parser(object):
 
         self.emit_template_struct(self.register, self.group)
         self.emit_pack_function(self.register, self.group)
-        print('#endif /* %s */' % guard)
 
     def emit_struct(self):
         name = self.struct
-        guard = self.gen_prefix(name + "_defined")
-        print('#ifndef %s' % guard)
-        print('#define %s' % guard)
         if not self.length is None:
             print('#define %-33s %6d' %
                   (self.gen_prefix(name + "_length"), self.length))
@@ -648,14 +622,9 @@ class Parser(object):
         self.emit_pack_function(self.struct, self.group)
         if self.repack:
             self.emit_pack_function(self.struct, self.group, repack=True)
-        print('#endif /* %s */' % guard)
 
     def emit_enum(self):
-        enum_name = self.gen_prefix(self.enum)
-        guard = enum_name + "_defined"
-        print('#ifndef %s' % guard)
-        print('#define %s' % guard)
-        print('enum %s {' % enum_name)
+        print('enum %s {' % self.gen_prefix(self.enum))
         for value in self.values:
             if self.prefix:
                 name = self.prefix + "_" + value.name
@@ -663,7 +632,6 @@ class Parser(object):
                 name = value.name
             print('   %-36s = %6d,' % (name.upper(), value.value))
         print('};\n')
-        print('#endif /* %s */' % guard)
 
     def emit_genxml(self, genxml):
         root = genxml.et.getroot()
@@ -710,7 +678,7 @@ def main():
     genxml.filter_engines(engines)
     if pargs.include_symbols:
         genxml.filter_symbols(pargs.include_symbols.split(','))
-    p = Parser(pargs.opencl, pargs.repack, engines)
+    p = Parser(pargs.opencl, pargs.repack)
     p.emit_genxml(genxml)
 
 if __name__ == '__main__':
