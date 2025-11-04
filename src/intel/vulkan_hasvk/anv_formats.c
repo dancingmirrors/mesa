@@ -600,7 +600,7 @@ anv_get_image_format_features2(const struct intel_device_info *devinfo,
       anv_get_format_plane(devinfo, vk_format, 0, vk_tiling);
 
    if (plane_format.isl_format == ISL_FORMAT_UNSUPPORTED)
-      return 0;
+      return flags;
 
    struct anv_format_plane base_plane_format = plane_format;
    if (vk_tiling != VK_IMAGE_TILING_LINEAR) {
