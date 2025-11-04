@@ -723,12 +723,16 @@ anv_get_image_format_features2(const struct intel_device_info *devinfo,
       if (anv_format->n_planes > 1)
          flags |= VK_FORMAT_FEATURE_2_DISJOINT_BIT;
 
-      const VkFormatFeatureFlags2 disallowed_ycbcr_image_features =
+      VkFormatFeatureFlags2 disallowed_ycbcr_image_features =
          VK_FORMAT_FEATURE_2_BLIT_SRC_BIT |
          VK_FORMAT_FEATURE_2_BLIT_DST_BIT |
          VK_FORMAT_FEATURE_2_COLOR_ATTACHMENT_BIT |
-         VK_FORMAT_FEATURE_2_COLOR_ATTACHMENT_BLEND_BIT |
-         VK_FORMAT_FEATURE_2_STORAGE_IMAGE_BIT;
+         VK_FORMAT_FEATURE_2_COLOR_ATTACHMENT_BLEND_BIT;
+
+      /* For video decode formats, allow STORAGE_IMAGE_BIT if supported */
+      if (!(flags & (VK_FORMAT_FEATURE_2_VIDEO_DECODE_OUTPUT_BIT_KHR |
+                     VK_FORMAT_FEATURE_2_VIDEO_DECODE_DPB_BIT_KHR)))
+         disallowed_ycbcr_image_features |= VK_FORMAT_FEATURE_2_STORAGE_IMAGE_BIT;
 
       flags &= ~disallowed_ycbcr_image_features;
    }
