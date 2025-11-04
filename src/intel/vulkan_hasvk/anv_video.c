@@ -146,10 +146,24 @@ anv_GetPhysicalDeviceVideoFormatPropertiesKHR(VkPhysicalDevice physicalDevice,
    if (!pVideoFormatProperties)
       return VK_SUCCESS;
 
+   VkImageUsageFlags usage_flags = pVideoFormatInfo->imageUsage;
+   
+   /* Add additional usage flags for decode destination images */
+   if (usage_flags & VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR)
+      usage_flags |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+
+   pVideoFormatProperties[0].sType = VK_STRUCTURE_TYPE_VIDEO_FORMAT_PROPERTIES_KHR;
+   pVideoFormatProperties[0].pNext = NULL;
    pVideoFormatProperties[0].format = VK_FORMAT_G8_B8R8_2PLANE_420_UNORM;
+   pVideoFormatProperties[0].componentMapping.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+   pVideoFormatProperties[0].componentMapping.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+   pVideoFormatProperties[0].componentMapping.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+   pVideoFormatProperties[0].componentMapping.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+   pVideoFormatProperties[0].imageCreateFlags = VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT | 
+                                                 VK_IMAGE_CREATE_EXTENDED_USAGE_BIT;
    pVideoFormatProperties[0].imageType = VK_IMAGE_TYPE_2D;
    pVideoFormatProperties[0].imageTiling = VK_IMAGE_TILING_OPTIMAL;
-   pVideoFormatProperties[0].imageUsageFlags = pVideoFormatInfo->imageUsage;
+   pVideoFormatProperties[0].imageUsageFlags = usage_flags;
    return VK_SUCCESS;
 }
 
