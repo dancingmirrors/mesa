@@ -872,6 +872,11 @@ get_properties_1_2(const struct anv_physical_device *pdevice,
     * Maintenance4 extension in Vulkan 1.2.
     */
    p->maxBufferSize = pdevice->isl_dev.max_buffer_size;
+   
+   if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+      fprintf(stderr, "hasvk: Setting maxBufferSize=%llu in get_properties_1_2() for gen%u\n",
+              (unsigned long long)p->maxBufferSize, pdevice->info.ver);
+   }
 }
 
 static void
@@ -950,6 +955,11 @@ get_properties_1_3(const struct anv_physical_device *pdevice,
    p->uniformTexelBufferOffsetSingleTexelAlignment = true;
 
    p->maxBufferSize = pdevice->isl_dev.max_buffer_size;
+   
+   if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+      fprintf(stderr, "hasvk: Setting maxBufferSize=%llu in get_properties_1_3() for gen%u\n",
+              (unsigned long long)p->maxBufferSize, pdevice->info.ver);
+   }
 }
 
 static void
