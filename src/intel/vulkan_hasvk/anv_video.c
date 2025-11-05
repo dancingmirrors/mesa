@@ -62,7 +62,13 @@ anv_DestroyVideoSessionKHR(VkDevice _device,
    if (!_session)
       return;
 
-   vk_object_base_finish(&vid->vk.base);
+   /* Ensure all commands using this video session have completed.
+    * This is required by the Vulkan spec but some applications (like ffplay)
+    * may not properly wait before destroying, so we add a defensive check.
+    */
+   anv_DeviceWaitIdle(_device);
+
+   vk_video_session_finish(&vid->vk);
    vk_free2(&device->vk.alloc, pAllocator, vid);
 }
 
