@@ -865,6 +865,13 @@ get_properties_1_2(const struct anv_physical_device *pdevice,
 
    p->framebufferIntegerColorSampleCounts =
       pdevice->info.ver == 7 ? VK_SAMPLE_COUNT_1_BIT : isl_device_get_sample_counts(&pdevice->isl_dev);
+
+   /* Set maxBufferSize for VkPhysicalDeviceMaintenance4Properties.
+    * This is also set in get_properties_1_3() for Vulkan 1.3, but we set it
+    * here as well to ensure it's available when queried through the
+    * Maintenance4 extension in Vulkan 1.2.
+    */
+   p->maxBufferSize = pdevice->isl_dev.max_buffer_size;
 }
 
 static void
