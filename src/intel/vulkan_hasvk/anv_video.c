@@ -98,14 +98,6 @@ anv_DestroyVideoSessionParametersKHR(VkDevice _device,
 {
    ANV_FROM_HANDLE(anv_device, device, _device);
    VK_FROM_HANDLE(vk_video_session_parameters, params, _params);
-   if (!_params)
-      return;
-
-   /* Ensure all commands using these video session parameters have completed.
-    * This is required by the Vulkan spec but some applications (like ffplay)
-    * may not properly wait before destroying, so we add a defensive check.
-    */
-   vk_common_DeviceWaitIdle(_device);
    
    vk_video_session_parameters_destroy(&device->vk, pAllocator, params);
 }
