@@ -1299,10 +1299,17 @@ anv_GetPhysicalDeviceProperties2(
 
    if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
       fprintf(stderr, "hasvk: Custom anv_GetPhysicalDeviceProperties2 called\n");
+      fprintf(stderr, "hasvk: pdevice->vk.properties.maxBufferSize=%llu before common call\n",
+              (unsigned long long)pdevice->vk.properties.maxBufferSize);
    }
 
    /* First, call the common implementation to fill in all standard properties */
    vk_common_GetPhysicalDeviceProperties2(physicalDevice, pProperties);
+   
+   if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+      fprintf(stderr, "hasvk: pdevice->vk.properties.maxBufferSize=%llu after common call\n",
+              (unsigned long long)pdevice->vk.properties.maxBufferSize);
+   }
 
    /* Explicitly handle VkPhysicalDeviceMaintenance4Properties and VkPhysicalDeviceVulkan13Properties
     * There appears to be an issue with the property generation/copying for maxBufferSize,
