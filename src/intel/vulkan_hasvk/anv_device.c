@@ -1706,6 +1706,11 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
       vk_error(instance, result);
       goto fail_alloc;
    }
+   
+   /* Explicitly set our custom GetPhysicalDeviceProperties2 implementation
+    * to ensure Maintenance4Properties.maxBufferSize is properly exposed */
+   device->vk.dispatch_table.GetPhysicalDeviceProperties2 = anv_GetPhysicalDeviceProperties2;
+   
    device->instance = instance;
 
    assert(strlen(path) < ARRAY_SIZE(device->path));
