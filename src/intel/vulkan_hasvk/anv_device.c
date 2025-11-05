@@ -1297,6 +1297,10 @@ anv_GetPhysicalDeviceProperties2(
 {
    ANV_FROM_HANDLE(anv_physical_device, pdevice, physicalDevice);
 
+   if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+      fprintf(stderr, "hasvk: Custom anv_GetPhysicalDeviceProperties2 called\n");
+   }
+
    /* First, call the common implementation to fill in all standard properties */
    vk_common_GetPhysicalDeviceProperties2(physicalDevice, pProperties);
 
@@ -1304,10 +1308,16 @@ anv_GetPhysicalDeviceProperties2(
     * There appears to be an issue with the property generation/copying for this structure,
     * so we manually fill it here to ensure the maxBufferSize is properly exposed.
     */
+   bool found_maintenance4 = false;
    vk_foreach_struct(ext, pProperties->pNext) {
+      if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+         fprintf(stderr, "hasvk: Checking pNext structure with sType=0x%x\n", ext->sType);
+      }
+      
       if (ext->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_4_PROPERTIES) {
          VkPhysicalDeviceMaintenance4Properties *props = (VkPhysicalDeviceMaintenance4Properties *)ext;
          props->maxBufferSize = pdevice->isl_dev.max_buffer_size;
+         found_maintenance4 = true;
          
          if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
             fprintf(stderr, "hasvk: Explicitly filling Maintenance4Properties.maxBufferSize=%llu\n",
@@ -1315,6 +1325,10 @@ anv_GetPhysicalDeviceProperties2(
          }
          break;
       }
+   }
+   
+   if (unlikely(INTEL_DEBUG(DEBUG_PERF)) && !found_maintenance4) {
+      fprintf(stderr, "hasvk: Maintenance4Properties NOT found in pNext chain\n");
    }
 }
 
