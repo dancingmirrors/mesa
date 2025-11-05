@@ -72,11 +72,11 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
     * This is needed because hardware reference picture arrays are indexed
     * sequentially (0, 1, 2...) but DPB slot indices can be non-sequential.
     */
-   uint8_t dpb_slots[17] = { 0, };
+   uint8_t dpb_slots[ANV_VIDEO_H264_MAX_DPB_SLOTS] = { 0, };
 
    for (unsigned i = 0; i < frame_info->referenceSlotCount; i++) {
       int idx = frame_info->pReferenceSlots[i].slotIndex;
-      if (idx >= 0 && idx < 17)
+      if (idx >= 0 && idx < ANV_VIDEO_H264_MAX_DPB_SLOTS)
          dpb_slots[idx] = i;
    }
 
