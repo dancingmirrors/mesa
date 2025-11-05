@@ -52,6 +52,21 @@ genX(CmdEndVideoCodingKHR)(VkCommandBuffer commandBuffer,
 {
    ANV_FROM_HANDLE(anv_cmd_buffer, cmd_buffer, commandBuffer);
 
+   /* Ensure all video decode operations complete before ending the video
+    * coding session. This prevents VK_DEVICE_LOST when the application
+    * tries to destroy video sessions or parameters that are still in use.
+    */
+#if GFX_VER >= 8
+   anv_batch_emit(&cmd_buffer->batch, GENX(MI_FLUSH_DW), flush) {
+      flush.PostSyncOperation = NoWrite;
+   }
+#else
+   anv_batch_emit(&cmd_buffer->batch, GENX(PIPE_CONTROL), pc) {
+      pc.CommandStreamerStallEnable = 1;
+      pc.StallAtPixelScoreboard = 1;
+   }
+#endif
+
    cmd_buffer->video.vid = NULL;
    cmd_buffer->video.params = NULL;
 }
@@ -509,6 +524,7 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
    anv_batch_emit(&cmd_buffer->batch, GENX(PIPE_CONTROL), pc) {
       pc.DWordLength = 2;
       pc.CommandStreamerStallEnable = 1;
+      pc.StallAtPixelScoreboard = 1;
    }
 #endif
    for (unsigned s = 0; s < h264_pic_info->sliceCount; s++) {
@@ -550,6 +566,7 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
     */
    anv_batch_emit(&cmd_buffer->batch, GENX(PIPE_CONTROL), pc) {
       pc.CommandStreamerStallEnable = 1;
+      pc.StallAtPixelScoreboard = 1;
       pc.DCFlushEnable = 1;
    }
 #endif
