@@ -52,6 +52,7 @@
 #include "util/driconf.h"
 #include "git_sha1.h"
 #include "vk_util.h"
+#include "vk_common_entrypoints.h"
 #include "vk_deferred_operation.h"
 #include "vk_drm_syncobj.h"
 #include "common/i915/intel_defines.h"
@@ -1286,6 +1287,34 @@ get_properties(const struct anv_physical_device *pdevice,
       props->polygonModePointSize = true;
       props->nonStrictSinglePixelWideLinesUseParallelogram = false;
       props->nonStrictWideLinesUseParallelogram = false;
+   }
+}
+
+VKAPI_ATTR void VKAPI_CALL
+anv_GetPhysicalDeviceProperties2(
+    VkPhysicalDevice                            physicalDevice,
+    VkPhysicalDeviceProperties2*                pProperties)
+{
+   ANV_FROM_HANDLE(anv_physical_device, pdevice, physicalDevice);
+
+   /* First, call the common implementation to fill in all standard properties */
+   vk_common_GetPhysicalDeviceProperties2(physicalDevice, pProperties);
+
+   /* Explicitly handle VkPhysicalDeviceMaintenance4Properties 
+    * There appears to be an issue with the property generation/copying for this structure,
+    * so we manually fill it here to ensure the maxBufferSize is properly exposed.
+    */
+   vk_foreach_struct(ext, pProperties->pNext) {
+      if (ext->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_4_PROPERTIES) {
+         VkPhysicalDeviceMaintenance4Properties *props = (VkPhysicalDeviceMaintenance4Properties *)ext;
+         props->maxBufferSize = pdevice->isl_dev.max_buffer_size;
+         
+         if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+            fprintf(stderr, "hasvk: Explicitly filling Maintenance4Properties.maxBufferSize=%llu\n",
+                    (unsigned long long)props->maxBufferSize);
+         }
+         break;
+      }
    }
 }
 
