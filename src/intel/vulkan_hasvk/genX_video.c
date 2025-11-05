@@ -123,6 +123,11 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       ss.SurfacePitch = img->planes[0].primary_surface.isl.row_pitch_B - 1;
       ss.TiledSurface = img->planes[0].primary_surface.isl.tiling != ISL_TILING_LINEAR;
       ss.TileWalk = TW_YMAJOR;
+#if GFX_VER == 7
+      /* On Gen7, for NV12 format with interleaved chroma, set HalfPitchforChroma
+       * to indicate that chroma samples are at half-pitch intervals */
+      ss.HalfPitchforChroma = 1;
+#endif
 
       ss.YOffsetforUCb =
          img->planes[1].primary_surface.memory_range.offset / img->planes[0].primary_surface.isl.row_pitch_B;
