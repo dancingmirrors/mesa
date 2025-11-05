@@ -76,8 +76,11 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
 
    for (unsigned i = 0; i < frame_info->referenceSlotCount; i++) {
       int idx = frame_info->pReferenceSlots[i].slotIndex;
-      if (idx >= 0 && idx < ANV_VIDEO_H264_MAX_DPB_SLOTS)
-         dpb_slots[idx] = i;
+      if (idx < 0)
+         continue;
+      
+      assert(idx < ANV_VIDEO_H264_MAX_DPB_SLOTS);
+      dpb_slots[idx] = i;
    }
 
    anv_batch_emit(&cmd_buffer->batch, GENX(MI_FLUSH_DW), flush) {
