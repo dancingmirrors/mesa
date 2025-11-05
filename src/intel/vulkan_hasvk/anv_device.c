@@ -1733,6 +1733,24 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
       goto fail_alloc;
    }
    
+   /* CRITICAL: Set maxBufferSize IMMEDIATELY after vk_physical_device_init
+    * before validation layers or anyone else queries it. The ISL device isn't
+    * initialized yet, so we set it based on generation.
+    * This will be overwritten later by get_properties() with the actual ISL value.
+    */
+   if (devinfo.ver >= 9) {
+      device->vk.properties.maxBufferSize = 1ull << 32;  /* 4GB for Gen9+ */
+   } else if (devinfo.ver >= 7) {
+      device->vk.properties.maxBufferSize = 1ull << 30;  /* 1GB for Gen7/8 */
+   } else {
+      device->vk.properties.maxBufferSize = 1ull << 27;  /* 128MB for Gen6 */
+   }
+   
+   if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+      fprintf(stderr, "hasvk: Early maxBufferSize set to %llu for gen%u (before ISL init)\n",
+              (unsigned long long)device->vk.properties.maxBufferSize, devinfo.ver);
+   }
+   
    /* Explicitly set our custom GetPhysicalDeviceProperties2 implementation
     * to ensure Maintenance4Properties.maxBufferSize is properly exposed */
    device->vk.dispatch_table.GetPhysicalDeviceProperties2 = anv_GetPhysicalDeviceProperties2;
