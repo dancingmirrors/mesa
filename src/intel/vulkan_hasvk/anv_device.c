@@ -1304,11 +1304,13 @@ anv_GetPhysicalDeviceProperties2(
    /* First, call the common implementation to fill in all standard properties */
    vk_common_GetPhysicalDeviceProperties2(physicalDevice, pProperties);
 
-   /* Explicitly handle VkPhysicalDeviceMaintenance4Properties 
-    * There appears to be an issue with the property generation/copying for this structure,
-    * so we manually fill it here to ensure the maxBufferSize is properly exposed.
+   /* Explicitly handle VkPhysicalDeviceMaintenance4Properties and VkPhysicalDeviceVulkan13Properties
+    * There appears to be an issue with the property generation/copying for maxBufferSize,
+    * so we manually fill it here to ensure it's properly exposed.
+    * Note: Maintenance4 was promoted to Vulkan 1.3, so maxBufferSize appears in both structures.
     */
    bool found_maintenance4 = false;
+   bool found_vulkan13 = false;
    vk_foreach_struct(ext, pProperties->pNext) {
       if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
          fprintf(stderr, "hasvk: Checking pNext structure with sType=0x%x\n", ext->sType);
@@ -1323,12 +1325,22 @@ anv_GetPhysicalDeviceProperties2(
             fprintf(stderr, "hasvk: Explicitly filling Maintenance4Properties.maxBufferSize=%llu\n",
                     (unsigned long long)props->maxBufferSize);
          }
-         break;
+      } else if (ext->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_PROPERTIES) {
+         VkPhysicalDeviceVulkan13Properties *props = (VkPhysicalDeviceVulkan13Properties *)ext;
+         props->maxBufferSize = pdevice->isl_dev.max_buffer_size;
+         found_vulkan13 = true;
+         
+         if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+            fprintf(stderr, "hasvk: Explicitly filling Vulkan13Properties.maxBufferSize=%llu\n",
+                    (unsigned long long)props->maxBufferSize);
+         }
       }
    }
    
-   if (unlikely(INTEL_DEBUG(DEBUG_PERF)) && !found_maintenance4) {
-      fprintf(stderr, "hasvk: Maintenance4Properties NOT found in pNext chain\n");
+   if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+      if (!found_maintenance4 && !found_vulkan13) {
+         fprintf(stderr, "hasvk: Neither Maintenance4Properties nor Vulkan13Properties found in pNext chain\n");
+      }
    }
 }
 
