@@ -23,6 +23,7 @@
 
 #include "anv_private.h"
 
+#include "vk_common_entrypoints.h"
 #include "vk_video/vulkan_video_codecs_common.h"
 
 VkResult
@@ -66,7 +67,7 @@ anv_DestroyVideoSessionKHR(VkDevice _device,
     * This is required by the Vulkan spec but some applications (like ffplay)
     * may not properly wait before destroying, so we add a defensive check.
     */
-   anv_DeviceWaitIdle(_device);
+   vk_common_DeviceWaitIdle(_device);
 
    vk_video_session_finish(&vid->vk);
    vk_free2(&device->vk.alloc, pAllocator, vid);
