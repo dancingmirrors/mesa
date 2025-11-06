@@ -1306,6 +1306,24 @@ anv_image_init(struct anv_device *device, struct anv_image *image,
          can_fast_clear_with_non_zero_color(device->info, image, p, fmt_list);
    }
 
+   /* Debug output for image plane configuration when INTEL_DEBUG=perf */
+   if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+      fprintf(stderr, "hasvk: Image created with %u plane(s)\n", image->n_planes);
+      
+      if (image->n_planes >= 1) {
+         fprintf(stderr, "hasvk:   Plane 0 - tiling: %s, row_pitch_B: %u\n",
+                 isl_tiling_to_name(image->planes[0].primary_surface.isl.tiling),
+                 image->planes[0].primary_surface.isl.row_pitch_B);
+      }
+      
+      if (image->n_planes >= 2) {
+         fprintf(stderr, "hasvk:   Plane 1 - tiling: %s, row_pitch_B: %u, chroma_offset: %llu\n",
+                 isl_tiling_to_name(image->planes[1].primary_surface.isl.tiling),
+                 image->planes[1].primary_surface.isl.row_pitch_B,
+                 (unsigned long long)image->planes[1].primary_surface.memory_range.offset);
+      }
+   }
+
    return VK_SUCCESS;
 
 fail:
