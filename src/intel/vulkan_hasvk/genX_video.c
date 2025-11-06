@@ -130,11 +130,10 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       ss.HalfPitchforChroma = 0;
 #endif
 
-      ss.YOffsetforUCb =
+      /* For NV12 (interleaved chroma), both U and V offsets point to the same
+       * chroma plane location since they're interleaved in memory. */
+      ss.YOffsetforUCb = ss.YOffsetforVCr =
          img->planes[1].primary_surface.memory_range.offset / img->planes[0].primary_surface.isl.row_pitch_B;
-      /* For interleaved chroma (NV12), V/Cr is interleaved with U/Cb,
-       * so YOffsetforVCr must be 0 (relative to chroma plane start) */
-      ss.YOffsetforVCr = 0;
    }
 
    anv_batch_emit(&cmd_buffer->batch, GENX(MFX_PIPE_BUF_ADDR_STATE), buf) {
