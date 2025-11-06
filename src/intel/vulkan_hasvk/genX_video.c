@@ -280,8 +280,9 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
    /* Store the base address (4KB-aligned) for later offset calculations.
     * Hardware requires MFXIndirectBitstreamObjectAddress to be 4KB-aligned,
     * and subsequent BSD commands use 29-bit offsets relative to this base.
+    * We align down to 4KB (& ~4095) to meet hardware requirements.
     */
-   uint64_t bitstream_base_offset = frame_info->srcBufferOffset & ~4095;
+   const uint64_t bitstream_base_offset = frame_info->srcBufferOffset & ~4095ull;
    
    anv_batch_emit(&cmd_buffer->batch, GENX(MFX_IND_OBJ_BASE_ADDR_STATE), index_obj) {
       index_obj.MFXIndirectBitstreamObjectAddress = anv_address_add(src_buffer->address,
@@ -645,7 +646,10 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
             next_end = frame_info->srcBufferRange;
          anv_batch_emit(&cmd_buffer->batch, GENX(MFD_AVC_SLICEADDR), sliceaddr) {
             sliceaddr.IndirectBSDDataLength = next_end - next_offset - HEADER_OFFSET;
-            /* Calculate offset from base address (after 3-byte header) */
+            /* Calculate offset from base address (after 3-byte header).
+             * Safe from underflow: base is aligned-down srcBufferOffset,
+             * so (srcBufferOffset + offset) >= base always holds.
+             */
             sliceaddr.IndirectBSDDataStartAddress = (frame_info->srcBufferOffset + next_offset + HEADER_OFFSET) - bitstream_base_offset;
          };
          this_end = next_offset;
@@ -653,7 +657,10 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
          this_end = frame_info->srcBufferRange;
       anv_batch_emit(&cmd_buffer->batch, GENX(MFD_AVC_BSD_OBJECT), avc_bsd) {
          avc_bsd.IndirectBSDDataLength = this_end - current_offset - HEADER_OFFSET;
-         /* Calculate offset from base address (after 3-byte header) */
+         /* Calculate offset from base address (after 3-byte header).
+          * Safe from underflow: base is aligned-down srcBufferOffset,
+          * so (srcBufferOffset + offset) >= base always holds.
+          */
          avc_bsd.IndirectBSDDataStartAddress = (frame_info->srcBufferOffset + current_offset + HEADER_OFFSET) - bitstream_base_offset;
          avc_bsd.InlineData.LastSlice = last_slice;
          avc_bsd.InlineData.FixPrevMBSkipped = 1;
