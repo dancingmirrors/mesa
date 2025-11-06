@@ -34,6 +34,9 @@
 #include "genxml/gen_macros.h"
 #include "genxml/hasvk_genX_pack.h"
 
+/* hasvk supports gen 7.0, 7.5, and 8.0 which all use the same pipeline statistics mask */
+#define ANV_PIPELINE_STATISTICS_MASK 0x000007ff
+
 /* We reserve :
  *    - GPR 14 for perf queries
  *    - GPR 15 for conditional rendering
@@ -202,6 +205,9 @@ VkResult genX(CreateQueryPool)(
    case VK_QUERY_TYPE_RESULT_STATUS_ONLY_KHR:
       uint64s_per_slot = 1;
       break;
+   case VK_QUERY_TYPE_VIDEO_ENCODE_FEEDBACK_KHR:
+      uint64s_per_slot = 1 + 1; /* availability + length of written bitstream data */
+      break;
    default:
       UNREACHABLE("Invalid query type");
    }
@@ -238,6 +244,12 @@ VkResult genX(CreateQueryPool)(
                               pool->pass_query);
    }
 #endif
+   else if (pool->type == VK_QUERY_TYPE_VIDEO_ENCODE_FEEDBACK_KHR) {
+      const VkVideoProfileInfoKHR* pVideoProfile = vk_find_struct_const(pCreateInfo->pNext, VIDEO_PROFILE_INFO_KHR);
+      assert(pVideoProfile);
+
+      pool->codec = pVideoProfile->videoCodecOperation;
+   }
 
    uint64_t size = pool->slots * (uint64_t)pool->stride;
    result = anv_device_alloc_bo(device, "query-pool", size,
@@ -493,7 +505,8 @@ VkResult genX(GetQueryPoolResults)(
           pool->type == VK_QUERY_TYPE_PERFORMANCE_QUERY_KHR ||
           pool->type == VK_QUERY_TYPE_PERFORMANCE_QUERY_INTEL ||
           pool->type == VK_QUERY_TYPE_PRIMITIVES_GENERATED_EXT ||
-          pool->type == VK_QUERY_TYPE_RESULT_STATUS_ONLY_KHR);
+          pool->type == VK_QUERY_TYPE_RESULT_STATUS_ONLY_KHR ||
+          pool->type == VK_QUERY_TYPE_VIDEO_ENCODE_FEEDBACK_KHR);
 
    if (vk_device_is_lost(&device->vk))
       return VK_ERROR_DEVICE_LOST;
@@ -639,6 +652,21 @@ VkResult genX(GetQueryPoolResults)(
          cpu_write_query_result(pData, flags, idx, result);
          break;
 
+      case VK_QUERY_TYPE_VIDEO_ENCODE_FEEDBACK_KHR: {
+         if (!write_results)
+            break;
+
+         /*
+          * Slot 0 : Availability.
+          * Slot 1 : Bitstream bytes written.
+          */
+         const uint64_t *slot = query_slot(pool, firstQuery + i);
+         /* Set 0 as offset. */
+         cpu_write_query_result(pData, flags, idx++, 0);
+         cpu_write_query_result(pData, flags, idx++, slot[1]);
+         break;
+      }
+
       default:
          UNREACHABLE("invalid pool type");
       }
@@ -761,6 +789,15 @@ emit_zero_queries(struct anv_cmd_buffer *cmd_buffer,
       }
       break;
 
+   case VK_QUERY_TYPE_VIDEO_ENCODE_FEEDBACK_KHR:
+      for (uint32_t i = 0; i < num_queries; i++) {
+         struct anv_address slot_addr =
+            anv_query_address(pool, first_index + i);
+         mi_memset(b, anv_address_add(slot_addr, 8), 0, pool->stride - 8);
+         emit_query_mi_availability(b, slot_addr, true);
+      }
+      break;
+
    default:
       UNREACHABLE("Unsupported query type");
    }
@@ -842,6 +879,15 @@ void genX(CmdResetQueryPool)(
       for (uint32_t i = 0; i < queryCount; i++)
          emit_query_mi_flush_availability(cmd_buffer, anv_query_address(pool, firstQuery + i), false);
       break;
+
+   case VK_QUERY_TYPE_VIDEO_ENCODE_FEEDBACK_KHR: {
+      struct mi_builder b;
+      mi_builder_init(&b, cmd_buffer->device->info, &cmd_buffer->batch);
+
+      for (uint32_t i = 0; i < queryCount; i++)
+         emit_query_mi_availability(&b, anv_query_address(pool, firstQuery + i), false);
+      break;
+   }
 
    default:
       UNREACHABLE("Unsupported query type");
@@ -1143,6 +1189,9 @@ void genX(CmdBeginQueryIndexedEXT)(
    case VK_QUERY_TYPE_RESULT_STATUS_ONLY_KHR:
       emit_query_mi_flush_availability(cmd_buffer, query_addr, false);
       break;
+   case VK_QUERY_TYPE_VIDEO_ENCODE_FEEDBACK_KHR:
+      emit_query_mi_availability(&b, query_addr, false);
+      break;
    default:
       UNREACHABLE("");
    }
@@ -1314,6 +1363,29 @@ void genX(CmdEndQueryIndexedEXT)(
       emit_query_mi_flush_availability(cmd_buffer, query_addr, true);
       break;
 
+#if GFX_VER < 11
+#define MFC_BITSTREAM_BYTECOUNT_FRAME_REG       0x128A0
+#define HCP_BITSTREAM_BYTECOUNT_FRAME_REG       0x1E9A0
+#elif GFX_VER >= 11
+#define MFC_BITSTREAM_BYTECOUNT_FRAME_REG       0x1C08A0
+#define HCP_BITSTREAM_BYTECOUNT_FRAME_REG       0x1C28A0
+#endif
+
+   case VK_QUERY_TYPE_VIDEO_ENCODE_FEEDBACK_KHR: {
+      uint32_t reg_addr;
+
+      if (pool->codec & VK_VIDEO_CODEC_OPERATION_ENCODE_H264_BIT_KHR) {
+         reg_addr = MFC_BITSTREAM_BYTECOUNT_FRAME_REG;
+      } else if (pool->codec & VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_KHR) {
+         reg_addr = HCP_BITSTREAM_BYTECOUNT_FRAME_REG;
+      } else {
+         UNREACHABLE("Invalid codec operation");
+      }
+
+      mi_store(&b, mi_mem64(anv_address_add(query_addr, 8)), mi_reg32(reg_addr));
+      emit_query_mi_availability(&b, query_addr, true);
+      break;
+   }
    default:
       UNREACHABLE("");
    }
