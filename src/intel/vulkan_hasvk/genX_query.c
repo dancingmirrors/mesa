@@ -34,9 +34,6 @@
 #include "genxml/gen_macros.h"
 #include "genxml/hasvk_genX_pack.h"
 
-/* hasvk supports gen 7.0, 7.5, and 8.0 which all use the same pipeline statistics mask */
-#define ANV_PIPELINE_STATISTICS_MASK 0x000007ff
-
 /* We reserve :
  *    - GPR 14 for perf queries
  *    - GPR 15 for conditional rendering
@@ -52,6 +49,15 @@
 #include "perf/intel_perf_regs.h"
 
 #include "vk_util.h"
+
+/* Video encode feedback query register addresses */
+#if GFX_VER < 11
+#define MFC_BITSTREAM_BYTECOUNT_FRAME_REG       0x128A0
+#define HCP_BITSTREAM_BYTECOUNT_FRAME_REG       0x1E9A0
+#elif GFX_VER >= 11
+#define MFC_BITSTREAM_BYTECOUNT_FRAME_REG       0x1C08A0
+#define HCP_BITSTREAM_BYTECOUNT_FRAME_REG       0x1C28A0
+#endif
 
 static enum anv_pipe_bits
 convert_pc_to_bits(struct GENX(PIPE_CONTROL) *pc) {
@@ -657,13 +663,17 @@ VkResult genX(GetQueryPoolResults)(
             break;
 
          /*
-          * Slot 0 : Availability.
-          * Slot 1 : Bitstream bytes written.
+          * Video encode feedback query results per VK_KHR_video_encode_queue:
+          * - Result 0: VkDeviceSize offset (always 0 for single-pass encoding)
+          * - Result 1: VkDeviceSize size (bitstream bytes written)
+          *
+          * Query pool layout:
+          * - Slot 0: Availability flag
+          * - Slot 1: Bitstream bytes written (read from hardware register)
           */
          const uint64_t *slot = query_slot(pool, firstQuery + i);
-         /* Set 0 as offset. */
-         cpu_write_query_result(pData, flags, idx++, 0);
-         cpu_write_query_result(pData, flags, idx++, slot[1]);
+         cpu_write_query_result(pData, flags, idx++, 0);        /* offset */
+         cpu_write_query_result(pData, flags, idx++, slot[1]);  /* size */
          break;
       }
 
@@ -1362,14 +1372,6 @@ void genX(CmdEndQueryIndexedEXT)(
    case VK_QUERY_TYPE_RESULT_STATUS_ONLY_KHR:
       emit_query_mi_flush_availability(cmd_buffer, query_addr, true);
       break;
-
-#if GFX_VER < 11
-#define MFC_BITSTREAM_BYTECOUNT_FRAME_REG       0x128A0
-#define HCP_BITSTREAM_BYTECOUNT_FRAME_REG       0x1E9A0
-#elif GFX_VER >= 11
-#define MFC_BITSTREAM_BYTECOUNT_FRAME_REG       0x1C08A0
-#define HCP_BITSTREAM_BYTECOUNT_FRAME_REG       0x1C28A0
-#endif
 
    case VK_QUERY_TYPE_VIDEO_ENCODE_FEEDBACK_KHR: {
       uint32_t reg_addr;
