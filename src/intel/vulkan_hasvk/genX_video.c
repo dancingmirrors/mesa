@@ -124,9 +124,10 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       ss.TiledSurface = img->planes[0].primary_surface.isl.tiling != ISL_TILING_LINEAR;
       ss.TileWalk = TW_YMAJOR;
 #if GFX_VER == 7
-      /* On Gen7, for NV12 format with interleaved chroma, set HalfPitchforChroma
-       * to indicate that chroma samples are at half-pitch intervals */
-      ss.HalfPitchforChroma = 1;
+      /* On Gen7, HalfPitchforChroma must be explicitly set. For Y-tiled NV12,
+       * the chroma plane uses the same pitch as luma (not half), so set to 0.
+       * This field doesn't exist or is reserved on Gen7.5+. */
+      ss.HalfPitchforChroma = 0;
 #endif
 
       ss.YOffsetforUCb =
