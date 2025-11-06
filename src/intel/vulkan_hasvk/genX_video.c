@@ -277,7 +277,10 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
 #endif
    }
 
-   /* Store the base address for later offset calculations */
+   /* Store the base address (4KB-aligned) for later offset calculations.
+    * Hardware requires MFXIndirectBitstreamObjectAddress to be 4KB-aligned,
+    * and subsequent BSD commands use 29-bit offsets relative to this base.
+    */
    uint64_t bitstream_base_offset = frame_info->srcBufferOffset & ~4095;
    
    anv_batch_emit(&cmd_buffer->batch, GENX(MFX_IND_OBJ_BASE_ADDR_STATE), index_obj) {
