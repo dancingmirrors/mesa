@@ -59,6 +59,10 @@
 #define HCP_BITSTREAM_BYTECOUNT_FRAME_REG       0x1C28A0
 #endif
 
+/* Query pool layout offsets (in bytes from slot base) */
+#define QUERY_AVAILABLE_OFFSET          0
+#define QUERY_DATA_OFFSET               8
+
 static enum anv_pipe_bits
 convert_pc_to_bits(struct GENX(PIPE_CONTROL) *pc) {
    enum anv_pipe_bits bits = 0;
@@ -1378,21 +1382,23 @@ void genX(CmdEndQueryIndexedEXT)(
       break;
 
    case VK_QUERY_TYPE_VIDEO_ENCODE_FEEDBACK_KHR: {
-      uint32_t reg_addr;
-
-      /* Video codec operation should be a single flag, not a combination.
-       * Check H264 first as it's more common on the hardware this driver supports.
+      /* Select hardware register based on codec operation.
+       * Video codec operation should be a single flag, not a combination.
        */
-      if (pool->codec == VK_VIDEO_CODEC_OPERATION_ENCODE_H264_BIT_KHR) {
+      uint32_t reg_addr;
+      switch (pool->codec) {
+      case VK_VIDEO_CODEC_OPERATION_ENCODE_H264_BIT_KHR:
          reg_addr = MFC_BITSTREAM_BYTECOUNT_FRAME_REG;
-      } else if (pool->codec == VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_KHR) {
+         break;
+      case VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_KHR:
          reg_addr = HCP_BITSTREAM_BYTECOUNT_FRAME_REG;
-      } else {
-         /* Invalid or unsupported codec operation */
+         break;
+      default:
          UNREACHABLE("Video query codec must be exactly one of H264 or H265 encode");
       }
 
-      mi_store(&b, mi_mem64(anv_address_add(query_addr, 8)), mi_reg32(reg_addr));
+      mi_store(&b, mi_mem64(anv_address_add(query_addr, QUERY_DATA_OFFSET)),
+               mi_reg32(reg_addr));
       emit_query_mi_availability(&b, query_addr, true);
       break;
    }
