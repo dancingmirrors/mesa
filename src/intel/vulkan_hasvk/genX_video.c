@@ -115,6 +115,37 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
 
    const struct anv_image_view *iv = anv_image_view_from_handle(frame_info->dstPictureResource.imageViewBinding);
    const struct anv_image *img = iv->image;
+
+   /* Debug output for decode surface configuration */
+   if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+      fprintf(stderr, "H264 Decode Surface Configuration:\n");
+      fprintf(stderr, "  Surface dimensions: %ux%u\n",
+              img->vk.extent.width, img->vk.extent.height);
+      fprintf(stderr, "  Luma plane pitch: %u bytes\n",
+              img->planes[0].primary_surface.isl.row_pitch_B);
+      fprintf(stderr, "  Luma plane size: %lu bytes\n",
+              img->planes[0].primary_surface.memory_range.size);
+      fprintf(stderr, "  Chroma plane offset: %lu bytes\n",
+              img->planes[1].primary_surface.memory_range.offset);
+      fprintf(stderr, "  Chroma plane size: %lu bytes\n",
+              img->planes[1].primary_surface.memory_range.size);
+      fprintf(stderr, "  Tiling mode: %s\n",
+              img->planes[0].primary_surface.isl.tiling == ISL_TILING_LINEAR ? "Linear" :
+              img->planes[0].primary_surface.isl.tiling == ISL_TILING_X ? "X-tiled" :
+              img->planes[0].primary_surface.isl.tiling == ISL_TILING_Y0 ? "Y0-tiled" : "Other");
+      fprintf(stderr, "  Chroma YOffset: %lu rows\n",
+              img->planes[1].primary_surface.memory_range.offset / img->planes[0].primary_surface.isl.row_pitch_B);
+#if GFX_VERx10 == 70
+      fprintf(stderr, "  [IVB] Expected luma size: %u bytes\n",
+              img->vk.extent.width * img->vk.extent.height);
+      fprintf(stderr, "  [IVB] Actual luma size: %lu bytes\n",
+              img->planes[0].primary_surface.memory_range.size);
+      fprintf(stderr, "  [IVB] Padding: %lu bytes (%lu rows)\n",
+              img->planes[0].primary_surface.memory_range.size - (img->vk.extent.width * img->vk.extent.height),
+              (img->planes[0].primary_surface.memory_range.size - (img->vk.extent.width * img->vk.extent.height)) / img->vk.extent.width);
+#endif
+   }
+
    anv_batch_emit(&cmd_buffer->batch, GENX(MFX_SURFACE_STATE), ss) {
       ss.Width = img->vk.extent.width - 1;
       ss.Height = img->vk.extent.height - 1;
@@ -198,11 +229,29 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
 #if GFX_VERx10 == 80
       struct anv_bo *ref_bo = NULL;
 #endif
+      /* Debug reference frame configuration */
+      if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+         fprintf(stderr, "Reference Frame Configuration:\n");
+         fprintf(stderr, "  Total reference slots: %u\n", frame_info->referenceSlotCount);
+      }
+
       for (unsigned i = 0; i < frame_info->referenceSlotCount; i++) {
          const struct anv_image_view *ref_iv = anv_image_view_from_handle(frame_info->pReferenceSlots[i].pPictureResource->imageViewBinding);
          /* Use iteration index i for hardware reference picture arrays */
          buf.ReferencePictureAddress[i] = anv_image_address(ref_iv->image,
                                                             &ref_iv->image->planes[0].primary_surface.memory_range);
+
+         /* Debug each reference frame */
+         if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+            fprintf(stderr, "  Ref[%u]: slot_idx=%d, dimensions=%ux%u, pitch=%u, tiling=%s\n",
+                    i, frame_info->pReferenceSlots[i].slotIndex,
+                    ref_iv->image->vk.extent.width, ref_iv->image->vk.extent.height,
+                    ref_iv->image->planes[0].primary_surface.isl.row_pitch_B,
+                    ref_iv->image->planes[0].primary_surface.isl.tiling == ISL_TILING_LINEAR ? "Linear" :
+                    ref_iv->image->planes[0].primary_surface.isl.tiling == ISL_TILING_X ? "X-tiled" :
+                    ref_iv->image->planes[0].primary_surface.isl.tiling == ISL_TILING_Y0 ? "Y0-tiled" : "Other");
+         }
+
 #if GFX_VERx10 == 70
          /* IVB: MOCS fields are split into CacheabilityControl and GraphicsDataType */
          uint32_t ref_mocs = anv_mocs(cmd_buffer->device, ref_iv->image->bindings[0].address.bo, 0);
@@ -277,6 +326,11 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
 #endif
    }
 
+   /* Debug DPB state */
+   if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+      fprintf(stderr, "DPB State Configuration:\n");
+   }
+
    anv_batch_emit(&cmd_buffer->batch, GENX(MFD_AVC_DPB_STATE), avc_dpb) {
       for (unsigned i = 0; i < frame_info->referenceSlotCount; i++) {
          const struct VkVideoDecodeH264DpbSlotInfoKHR *dpb_slot =
@@ -297,6 +351,15 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
          else
             avc_dpb.UsedforReference[idx] = ref_info->flags.top_field_flag | (ref_info->flags.bottom_field_flag << 1);
          avc_dpb.LTSTFrameNumberList[idx] = ref_info->FrameNum;
+
+         /* Debug DPB entries */
+         if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+            fprintf(stderr, "  DPB[%u] slot=%d->idx=%d, FrameNum=%u, UsedForRef=%u, LongTerm=%u, NonExisting=%u\n",
+                    i, slot_idx, idx, ref_info->FrameNum,
+                    avc_dpb.UsedforReference[idx],
+                    avc_dpb.LongTermFrame[idx],
+                    avc_dpb.NonExistingFrame[idx]);
+         }
       }
    }
 
@@ -309,6 +372,18 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
    uint32_t pic_height = sps->pic_height_in_map_units_minus1 + 1;
    if (!sps->flags.frame_mbs_only_flag)
       pic_height *= 2;
+
+   /* Debug image state configuration */
+   if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+      fprintf(stderr, "AVC Image State:\n");
+      fprintf(stderr, "  Frame: %ux%u MBs (width_minus1=%u, height=%u)\n",
+              sps->pic_width_in_mbs_minus1 + 1, pic_height,
+              sps->pic_width_in_mbs_minus1, pic_height - 1);
+      fprintf(stderr, "  ChromaFormatIDC: %u, FieldPicture: %u, FrameMBOnly: %u\n",
+              sps->chroma_format_idc,
+              h264_pic_info->pStdPictureInfo->flags.field_pic_flag,
+              sps->flags.frame_mbs_only_flag);
+   }
 
    anv_batch_emit(&cmd_buffer->batch, GENX(MFX_AVC_IMG_STATE), avc_img) {
       avc_img.FrameWidth = sps->pic_width_in_mbs_minus1;
@@ -438,6 +513,14 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       }
    }
 
+   /* Debug direct mode / POC configuration */
+   if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+      fprintf(stderr, "Direct Mode State Configuration:\n");
+      fprintf(stderr, "  Current frame POC: [%d, %d]\n",
+              h264_pic_info->pStdPictureInfo->PicOrderCnt[0],
+              h264_pic_info->pStdPictureInfo->PicOrderCnt[1]);
+   }
+
    anv_batch_emit(&cmd_buffer->batch, GENX(MFX_AVC_DIRECTMODE_STATE), avc_directmode) {
       /* bind reference frame DMV */
       #if defined(__GNUC__)
@@ -496,6 +579,14 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
 #endif
          avc_directmode.POCList[2 * idx] = ref_info->PicOrderCnt[0];
          avc_directmode.POCList[2 * idx + 1] = ref_info->PicOrderCnt[1];
+
+         /* Debug POC values for reference frames */
+         if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+            fprintf(stderr, "  Ref[%u] slot=%d, idx=%d, POC=[%d, %d], flags=0x%x\n",
+                    i, slot_idx, idx,
+                    ref_info->PicOrderCnt[0], ref_info->PicOrderCnt[1],
+                    *(uint32_t*)&ref_info->flags);
+         }
       }
 
 #if GFX_VERx10 == 70
@@ -565,15 +656,31 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
    }
 
 #if GFX_VERx10 == 70
-   /* On Ivy Bridge, we need to flush the data cache after video decode
+   /* On Ivy Bridge, we need comprehensive cache flushes after video decode
     * operations to ensure decoded frame data is visible when used as
-    * reference frames for subsequent P/B frames. Without this flush,
+    * reference frames for subsequent P/B frames. Without these flushes,
     * we get cache coherency issues causing visual corruption.
+    *
+    * The "nuclear option" approach: flush everything to ensure cache coherency.
+    * This addresses potential issues with:
+    * - Reference frame corruption
+    * - Chroma plane misalignment
+    * - Buffer alignment requirements specific to Ivy Bridge
     */
+   if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+      fprintf(stderr, "[IVB] Applying comprehensive PIPE_CONTROL flush after decode\n");
+   }
+
    anv_batch_emit(&cmd_buffer->batch, GENX(PIPE_CONTROL), pc) {
       pc.CommandStreamerStallEnable = 1;
       pc.StallAtPixelScoreboard = 1;
       pc.DCFlushEnable = 1;
+      pc.RenderTargetCacheFlushEnable = 1;
+      pc.DepthCacheFlushEnable = 1;
+      pc.StateCacheInvalidationEnable = 1;
+      pc.InstructionCacheInvalidateEnable = 1;
+      pc.TextureCacheInvalidationEnable = 1;
+      pc.VFCacheInvalidationEnable = 1;
    }
 #endif
 }
