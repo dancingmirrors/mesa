@@ -17,9 +17,9 @@ gen_xml_files = [
   'gen300.xml',
 ]
 
-# Old-style genxml files for hasvk driver
-# These use the old XML format (start/end instead of dword/bits)
-# and are prefixed with hasvk_ to avoid conflicts
+# Separate genxml files for hasvk driver
+# These use the modern import-based XML format (same as gen70.xml, gen75.xml, gen80.xml)
+# and are kept separate to avoid conflicts with anv driver
 gen_xml_hasvk_files = [
   'hasvk_gen7.xml',
   'hasvk_gen75.xml',

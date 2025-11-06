@@ -1,61 +1,26 @@
 <?xml version='1.0' encoding='utf-8'?>
 <genxml name="IVB" gen="7">
-  <enum name="3D_Color_Buffer_Blend_Factor" prefix="BLENDFACTOR">
-    <value name="ONE" value="1" />
-    <value name="SRC_COLOR" value="2" />
-    <value name="SRC_ALPHA" value="3" />
-    <value name="DST_ALPHA" value="4" />
-    <value name="DST_COLOR" value="5" />
-    <value name="SRC_ALPHA_SATURATE" value="6" />
-    <value name="CONST_COLOR" value="7" />
-    <value name="CONST_ALPHA" value="8" />
-    <value name="SRC1_COLOR" value="9" />
-    <value name="SRC1_ALPHA" value="10" />
-    <value name="ZERO" value="17" />
-    <value name="INV_SRC_COLOR" value="18" />
-    <value name="INV_SRC_ALPHA" value="19" />
-    <value name="INV_DST_ALPHA" value="20" />
-    <value name="INV_DST_COLOR" value="21" />
-    <value name="INV_CONST_COLOR" value="23" />
-    <value name="INV_CONST_ALPHA" value="24" />
-    <value name="INV_SRC1_COLOR" value="25" />
-    <value name="INV_SRC1_ALPHA" value="26" />
-  </enum>
-  <enum name="3D_Color_Buffer_Blend_Function" prefix="BLENDFUNCTION">
-    <value name="ADD" value="0" />
-    <value name="SUBTRACT" value="1" />
-    <value name="REVERSE_SUBTRACT" value="2" />
-    <value name="MIN" value="3" />
-    <value name="MAX" value="4" />
-  </enum>
-  <enum name="3D_Compare_Function" prefix="COMPAREFUNCTION">
-    <value name="ALWAYS" value="0" />
-    <value name="NEVER" value="1" />
-    <value name="LESS" value="2" />
-    <value name="EQUAL" value="3" />
-    <value name="LEQUAL" value="4" />
-    <value name="GREATER" value="5" />
-    <value name="NOTEQUAL" value="6" />
-    <value name="GEQUAL" value="7" />
-  </enum>
-  <enum name="3D_Logic_Op_Function" prefix="LOGICOP">
-    <value name="CLEAR" value="0" />
-    <value name="NOR" value="1" />
-    <value name="AND_INVERTED" value="2" />
-    <value name="COPY_INVERTED" value="3" />
-    <value name="AND_REVERSE" value="4" />
-    <value name="INVERT" value="5" />
-    <value name="XOR" value="6" />
-    <value name="NAND" value="7" />
-    <value name="AND" value="8" />
-    <value name="EQUIV" value="9" />
-    <value name="NOOP" value="10" />
-    <value name="OR_INVERTED" value="11" />
-    <value name="COPY" value="12" />
-    <value name="OR_REVERSE" value="13" />
-    <value name="OR" value="14" />
-    <value name="SET" value="15" />
-  </enum>
+  <import name="gen60.xml">
+    <exclude name="3DSTATE_BINDING_TABLE_POINTERS" />
+    <exclude name="3DSTATE_GS_SVB_INDEX" />
+    <exclude name="3DSTATE_SAMPLER_STATE_POINTERS" />
+    <exclude name="3DSTATE_URB" />
+    <exclude name="3DSTATE_VIEWPORT_STATE_POINTERS" />
+    <exclude name="CLIP_VIEWPORT" />
+    <exclude name="INSTDONE_2" />
+    <exclude name="MEDIA_GATEWAY_STATE" />
+    <exclude name="MFC_AVC_FQM_STATE" />
+    <exclude name="MFC_AVC_PAK_INSERT_OBJECT" />
+    <exclude name="MFC_STITCH_OBJECT" />
+    <exclude name="MFX_AVC_QM_STATE" />
+    <exclude name="MFX_MPEG2_QM_STATE" />
+    <exclude name="MFX_VC1_PIC_STATE" />
+    <exclude name="MI_LOAD_SCAN_LINES_EXCL" />
+    <exclude name="SF_VIEWPORT" />
+    <exclude name="MFX_BSP_BUF_BASE_ADDR_STATE" />
+    <exclude name="MFD_AVC_SLICEADDR" />
+    <exclude name="MFD_AVC_BSD_OBJECT" />
+  </import>
   <enum name="3D_Prim_Topo_Type" prefix="3DPRIM">
     <value name="POINTLIST" value="1" />
     <value name="LINELIST" value="2" />
@@ -111,34 +76,6 @@
     <value name="PATCHLIST_31" value="62" />
     <value name="PATCHLIST_32" value="63" />
   </enum>
-  <enum name="3D_Stencil_Operation" prefix="STENCILOP">
-    <value name="KEEP" value="0" />
-    <value name="ZERO" value="1" />
-    <value name="REPLACE" value="2" />
-    <value name="INCRSAT" value="3" />
-    <value name="DECRSAT" value="4" />
-    <value name="INCR" value="5" />
-    <value name="DECR" value="6" />
-    <value name="INVERT" value="7" />
-  </enum>
-  <enum name="3D_Vertex_Component_Control" prefix="VFCOMP">
-    <value name="NOSTORE" value="0" />
-    <value name="STORE_SRC" value="1" />
-    <value name="STORE_0" value="2" />
-    <value name="STORE_1_FP" value="3" />
-    <value name="STORE_1_INT" value="4" />
-    <value name="STORE_VID" value="5" />
-    <value name="STORE_IID" value="6" />
-    <value name="STORE_PID" value="7" />
-  </enum>
-  <enum name="Texture Coordinate Mode" prefix="TCM">
-    <value name="WRAP" value="0" />
-    <value name="MIRROR" value="1" />
-    <value name="CLAMP" value="2" />
-    <value name="CUBE" value="3" />
-    <value name="CLAMP_BORDER" value="4" />
-    <value name="MIRROR_ONCE" value="5" />
-  </enum>
   <struct name="3DSTATE_CONSTANT_BODY" length="6">
     <group count="4" dword="0" size="16">
       <field name="Read Length" dword="0" bits="15:0" type="uint" />
@@ -147,84 +84,6 @@
     <group count="4" dword="2" size="32">
       <field name="Buffer" dword="0" bits="31:5" type="address" />
     </group>
-  </struct>
-  <struct name="BINDING_TABLE_STATE" length="1">
-    <field name="Surface State Pointer" dword="0" bits="31:5" type="offset" />
-  </struct>
-  <struct name="BLEND_STATE_ENTRY" length="2">
-    <field name="Destination Blend Factor" dword="0" bits="4:0" type="3D_Color_Buffer_Blend_Factor" />
-    <field name="Source Blend Factor" dword="0" bits="9:5" type="3D_Color_Buffer_Blend_Factor" />
-    <field name="Color Blend Function" dword="0" bits="13:11" type="3D_Color_Buffer_Blend_Function" />
-    <field name="Destination Alpha Blend Factor" dword="0" bits="19:15" type="3D_Color_Buffer_Blend_Factor" />
-    <field name="Source Alpha Blend Factor" dword="0" bits="24:20" type="3D_Color_Buffer_Blend_Factor" />
-    <field name="Alpha Blend Function" dword="0" bits="28:26" type="3D_Color_Buffer_Blend_Function" />
-    <field name="Independent Alpha Blend Enable" dword="0" bits="30:30" type="bool" />
-    <field name="Color Buffer Blend Enable" dword="0" bits="31:31" type="bool" />
-    <field name="Post-Blend Color Clamp Enable" dword="1" bits="0:0" type="bool" />
-    <field name="Pre-Blend Color Clamp Enable" dword="1" bits="1:1" type="bool" />
-    <field name="Color Clamp Range" dword="1" bits="3:2" type="uint">
-      <value name="COLORCLAMP_UNORM" value="0" />
-      <value name="COLORCLAMP_SNORM" value="1" />
-      <value name="COLORCLAMP_RTFORMAT" value="2" />
-    </field>
-    <field name="Y Dither Offset" dword="1" bits="9:8" type="uint" />
-    <field name="X Dither Offset" dword="1" bits="11:10" type="uint" />
-    <field name="Color Dither Enable" dword="1" bits="12:12" type="bool" />
-    <field name="Alpha Test Function" dword="1" bits="15:13" type="3D_Compare_Function" />
-    <field name="Alpha Test Enable" dword="1" bits="16:16" type="bool" />
-    <field name="Logic Op Function" dword="1" bits="21:18" type="3D_Logic_Op_Function" />
-    <field name="Logic Op Enable" dword="1" bits="22:22" type="bool" />
-    <field name="Write Disable Blue" dword="1" bits="24:24" type="bool" />
-    <field name="Write Disable Green" dword="1" bits="25:25" type="bool" />
-    <field name="Write Disable Red" dword="1" bits="26:26" type="bool" />
-    <field name="Write Disable Alpha" dword="1" bits="27:27" type="bool" />
-    <field name="AlphaToCoverage Dither Enable" dword="1" bits="29:29" type="bool" />
-    <field name="AlphaToOne Enable" dword="1" bits="30:30" type="bool" />
-    <field name="AlphaToCoverage Enable" dword="1" bits="31:31" type="bool" />
-  </struct>
-  <struct name="BLEND_STATE" length="0">
-    <group count="0" dword="0" size="64">
-      <field name="Entry" dword="0" bits="63:0" type="BLEND_STATE_ENTRY" />
-    </group>
-  </struct>
-  <struct name="CC_VIEWPORT" length="2">
-    <field name="Minimum Depth" dword="0" bits="31:0" type="float" />
-    <field name="Maximum Depth" dword="1" bits="31:0" type="float" />
-  </struct>
-  <struct name="COLOR_CALC_STATE" length="6">
-    <field name="Alpha Test Format" dword="0" bits="0:0" type="uint">
-      <value name="ALPHATEST_UNORM8" value="0" />
-      <value name="ALPHATEST_FLOAT32" value="1" />
-    </field>
-    <field name="Round Disable Function Disable" dword="0" bits="15:15" type="bool" />
-    <field name="Backface Stencil Reference Value" dword="0" bits="23:16" type="uint" />
-    <field name="Stencil Reference Value" dword="0" bits="31:24" type="uint" />
-    <field name="Alpha Reference Value As UNORM8" dword="1" bits="31:0" type="uint" />
-    <field name="Alpha Reference Value As FLOAT32" dword="1" bits="31:0" type="float" />
-    <field name="Blend Constant Color Red" dword="2" bits="31:0" type="float" />
-    <field name="Blend Constant Color Green" dword="3" bits="31:0" type="float" />
-    <field name="Blend Constant Color Blue" dword="4" bits="31:0" type="float" />
-    <field name="Blend Constant Color Alpha" dword="5" bits="31:0" type="float" />
-  </struct>
-  <struct name="DEPTH_STENCIL_STATE" length="3">
-    <field name="Backface Stencil Pass Depth Pass Op" dword="0" bits="5:3" type="3D_Stencil_Operation" />
-    <field name="Backface Stencil Pass Depth Fail Op" dword="0" bits="8:6" type="3D_Stencil_Operation" />
-    <field name="Backface Stencil Fail Op" dword="0" bits="11:9" type="3D_Stencil_Operation" />
-    <field name="Backface Stencil Test Function" dword="0" bits="14:12" type="3D_Compare_Function" />
-    <field name="Double Sided Stencil Enable" dword="0" bits="15:15" type="bool" />
-    <field name="Stencil Buffer Write Enable" dword="0" bits="18:18" type="bool" />
-    <field name="Stencil Pass Depth Pass Op" dword="0" bits="21:19" type="3D_Stencil_Operation" />
-    <field name="Stencil Pass Depth Fail Op" dword="0" bits="24:22" type="3D_Stencil_Operation" />
-    <field name="Stencil Fail Op" dword="0" bits="27:25" type="3D_Stencil_Operation" />
-    <field name="Stencil Test Function" dword="0" bits="30:28" type="3D_Compare_Function" />
-    <field name="Stencil Test Enable" dword="0" bits="31:31" type="bool" />
-    <field name="Backface Stencil Write Mask" dword="1" bits="7:0" type="uint" />
-    <field name="Backface Stencil Test Mask" dword="1" bits="15:8" type="uint" />
-    <field name="Stencil Write Mask" dword="1" bits="23:16" type="uint" />
-    <field name="Stencil Test Mask" dword="1" bits="31:24" type="uint" />
-    <field name="Depth Buffer Write Enable" dword="2" bits="26:26" type="bool" />
-    <field name="Depth Test Function" dword="2" bits="29:27" type="3D_Compare_Function" />
-    <field name="Depth Test Enable" dword="2" bits="31:31" type="bool" />
   </struct>
   <struct name="INLINE_DATA_DESCRIPTION_FOR_MFD_AVC_BSD_OBJECT" length="2">
     <field name="MB Error Concealment P Slice Weight Prediction Disable" dword="0" bits="0:0" type="bool" />
@@ -300,12 +159,6 @@
     <field name="Slice Vertical Position" dword="0" bits="22:16" type="uint" />
     <field name="Slice Horizontal Position" dword="0" bits="30:24" type="uint" />
     <field name="Quantizer Scale Code" dword="1" bits="28:24" type="uint" />
-  </struct>
-  <struct name="PALETTE_ENTRY" length="1">
-    <field name="Blue" dword="0" bits="7:0" type="uint" />
-    <field name="Green" dword="0" bits="15:8" type="uint" />
-    <field name="Red" dword="0" bits="23:16" type="uint" />
-    <field name="Alpha" dword="0" bits="31:24" type="uint" />
   </struct>
   <struct name="RENDER_SURFACE_STATE" length="8">
     <field name="Cube Face Enable - Positive Z" dword="0" bits="0:0" type="bool" />
@@ -495,12 +348,6 @@
     <field name="ChromaKey Index" dword="3" bits="24:23" type="uint" />
     <field name="ChromaKey Enable" dword="3" bits="25:25" type="bool" />
   </struct>
-  <struct name="SCISSOR_RECT" length="2">
-    <field name="Scissor Rectangle X Min" dword="0" bits="15:0" type="uint" />
-    <field name="Scissor Rectangle Y Min" dword="0" bits="31:16" type="uint" />
-    <field name="Scissor Rectangle X Max" dword="1" bits="15:0" type="uint" />
-    <field name="Scissor Rectangle Y Max" dword="1" bits="31:16" type="uint" />
-  </struct>
   <struct name="SF_CLIP_VIEWPORT" length="16">
     <field name="Viewport Matrix Element m00" dword="0" bits="31:0" type="float" />
     <field name="Viewport Matrix Element m11" dword="1" bits="31:0" type="float" />
@@ -512,26 +359,6 @@
     <field name="X Max Clip Guardband" dword="9" bits="31:0" type="float" />
     <field name="Y Min Clip Guardband" dword="10" bits="31:0" type="float" />
     <field name="Y Max Clip Guardband" dword="11" bits="31:0" type="float" />
-  </struct>
-  <struct name="SF_OUTPUT_ATTRIBUTE_DETAIL" length="1">
-    <field name="Source Attribute" dword="0" bits="4:0" type="uint" />
-    <field name="Swizzle Select" dword="0" bits="7:6" type="uint">
-      <value name="INPUTATTR" value="0" />
-      <value name="INPUTATTR_FACING" value="1" />
-      <value name="INPUTATTR_W" value="2" />
-      <value name="INPUTATTR_FACING_W" value="3" />
-    </field>
-    <field name="Constant Source" dword="0" bits="10:9" type="uint">
-      <value name="CONST_0000" value="0" />
-      <value name="CONST_0001_FLOAT" value="1" />
-      <value name="CONST_1111_FLOAT" value="2" />
-      <value name="PRIM_ID" value="3" />
-    </field>
-    <field name="Swizzle Control Mode" dword="0" bits="11:11" type="uint" />
-    <field name="Component Override X" dword="0" bits="12:12" type="bool" />
-    <field name="Component Override Y" dword="0" bits="13:13" type="bool" />
-    <field name="Component Override Z" dword="0" bits="14:14" type="bool" />
-    <field name="Component Override W" dword="0" bits="15:15" type="bool" />
   </struct>
   <struct name="SO_DECL" length="1">
     <field name="Component Mask" dword="0" bits="3:0" type="uint" default="0" />
@@ -560,17 +387,6 @@
     <field name="End Address" dword="2" bits="31:0" type="address" />
     <field name="Instance Data Step Rate" dword="3" bits="31:0" type="uint" />
   </struct>
-  <struct name="VERTEX_ELEMENT_STATE" length="2">
-    <field name="Source Element Offset" dword="0" bits="11:0" type="uint" />
-    <field name="Edge Flag Enable" dword="0" bits="15:15" type="bool" />
-    <field name="Source Element Format" dword="0" bits="24:16" type="uint" />
-    <field name="Valid" dword="0" bits="25:25" type="bool" />
-    <field name="Vertex Buffer Index" dword="0" bits="31:26" type="uint" />
-    <field name="Component 3 Control" dword="1" bits="18:16" type="3D_Vertex_Component_Control" />
-    <field name="Component 2 Control" dword="1" bits="22:20" type="3D_Vertex_Component_Control" />
-    <field name="Component 1 Control" dword="1" bits="26:24" type="3D_Vertex_Component_Control" />
-    <field name="Component 0 Control" dword="1" bits="30:28" type="3D_Vertex_Component_Control" />
-  </struct>
   <instruction name="3DPRIMITIVE" bias="2" length="7" engine="render">
     <field name="DWord Length" dword="0" bits="7:0" type="uint" default="5" />
     <field name="Predicate Enable" dword="0" bits="8:8" type="bool" />
@@ -590,17 +406,6 @@
     <field name="Instance Count" dword="4" bits="31:0" type="uint" />
     <field name="Start Instance Location" dword="5" bits="31:0" type="uint" />
     <field name="Base Vertex Location" dword="6" bits="31:0" type="int" />
-  </instruction>
-  <instruction name="3DSTATE_AA_LINE_PARAMETERS" bias="2" length="3" engine="render">
-    <field name="DWord Length" dword="0" bits="7:0" type="uint" default="1" />
-    <field name="3D Command Sub Opcode" dword="0" bits="23:16" type="uint" default="10" />
-    <field name="3D Command Opcode" dword="0" bits="26:24" type="uint" default="1" />
-    <field name="Command SubType" dword="0" bits="28:27" type="uint" default="3" />
-    <field name="Command Type" dword="0" bits="31:29" type="uint" default="3" />
-    <field name="AA Coverage Slope" dword="1" bits="7:0" type="u0.8" />
-    <field name="AA Coverage Bias" dword="1" bits="23:16" type="u0.8" />
-    <field name="AA Coverage EndCap Slope" dword="2" bits="7:0" type="u0.8" />
-    <field name="AA Coverage EndCap Bias" dword="2" bits="23:16" type="u0.8" />
   </instruction>
   <instruction name="3DSTATE_BINDING_TABLE_POINTERS_DS" bias="2" length="2" engine="render">
     <field name="DWord Length" dword="0" bits="7:0" type="uint" default="0" />
@@ -659,16 +464,6 @@
     <field name="Command Type" dword="0" bits="31:29" type="uint" default="3" />
     <field dword="1" bits="0:0" type="mbo" />
     <field name="Color Calc State Pointer" dword="1" bits="31:6" type="offset" />
-  </instruction>
-  <instruction name="3DSTATE_CHROMA_KEY" bias="2" length="4" engine="render">
-    <field name="DWord Length" dword="0" bits="7:0" type="uint" default="2" />
-    <field name="3D Command Sub Opcode" dword="0" bits="23:16" type="uint" default="4" />
-    <field name="3D Command Opcode" dword="0" bits="26:24" type="uint" default="1" />
-    <field name="Command SubType" dword="0" bits="28:27" type="uint" default="3" />
-    <field name="Command Type" dword="0" bits="31:29" type="uint" default="3" />
-    <field name="ChromaKey Table Index" dword="1" bits="31:30" type="uint" />
-    <field name="ChromaKey Low Value" dword="2" bits="31:0" type="uint" />
-    <field name="ChromaKey High Value" dword="3" bits="31:0" type="uint" />
   </instruction>
   <instruction name="3DSTATE_CLEAR_PARAMS" bias="2" length="3" engine="render">
     <field name="DWord Length" dword="0" bits="7:0" type="uint" default="1" />
@@ -814,19 +609,6 @@
     <field name="Command Type" dword="0" bits="31:29" type="uint" default="3" />
     <field dword="1" bits="0:0" type="mbo" />
     <field name="Pointer to DEPTH_STENCIL_STATE" dword="1" bits="31:6" type="offset" />
-  </instruction>
-  <instruction name="3DSTATE_DRAWING_RECTANGLE" bias="2" length="4" engine="render">
-    <field name="DWord Length" dword="0" bits="7:0" type="uint" default="2" />
-    <field name="3D Command Sub Opcode" dword="0" bits="23:16" type="uint" default="0" />
-    <field name="3D Command Opcode" dword="0" bits="26:24" type="uint" default="1" />
-    <field name="Command SubType" dword="0" bits="28:27" type="uint" default="3" />
-    <field name="Command Type" dword="0" bits="31:29" type="uint" default="3" />
-    <field name="Clipped Drawing Rectangle X Min" dword="1" bits="15:0" type="uint" />
-    <field name="Clipped Drawing Rectangle Y Min" dword="1" bits="31:16" type="uint" />
-    <field name="Clipped Drawing Rectangle X Max" dword="2" bits="15:0" type="uint" />
-    <field name="Clipped Drawing Rectangle Y Max" dword="2" bits="31:16" type="uint" />
-    <field name="Drawing Rectangle Origin X" dword="3" bits="15:0" type="int" />
-    <field name="Drawing Rectangle Origin Y" dword="3" bits="31:16" type="int" />
   </instruction>
   <instruction name="3DSTATE_DS" bias="2" length="6" engine="render">
     <field name="DWord Length" dword="0" bits="7:0" type="uint" default="4" />
@@ -997,15 +779,6 @@
     <field name="Line Stipple Repeat Count" dword="2" bits="8:0" type="uint" />
     <field name="Line Stipple Inverse Repeat Count" dword="2" bits="31:15" type="u1.16" />
   </instruction>
-  <instruction name="3DSTATE_MONOFILTER_SIZE" bias="2" length="2" engine="render">
-    <field name="DWord Length" dword="0" bits="7:0" type="uint" default="0" />
-    <field name="3D Command Sub Opcode" dword="0" bits="23:16" type="uint" default="17" />
-    <field name="3D Command Opcode" dword="0" bits="26:24" type="uint" default="1" />
-    <field name="Command SubType" dword="0" bits="28:27" type="uint" default="3" />
-    <field name="Command Type" dword="0" bits="31:29" type="uint" default="3" />
-    <field name="Monochrome Filter Height" dword="1" bits="2:0" type="uint" />
-    <field name="Monochrome Filter Width" dword="1" bits="5:3" type="uint" />
-  </instruction>
   <instruction name="3DSTATE_MULTISAMPLE" bias="2" length="4" engine="render">
     <field name="DWord Length" dword="0" bits="7:0" type="uint" default="2" />
     <field name="3D Command Sub Opcode" dword="0" bits="23:16" type="uint" default="13" />
@@ -1037,25 +810,6 @@
     <field name="Sample6 X Offset" dword="3" bits="23:20" type="u0.4" />
     <field name="Sample7 Y Offset" dword="3" bits="27:24" type="u0.4" />
     <field name="Sample7 X Offset" dword="3" bits="31:28" type="u0.4" />
-  </instruction>
-  <instruction name="3DSTATE_POLY_STIPPLE_OFFSET" bias="2" length="2" engine="render">
-    <field name="DWord Length" dword="0" bits="7:0" type="uint" default="0" />
-    <field name="3D Command Sub Opcode" dword="0" bits="23:16" type="uint" default="6" />
-    <field name="3D Command Opcode" dword="0" bits="26:24" type="uint" default="1" />
-    <field name="Command SubType" dword="0" bits="28:27" type="uint" default="3" />
-    <field name="Command Type" dword="0" bits="31:29" type="uint" default="3" />
-    <field name="Polygon Stipple Y Offset" dword="1" bits="4:0" type="uint" />
-    <field name="Polygon Stipple X Offset" dword="1" bits="12:8" type="uint" />
-  </instruction>
-  <instruction name="3DSTATE_POLY_STIPPLE_PATTERN" bias="2" length="33" engine="render">
-    <field name="DWord Length" dword="0" bits="7:0" type="uint" default="31" />
-    <field name="3D Command Sub Opcode" dword="0" bits="23:16" type="uint" default="7" />
-    <field name="3D Command Opcode" dword="0" bits="26:24" type="uint" default="1" />
-    <field name="Command SubType" dword="0" bits="28:27" type="uint" default="3" />
-    <field name="Command Type" dword="0" bits="31:29" type="uint" default="3" />
-    <group count="32" dword="1" size="32">
-      <field name="Pattern Row" dword="0" bits="31:0" type="uint" />
-    </group>
   </instruction>
   <instruction name="3DSTATE_PS" bias="2" length="8" engine="render">
     <field name="DWord Length" dword="0" bits="7:0" type="uint" default="6" />
@@ -1173,29 +927,6 @@
       <value name="0KB" value="0" />
     </field>
   </instruction>
-  <instruction name="3DSTATE_SAMPLER_PALETTE_LOAD0" bias="2" engine="render">
-    <field name="DWord Length" dword="0" bits="7:0" type="uint" />
-    <field name="3D Command Sub Opcode" dword="0" bits="23:16" type="uint" default="2" />
-    <field name="3D Command Opcode" dword="0" bits="26:24" type="uint" default="1" />
-    <field name="Command SubType" dword="0" bits="28:27" type="uint" default="3" />
-    <field name="Command Type" dword="0" bits="31:29" type="uint" default="3" />
-    <group count="0" dword="1" size="32">
-      <field name="Entry" dword="0" bits="31:0" type="PALETTE_ENTRY" />
-    </group>
-  </instruction>
-  <instruction name="3DSTATE_SAMPLER_PALETTE_LOAD1" bias="2" engine="render">
-    <field name="DWord Length" dword="0" bits="7:0" type="uint" default="0" />
-    <field name="3D Command Sub Opcode" dword="0" bits="23:16" type="uint" default="12" />
-    <field name="3D Command Opcode" dword="0" bits="26:24" type="uint" default="1" />
-    <field name="Command SubType" dword="0" bits="28:27" type="uint" default="3" />
-    <field name="Command Type" dword="0" bits="31:29" type="uint" default="3" />
-    <group count="0" dword="1" size="32">
-      <field name="Palette Alpha[0:N-1]" dword="0" bits="31:24" type="uint" />
-      <field name="Palette Red[0:N-1]" dword="0" bits="23:16" type="uint" />
-      <field name="Palette Green[0:N-1]" dword="0" bits="15:8" type="uint" />
-      <field name="Palette Blue[0:N-1]" dword="0" bits="7:0" type="uint" />
-    </group>
-  </instruction>
   <instruction name="3DSTATE_SAMPLER_STATE_POINTERS_DS" bias="2" length="2" engine="render">
     <field name="DWord Length" dword="0" bits="7:0" type="uint" default="0" />
     <field name="3D Command Sub Opcode" dword="0" bits="23:16" type="uint" default="45" />
@@ -1283,14 +1014,6 @@
     <field name="Attribute 13 WrapShortest Enables" dword="13" bits="23:20" type="uint" />
     <field name="Attribute 14 WrapShortest Enables" dword="13" bits="27:24" type="uint" />
     <field name="Attribute 15 WrapShortest Enables" dword="13" bits="31:28" type="uint" />
-  </instruction>
-  <instruction name="3DSTATE_SCISSOR_STATE_POINTERS" bias="2" length="2" engine="render">
-    <field name="DWord Length" dword="0" bits="7:0" type="uint" default="0" />
-    <field name="3D Command Sub Opcode" dword="0" bits="23:16" type="uint" default="15" />
-    <field name="3D Command Opcode" dword="0" bits="26:24" type="uint" default="0" />
-    <field name="Command SubType" dword="0" bits="28:27" type="uint" default="3" />
-    <field name="Command Type" dword="0" bits="31:29" type="uint" default="3" />
-    <field name="Scissor Rect Pointer" dword="1" bits="31:5" type="offset" />
   </instruction>
   <instruction name="3DSTATE_SF" bias="2" length="7" engine="render">
     <field name="DWord Length" dword="0" bits="7:0" type="uint" default="5" />
@@ -1508,33 +1231,6 @@
     <field name="VS URB Entry Allocation Size" dword="1" bits="24:16" type="uint" />
     <field name="VS URB Starting Address" dword="1" bits="29:25" type="uint" />
   </instruction>
-  <instruction name="3DSTATE_VERTEX_BUFFERS" bias="2" engine="render">
-    <field name="DWord Length" dword="0" bits="7:0" type="uint" default="3" />
-    <field name="3D Command Sub Opcode" dword="0" bits="23:16" type="uint" default="8" />
-    <field name="3D Command Opcode" dword="0" bits="26:24" type="uint" default="0" />
-    <field name="Command SubType" dword="0" bits="28:27" type="uint" default="3" />
-    <field name="Command Type" dword="0" bits="31:29" type="uint" default="3" />
-    <group count="0" dword="1" size="128">
-      <field name="Vertex Buffer State" dword="0" bits="127:0" type="VERTEX_BUFFER_STATE" />
-    </group>
-  </instruction>
-  <instruction name="3DSTATE_VERTEX_ELEMENTS" bias="2" engine="render">
-    <field name="DWord Length" dword="0" bits="7:0" type="uint" default="1" />
-    <field name="3D Command Sub Opcode" dword="0" bits="23:16" type="uint" default="9" />
-    <field name="3D Command Opcode" dword="0" bits="26:24" type="uint" default="0" />
-    <field name="Command SubType" dword="0" bits="28:27" type="uint" default="3" />
-    <field name="Command Type" dword="0" bits="31:29" type="uint" default="3" />
-    <group count="0" dword="1" size="64">
-      <field name="Element" dword="0" bits="63:0" type="VERTEX_ELEMENT_STATE" />
-    </group>
-  </instruction>
-  <instruction name="3DSTATE_VF_STATISTICS" bias="1" length="1" engine="render">
-    <field name="Statistics Enable" dword="0" bits="0:0" type="bool" />
-    <field name="3D Command Sub Opcode" dword="0" bits="23:16" type="uint" default="11" />
-    <field name="3D Command Opcode" dword="0" bits="26:24" type="uint" default="0" />
-    <field name="Command SubType" dword="0" bits="28:27" type="uint" default="1" />
-    <field name="Command Type" dword="0" bits="31:29" type="uint" default="3" />
-  </instruction>
   <instruction name="3DSTATE_VIEWPORT_STATE_POINTERS_CC" bias="2" length="2" engine="render">
     <field name="DWord Length" dword="0" bits="7:0" type="uint" default="0" />
     <field name="3D Command Sub Opcode" dword="0" bits="23:16" type="uint" default="35" />
@@ -1550,39 +1246,6 @@
     <field name="Command SubType" dword="0" bits="28:27" type="uint" default="3" />
     <field name="Command Type" dword="0" bits="31:29" type="uint" default="3" />
     <field name="SF Clip Viewport Pointer" dword="1" bits="31:6" type="offset" />
-  </instruction>
-  <instruction name="3DSTATE_VS" bias="2" length="6" engine="render">
-    <field name="DWord Length" dword="0" bits="7:0" type="uint" default="4" />
-    <field name="3D Command Sub Opcode" dword="0" bits="23:16" type="uint" default="16" />
-    <field name="3D Command Opcode" dword="0" bits="26:24" type="uint" default="0" />
-    <field name="Command SubType" dword="0" bits="28:27" type="uint" default="3" />
-    <field name="Command Type" dword="0" bits="31:29" type="uint" default="3" />
-    <field name="Kernel Start Pointer" dword="1" bits="31:6" type="offset" />
-    <field name="Software Exception Enable" dword="2" bits="7:7" type="bool" />
-    <field name="Illegal Opcode Exception Enable" dword="2" bits="13:13" type="bool" />
-    <field name="Floating Point Mode" dword="2" bits="16:16" type="uint">
-      <value name="IEEE-754" value="0" />
-      <value name="Alternate" value="1" />
-    </field>
-    <field name="Binding Table Entry Count" dword="2" bits="25:18" type="uint" />
-    <field name="Sampler Count" dword="2" bits="29:27" type="uint">
-      <value name="No Samplers" value="0" />
-      <value name="1-4 Samplers" value="1" />
-      <value name="5-8 Samplers" value="2" />
-      <value name="9-12 Samplers" value="3" />
-      <value name="13-16 Samplers" value="4" />
-    </field>
-    <field name="Vector Mask Enable" dword="2" bits="30:30" type="bool" />
-    <field name="Single Vertex Dispatch" dword="2" bits="31:31" type="bool" />
-    <field name="Per-Thread Scratch Space" dword="3" bits="3:0" type="uint" />
-    <field name="Scratch Space Base Pointer" dword="3" bits="31:10" type="address" />
-    <field name="Vertex URB Entry Read Offset" dword="4" bits="9:4" type="uint" />
-    <field name="Vertex URB Entry Read Length" dword="4" bits="16:11" type="uint" />
-    <field name="Dispatch GRF Start Register For URB Data" dword="4" bits="24:20" type="uint" />
-    <field name="Enable" dword="5" bits="0:0" type="bool" />
-    <field name="Vertex Cache Disable" dword="5" bits="1:1" type="bool" />
-    <field name="Statistics Enable" dword="5" bits="10:10" type="bool" />
-    <field name="Maximum Number of Threads" dword="5" bits="31:25" type="uint" />
   </instruction>
   <instruction name="3DSTATE_WM" bias="2" length="3" engine="render">
     <field name="DWord Length" dword="0" bits="7:0" type="uint" default="1" />
@@ -1697,24 +1360,6 @@
     <field name="Right Execution Mask" dword="9" bits="31:0" type="uint" />
     <field name="Bottom Execution Mask" dword="10" bits="31:0" type="uint" />
   </instruction>
-  <instruction name="MEDIA_CURBE_LOAD" bias="2" length="4" engine="render">
-    <field name="DWord Length" dword="0" bits="15:0" type="uint" default="2" />
-    <field name="SubOpcode" dword="0" bits="23:16" type="uint" default="1" />
-    <field name="Media Command Opcode" dword="0" bits="26:24" type="uint" default="0" />
-    <field name="Pipeline" dword="0" bits="28:27" type="uint" default="2" />
-    <field name="Command Type" dword="0" bits="31:29" type="uint" default="3" />
-    <field name="CURBE Total Data Length" dword="2" bits="16:0" type="uint" />
-    <field name="CURBE Data Start Address" dword="3" bits="31:0" type="uint" />
-  </instruction>
-  <instruction name="MEDIA_INTERFACE_DESCRIPTOR_LOAD" bias="2" length="4" engine="render">
-    <field name="DWord Length" dword="0" bits="15:0" type="uint" default="2" />
-    <field name="SubOpcode" dword="0" bits="23:16" type="uint" default="2" />
-    <field name="Media Command Opcode" dword="0" bits="26:24" type="uint" default="0" />
-    <field name="Pipeline" dword="0" bits="28:27" type="uint" default="2" />
-    <field name="Command Type" dword="0" bits="31:29" type="uint" default="3" />
-    <field name="Interface Descriptor Total Length" dword="2" bits="16:0" type="uint" />
-    <field name="Interface Descriptor Data Start Address" dword="3" bits="31:0" type="offset" />
-  </instruction>
   <instruction name="MEDIA_OBJECT" bias="2" engine="render">
     <field name="DWord Length" dword="0" bits="15:0" type="uint" default="4" />
     <field name="Media Command Sub-Opcode" dword="0" bits="23:16" type="uint" default="0" />
@@ -1743,72 +1388,6 @@
     <field name="Scoreboard Mask" dword="5" bits="7:0" type="uint" />
     <field name="Scoreboard Color" dword="5" bits="19:16" type="uint" />
     <group count="0" dword="6" size="32">
-      <field name="Inline Data" dword="0" bits="31:0" type="uint" />
-    </group>
-  </instruction>
-  <instruction name="MEDIA_OBJECT_PRT" bias="2" length="16" engine="render">
-    <field name="DWord Length" dword="0" bits="15:0" type="uint" default="14" />
-    <field name="SubOpcode" dword="0" bits="23:16" type="uint" default="2" />
-    <field name="Media Command Opcode" dword="0" bits="26:24" type="uint" default="1" />
-    <field name="Pipeline" dword="0" bits="28:27" type="uint" default="2" />
-    <field name="Command Type" dword="0" bits="31:29" type="uint" default="3" />
-    <field name="Interface Descriptor Offset" dword="1" bits="4:0" type="uint" />
-    <field name="PRT_FenceType" dword="2" bits="22:22" type="uint">
-      <value name="Root thread queue" value="0" />
-      <value name="VFE state flush" value="1" />
-    </field>
-    <field name="PRT_Fence Needed" dword="2" bits="23:23" type="bool" />
-    <field name="Children Present" dword="2" bits="31:31" type="bool" />
-    <group count="12" dword="4" size="32">
-      <field name="Inline Data" dword="0" bits="31:0" type="uint" />
-    </group>
-  </instruction>
-  <instruction name="MEDIA_OBJECT_WALKER" bias="2" engine="render">
-    <field name="DWord Length" dword="0" bits="15:0" type="uint" default="15" />
-    <field name="SubOpcode" dword="0" bits="23:16" type="uint" default="3" />
-    <field name="Media Command Opcode" dword="0" bits="26:24" type="uint" default="1" />
-    <field name="Pipeline" dword="0" bits="28:27" type="uint" default="2" />
-    <field name="Command Type" dword="0" bits="31:29" type="uint" default="3" />
-    <field name="Interface Descriptor Offset" dword="1" bits="4:0" type="uint" />
-    <field name="Indirect Data Length" dword="2" bits="16:0" type="uint" />
-    <field name="Use Scoreboard" dword="2" bits="21:21" type="uint">
-      <value name="Not using scoreboard" value="0" />
-      <value name="Using scoreboard" value="1" />
-    </field>
-    <field name="Thread Synchronization" dword="2" bits="24:24" type="uint">
-      <value name="No thread synchronization" value="0" />
-      <value name="Thread dispatch is synchronized by the 'spawn root thread' message" value="1" />
-    </field>
-    <field name="Children Present" dword="2" bits="31:31" type="uint" />
-    <field name="Indirect Data Start Address" dword="3" bits="31:0" type="offset" />
-    <field name="Scoreboard Mask" dword="5" bits="7:0" type="uint" />
-    <field name="Mid-Loop Unit X" dword="6" bits="9:8" type="int" />
-    <field name="Local Mid-Loop Unit Y" dword="6" bits="13:12" type="int" />
-    <field name="Middle Loop Extra Steps" dword="6" bits="20:16" type="uint" />
-    <field name="Color Count Minus One" dword="6" bits="27:24" type="uint" />
-    <field name="Repel" dword="6" bits="30:30" type="uint" />
-    <field name="Dual Mode" dword="6" bits="31:31" type="uint" />
-    <field name="Local Loop Exec Count" dword="7" bits="9:0" type="uint" />
-    <field name="Global Loop Exec Count" dword="7" bits="25:16" type="uint" />
-    <field name="Block Resolution X" dword="8" bits="8:0" type="uint" />
-    <field name="Block Resolution Y" dword="8" bits="24:16" type="uint" />
-    <field name="Local Start X" dword="9" bits="8:0" type="uint" />
-    <field name="Local Start Y" dword="9" bits="24:16" type="uint" />
-    <field name="Local End X" dword="10" bits="8:0" type="uint" />
-    <field name="Local End Y" dword="10" bits="24:16" type="uint" />
-    <field name="Local Outer Loop Stride X" dword="11" bits="9:0" type="int" />
-    <field name="Local Outer Loop Stride Y" dword="11" bits="25:16" type="int" />
-    <field name="Local Inner Loop Unit X" dword="12" bits="9:0" type="int" />
-    <field name="Local Inner Loop Unit Y" dword="12" bits="25:16" type="int" />
-    <field name="Global Resolution X" dword="13" bits="8:0" type="uint" />
-    <field name="Global Resolution Y" dword="13" bits="24:16" type="uint" />
-    <field name="Global Start X" dword="14" bits="9:0" type="int" />
-    <field name="Global Start Y" dword="14" bits="25:16" type="int" />
-    <field name="Global Outer Loop Stride X" dword="15" bits="9:0" type="int" />
-    <field name="Global Outer Loop Stride Y" dword="15" bits="25:16" type="int" />
-    <field name="Global Inner Loop Unit X" dword="16" bits="9:0" type="int" />
-    <field name="Global Inner Loop Unit Y" dword="16" bits="25:16" type="int" />
-    <group count="0" dword="17" size="32">
       <field name="Inline Data" dword="0" bits="31:0" type="uint" />
     </group>
   </instruction>
@@ -2217,7 +1796,7 @@
     <field name="Media Command Opcode" dword="0" bits="26:24" type="uint" default="1" />
     <field name="Pipeline" dword="0" bits="28:27" type="uint" default="2" />
     <field name="Command Type" dword="0" bits="31:29" type="uint" default="3" />
-    <group count="32" dword="1" size="32">
+    <group count="32" dword="33" size="32">
       <field name="Direct MV Buffer - Address" dword="0" bits="31:6" type="address" />
       <field name="Direct MV Buffer - Arbitration Priority Control" dword="0" bits="5:4" type="uint">
         <value name="Highest priority" value="0" />
@@ -3151,30 +2730,6 @@
     <field name="Command Subtype" dword="0" bits="28:27" type="uint" default="1" />
     <field name="Command Type" dword="0" bits="31:29" type="uint" default="3" />
   </instruction>
-  <instruction name="MI_ARB_CHECK" bias="1" length="1">
-    <field name="MI Command Opcode" dword="0" bits="28:23" type="uint" default="5" />
-    <field name="Command Type" dword="0" bits="31:29" type="uint" default="0" />
-  </instruction>
-  <instruction name="MI_ARB_ON_OFF" bias="1" length="1">
-    <field name="Arbitration Enable" dword="0" bits="0:0" type="bool" />
-    <field name="MI Command Opcode" dword="0" bits="28:23" type="uint" default="8" />
-    <field name="Command Type" dword="0" bits="31:29" type="uint" default="0" />
-  </instruction>
-  <instruction name="MI_BATCH_BUFFER_END" bias="1" length="1">
-    <field name="MI Command Opcode" dword="0" bits="28:23" type="uint" default="10" />
-    <field name="Command Type" dword="0" bits="31:29" type="uint" default="0" />
-  </instruction>
-  <instruction name="MI_BATCH_BUFFER_START" bias="2" length="2">
-    <field name="DWord Length" dword="0" bits="7:0" type="uint" default="0" />
-    <field name="Address Space Indicator" dword="0" bits="8:8" type="uint" prefix="ASI">
-      <value name="GGTT" value="0" />
-      <value name="PPGTT" value="1" />
-    </field>
-    <field name="Clear Command Buffer Enable" dword="0" bits="11:11" type="bool" />
-    <field name="MI Command Opcode" dword="0" bits="28:23" type="uint" default="49" />
-    <field name="Command Type" dword="0" bits="31:29" type="uint" default="0" />
-    <field name="Batch Buffer Start Address" dword="1" bits="31:2" type="address" />
-  </instruction>
   <instruction name="MI_CLFLUSH" bias="2" engine="render">
     <field name="DWord Length" dword="0" bits="9:0" type="uint" default="1" />
     <field name="Use Global GTT" dword="0" bits="22:22" type="bool" />
@@ -3186,33 +2741,6 @@
     <group count="0" dword="3" size="32">
       <field name="DW Representing a Half Cache Line" dword="0" bits="31:0" type="uint" />
     </group>
-  </instruction>
-  <instruction name="MI_CONDITIONAL_BATCH_BUFFER_END" bias="2" length="2">
-    <field name="DWord Length" dword="0" bits="7:0" type="uint" default="0" />
-    <field name="Compare Semaphore" dword="0" bits="21:21" type="uint" default="0" />
-    <field name="Use Global GTT" dword="0" bits="22:22" type="bool" />
-    <field name="MI Command Opcode" dword="0" bits="28:23" type="uint" default="54" />
-    <field name="Command Type" dword="0" bits="31:29" type="uint" default="0" />
-    <field name="Compare Data Dword" dword="1" bits="31:0" type="uint" />
-    <field name="Compare Address" dword="2" bits="31:3" type="address" />
-  </instruction>
-  <instruction name="MI_FLUSH" bias="1" length="1" engine="render">
-    <field name="State/Instruction Cache Invalidate" dword="0" bits="1:1" type="uint">
-      <value name="Don't Invalidate" value="0" />
-      <value name="Invalidate" value="1" />
-    </field>
-    <field name="Render Cache Flush Inhibit" dword="0" bits="2:2" type="uint">
-      <value name="Flush" value="0" />
-      <value name="Don't Flush" value="1" />
-    </field>
-    <field name="Global Snapshot Count Reset" dword="0" bits="3:3" type="uint">
-      <value name="Don't Reset" value="0" />
-      <value name="Reset" value="1" />
-    </field>
-    <field name="Generic Media State Clear" dword="0" bits="4:4" type="bool" />
-    <field name="Indirect State Pointers Disable" dword="0" bits="5:5" type="bool" />
-    <field name="MI Command Opcode" dword="0" bits="28:23" type="uint" default="4" />
-    <field name="Command Type" dword="0" bits="31:29" type="uint" default="0" />
   </instruction>
   <instruction name="MI_FLUSH_DW" bias="2" length="4" engine="video">
     <field name="DWord Length" dword="0" bits="5:0" type="uint" default="2" />
@@ -3231,18 +2759,6 @@
     <field name="Address" dword="1" bits="31:3" type="address" />
     <field name="Immediate Data" dword="2" bits="63:0" type="uint" />
   </instruction>
-  <instruction name="MI_LOAD_REGISTER_IMM" bias="2" length="3">
-    <field name="DWord Length" dword="0" bits="7:0" type="uint" default="1" />
-    <field name="Byte Write Disables" dword="0" bits="11:8" type="uint" />
-    <field name="MI Command Opcode" dword="0" bits="28:23" type="uint" default="34" />
-    <field name="Command Type" dword="0" bits="31:29" type="uint" default="0" />
-    <field name="Register Offset" dword="1" bits="22:2" type="offset" />
-    <field name="Data DWord" dword="2" bits="31:0" type="uint" />
-    <group count="0" dword="3" size="64">
-      <field name="Register Offset" dword="0" bits="22:2" type="offset" />
-      <field name="Data DWord" dword="1" bits="31:0" type="uint" />
-    </group>
-  </instruction>
   <instruction name="MI_LOAD_REGISTER_MEM" bias="2" length="3">
     <field name="DWord Length" dword="0" bits="7:0" type="uint" default="1" />
     <field name="Async Mode Enable" dword="0" bits="21:21" type="bool" />
@@ -3251,12 +2767,6 @@
     <field name="Command Type" dword="0" bits="31:29" type="uint" default="0" />
     <field name="Register Address" dword="1" bits="22:2" type="offset" />
     <field name="Memory Address" dword="2" bits="31:2" type="address" />
-  </instruction>
-  <instruction name="MI_NOOP" bias="1" length="1">
-    <field name="Identification Number" dword="0" bits="21:0" type="uint" />
-    <field name="Identification Number Register Write Enable" dword="0" bits="22:22" type="bool" />
-    <field name="MI Command Opcode" dword="0" bits="28:23" type="uint" default="0" />
-    <field name="Command Type" dword="0" bits="31:29" type="uint" default="0" />
   </instruction>
   <instruction name="MI_PREDICATE" bias="1" length="1">
     <field name="Compare Operation" dword="0" bits="1:0" type="uint" prefix="COMPARE">
@@ -3279,10 +2789,6 @@
     <field name="MI Command Opcode" dword="0" bits="28:23" type="uint" default="12" />
     <field name="Command Type" dword="0" bits="31:29" type="uint" default="0" />
   </instruction>
-  <instruction name="MI_REPORT_HEAD" bias="1" length="1">
-    <field name="MI Command Opcode" dword="0" bits="28:23" type="uint" default="7" />
-    <field name="Command Type" dword="0" bits="31:29" type="uint" default="0" />
-  </instruction>
   <instruction name="MI_REPORT_PERF_COUNT" bias="2" length="3" engine="render">
     <field name="DWord Length" dword="0" bits="5:0" type="uint" default="1" />
     <field name="MI Command Opcode" dword="0" bits="28:23" type="uint" default="40" />
@@ -3290,17 +2796,6 @@
     <field name="Use Global GTT" dword="1" bits="0:0" type="bool" />
     <field name="Memory Address" dword="1" bits="31:6" type="address" />
     <field name="Report ID" dword="2" bits="31:0" type="uint" />
-  </instruction>
-  <instruction name="MI_SEMAPHORE_MBOX" bias="2" length="3">
-    <field name="DWord Length" dword="0" bits="7:0" type="uint" default="1" />
-    <field name="Register Select" dword="0" bits="17:16" type="uint">
-      <value name="RVSYNC" value="0" />
-      <value name="RBSYNC" value="2" />
-      <value name="Use General Register Select" value="3" />
-    </field>
-    <field name="MI Command Opcode" dword="0" bits="28:23" type="uint" default="22" />
-    <field name="Command Type" dword="0" bits="31:29" type="uint" default="0" />
-    <field name="Semaphore Data Dword" dword="1" bits="31:0" type="uint" />
   </instruction>
   <instruction name="MI_SET_CONTEXT" bias="2" length="2">
     <field name="DWord Length" dword="0" bits="7:0" type="uint" default="0" />
@@ -3313,50 +2808,9 @@
     <field name="Reserved, Must be 1" dword="1" bits="8:8" type="uint" />
     <field name="Logical Context Address" dword="1" bits="31:12" type="address" />
   </instruction>
-  <instruction name="MI_STORE_DATA_IMM" bias="2" length="4">
-    <field name="DWord Length" dword="0" bits="5:0" type="uint" default="2" />
-    <field name="Use Global GTT" dword="0" bits="22:22" type="bool" />
-    <field name="MI Command Opcode" dword="0" bits="28:23" type="uint" default="32" />
-    <field name="Command Type" dword="0" bits="31:29" type="uint" default="0" />
-    <field name="Core Mode Enable" dword="2" bits="0:0" type="uint" />
-    <field name="Address" dword="2" bits="31:2" type="address" />
-    <field name="Immediate Data" dword="3" bits="63:0" type="uint" />
-  </instruction>
-  <instruction name="MI_STORE_DATA_INDEX" bias="2" length="3">
-    <field name="DWord Length" dword="0" bits="7:0" type="uint" default="1" />
-    <field name="MI Command Opcode" dword="0" bits="28:23" type="uint" default="33" />
-    <field name="Command Type" dword="0" bits="31:29" type="uint" default="0" />
-    <field name="Offset" dword="1" bits="11:2" type="uint" />
-    <field name="Data DWord 0" dword="2" bits="31:0" type="uint" />
-    <field name="Data DWord 1" dword="3" bits="31:0" type="uint" />
-  </instruction>
-  <instruction name="MI_STORE_REGISTER_MEM" bias="2" length="3">
-    <field name="DWord Length" dword="0" bits="7:0" type="uint" default="1" />
-    <field name="Use Global GTT" dword="0" bits="22:22" type="bool" />
-    <field name="MI Command Opcode" dword="0" bits="28:23" type="uint" default="36" />
-    <field name="Command Type" dword="0" bits="31:29" type="uint" default="0" />
-    <field name="Register Address" dword="1" bits="22:2" type="offset" />
-    <field name="Memory Address" dword="2" bits="31:2" type="address" />
-  </instruction>
-  <instruction name="MI_SUSPEND_FLUSH" bias="1" length="1">
-    <field name="Suspend Flush" dword="0" bits="0:0" type="bool" />
-    <field name="MI Command Opcode" dword="0" bits="28:23" type="uint" default="11" />
-    <field name="Command Type" dword="0" bits="31:29" type="uint" default="0" />
-  </instruction>
   <instruction name="MI_TOPOLOGY_FILTER" bias="1" length="1">
     <field name="Topology Filter Value" dword="0" bits="5:0" type="3D_Prim_Topo_Type" />
     <field name="MI Command Opcode" dword="0" bits="28:23" type="uint" default="13" />
-    <field name="Command Type" dword="0" bits="31:29" type="uint" default="0" />
-  </instruction>
-  <instruction name="MI_URB_CLEAR" bias="2" length="2" engine="render">
-    <field name="DWord Length" dword="0" bits="7:0" type="uint" default="0" />
-    <field name="MI Command Opcode" dword="0" bits="28:23" type="uint" default="25" />
-    <field name="Command Type" dword="0" bits="31:29" type="uint" default="0" />
-    <field name="URB Address" dword="1" bits="13:0" type="offset" />
-    <field name="URB Clear Length" dword="1" bits="28:16" type="uint" />
-  </instruction>
-  <instruction name="MI_USER_INTERRUPT" bias="1" length="1">
-    <field name="MI Command Opcode" dword="0" bits="28:23" type="uint" default="2" />
     <field name="Command Type" dword="0" bits="31:29" type="uint" default="0" />
   </instruction>
   <instruction name="MI_WAIT_FOR_EVENT" bias="1" length="1" engine="render|blitter|video">
@@ -3465,23 +2919,6 @@
     <field name="Instruction Access Upper Bound Modify Enable" dword="9" bits="0:0" type="bool" />
     <field name="Instruction Access Upper Bound" dword="9" bits="31:12" type="address" />
   </instruction>
-  <instruction name="STATE_PREFETCH" bias="2" length="2" engine="render">
-    <field name="DWord Length" dword="0" bits="7:0" type="uint" default="0" />
-    <field name="3D Command Sub Opcode" dword="0" bits="23:16" type="uint" default="3" />
-    <field name="3D Command Opcode" dword="0" bits="26:24" type="uint" default="0" />
-    <field name="Command SubType" dword="0" bits="28:27" type="uint" default="0" />
-    <field name="Command Type" dword="0" bits="31:29" type="uint" default="3" />
-    <field name="Prefetch Count" dword="1" bits="2:0" type="uint" />
-    <field name="Prefetch Pointer" dword="1" bits="31:6" type="address" />
-  </instruction>
-  <instruction name="STATE_SIP" bias="2" length="2" engine="render">
-    <field name="DWord Length" dword="0" bits="7:0" type="uint" default="0" />
-    <field name="3D Command Sub Opcode" dword="0" bits="23:16" type="uint" default="2" />
-    <field name="3D Command Opcode" dword="0" bits="26:24" type="uint" default="1" />
-    <field name="Command SubType" dword="0" bits="28:27" type="uint" default="0" />
-    <field name="Command Type" dword="0" bits="31:29" type="uint" default="3" />
-    <field name="System Instruction Pointer" dword="1" bits="31:4" type="offset" />
-  </instruction>
   <instruction name="SWTESS_BASE_ADDRESS" bias="2" length="2" engine="render">
     <field name="DWord Length" dword="0" bits="7:0" type="uint" default="0" />
     <field name="3D Command Sub Opcode" dword="0" bits="23:16" type="uint" default="3" />
@@ -3491,39 +2928,11 @@
     <field name="SW Tessellation MOCS" dword="1" bits="11:8" type="uint" nonzero="true" />
     <field name="SW Tessellation Base Address" dword="1" bits="31:12" type="address" />
   </instruction>
-  <register name="BCS_FAULT_REG" length="1" num="0x4294">
-    <field name="Valid Bit" dword="0" bits="0:0" type="bool" />
-    <field name="Fault Type" dword="0" bits="2:1" type="uint">
-      <value name="Page Fault" value="0" />
-      <value name="Invalid PD Fault" value="1" />
-      <value name="Unloaded PD Fault" value="2" />
-      <value name="Invalid and Unloaded PD fault" value="3" />
-    </field>
-    <field name="SRCID of Fault" dword="0" bits="10:3" type="uint" />
-    <field name="GTTSEL" dword="0" bits="11:11" type="uint">
-      <value name="PPGTT" value="0" />
-      <value name="GGTT" value="1" />
-    </field>
-    <field name="Virtual Address of Fault" dword="0" bits="31:12" type="address" />
-  </register>
   <register name="BCS_INSTDONE" length="1" num="0x2206c">
     <field name="Ring Enable" dword="0" bits="0:0" type="bool" />
     <field name="Blitter IDLE" dword="0" bits="1:1" type="bool" />
     <field name="GAB IDLE" dword="0" bits="2:2" type="bool" />
     <field name="BCS Done" dword="0" bits="3:3" type="bool" />
-  </register>
-  <register name="BCS_RING_BUFFER_CTL" length="1" num="0x2203c">
-    <field name="Ring Buffer Enable" dword="0" bits="0:0" type="bool" />
-    <field name="Automatic Report Head Pointer" dword="0" bits="2:1" type="uint">
-      <value name="MI_AUTOREPORT_OFF" value="0" />
-      <value name="MI_AUTOREPORT_64KB" value="1" />
-      <value name="MI_AUTOREPORT_4KB" value="2" />
-      <value name="MI_AUTOREPORT_128KB" value="3" />
-    </field>
-    <field name="Disable Register Accesses" dword="0" bits="8:8" type="bool" />
-    <field name="Semaphore Wait" dword="0" bits="10:10" type="bool" />
-    <field name="RBWait" dword="0" bits="11:11" type="bool" />
-    <field name="Buffer Length (in pages - 1)" dword="0" bits="20:12" type="uint" />
   </register>
   <register name="CL_INVOCATION_COUNT" length="2" num="0x2338">
     <field name="CL Invocation Count Report" dword="0" bits="63:0" type="uint" />
@@ -3546,17 +2955,6 @@
     <field name="Cursor B GTT Fault Status" dword="0" bits="5:5" type="bool" />
     <field name="Invalid page table entry data" dword="0" bits="6:6" type="bool" />
     <field name="Invalid GTT page table entry" dword="0" bits="7:7" type="bool" />
-  </register>
-  <register name="GFX_ARB_ERROR_RPT" length="1" num="0x40a0">
-    <field name="TLB Page Fault Error" dword="0" bits="0:0" type="bool" />
-    <field name="Context Page Fault Error" dword="0" bits="1:1" type="bool" />
-    <field name="Invalid Page Directory entry error" dword="0" bits="2:2" type="bool" />
-    <field name="Hardware Status Page Fault Error" dword="0" bits="3:3" type="bool" />
-    <field name="TLB Page VTD Translation Error" dword="0" bits="4:4" type="bool" />
-    <field name="Context Page VTD Translation Error" dword="0" bits="5:5" type="bool" />
-    <field name="Page Directory Entry VTD Translation Error" dword="0" bits="6:6" type="bool" />
-    <field name="Hardware Status Page VTD Translation Error" dword="0" bits="7:7" type="bool" />
-    <field name="Unloaded PD Error" dword="0" bits="8:8" type="bool" />
   </register>
   <register name="GS_INVOCATION_COUNT" length="2" num="0x2328">
     <field name="GS Invocation Count Report" dword="0" bits="63:0" type="uint" />
@@ -3595,16 +2993,6 @@
     <field name="SDE Done" dword="0" bits="22:22" type="bool" />
     <field name="RCCFBC CS Done" dword="0" bits="23:23" type="bool" />
   </register>
-  <register name="INSTPM" length="1" num="0x20c0">
-    <field name="3D State Instruction Disable" dword="0" bits="1:1" type="bool" />
-    <field name="3D Rendering Instruction Disable" dword="0" bits="2:2" type="bool" />
-    <field name="Media Instruction Disable" dword="0" bits="3:3" type="bool" />
-    <field name="CONSTANT_BUFFER Address Offset Disable" dword="0" bits="6:6" type="bool" />
-    <field name="3D State Instruction Disable Mask" dword="0" bits="17:17" type="bool" />
-    <field name="3D Rendering Instruction Disable Mask" dword="0" bits="18:18" type="bool" />
-    <field name="Media Instruction Disable Mask" dword="0" bits="19:19" type="bool" />
-    <field name="CONSTANT_BUFFER Address Offset Disable Mask" dword="0" bits="22:22" type="bool" />
-  </register>
   <register name="L3CNTLREG2" length="1" num="0xb020">
     <field name="SLM Enable" dword="0" bits="0:0" type="bool" />
     <field name="URB Allocation" dword="0" bits="6:1" type="uint" />
@@ -3639,32 +3027,6 @@
   <register name="PS_INVOCATION_COUNT" length="2" num="0x2348">
     <field name="PS Invocation Count Report" dword="0" bits="63:0" type="uint" />
   </register>
-  <register name="RCS_FAULT_REG" length="1" num="0x4094">
-    <field name="Valid Bit" dword="0" bits="0:0" type="bool" />
-    <field name="Fault Type" dword="0" bits="2:1" type="uint">
-      <value name="Page Fault" value="0" />
-      <value name="Invalid PD Fault" value="1" />
-      <value name="Unloaded PD Fault" value="2" />
-      <value name="Invalid and Unloaded PD fault" value="3" />
-    </field>
-    <field name="SRCID of Fault" dword="0" bits="10:3" type="uint" />
-    <field name="GTTSEL" dword="0" bits="11:11" type="uint">
-      <value name="PPGTT" value="0" />
-      <value name="GGTT" value="1" />
-    </field>
-    <field name="Virtual Address of Fault" dword="0" bits="31:12" type="address" />
-  </register>
-  <register name="RCS_RING_BUFFER_CTL" length="1" num="0x203c">
-    <field name="Ring Buffer Enable" dword="0" bits="0:0" type="bool" />
-    <field name="Automatic Report Head Pointer" dword="0" bits="2:1" type="uint">
-      <value name="MI_AUTOREPORT_OFF" value="0" />
-      <value name="MI_AUTOREPORT_64KBMI_AUTOREPORT_4KB" value="1" />
-      <value name="MI_AUTOREPORT_128KB" value="3" />
-    </field>
-    <field name="Semaphore Wait" dword="0" bits="10:10" type="bool" />
-    <field name="RBWait" dword="0" bits="11:11" type="bool" />
-    <field name="Buffer Length (in pages - 1)" dword="0" bits="20:12" type="uint" />
-  </register>
   <register name="ROW_INSTDONE" length="1" num="0xe164">
     <field name="BC Done" dword="0" bits="0:0" type="bool" />
     <field name="PSD Done" dword="0" bits="1:1" type="bool" />
@@ -3683,10 +3045,6 @@
     <field name="EU12 Done SS0" dword="0" bits="23:23" type="bool" />
     <field name="EU13 Done SS0" dword="0" bits="24:24" type="bool" />
     <field name="MA1 Done" dword="0" bits="25:25" type="bool" />
-  </register>
-  <register name="RPSTAT1" length="1" num="0xa01c">
-    <field name="Previous GT Frequency" dword="0" bits="6:0" type="uint" />
-    <field name="Current GT Frequency" dword="0" bits="14:7" type="uint" />
   </register>
   <register name="SAMPLER_INSTDONE" length="1" num="0xe160">
     <field name="VME Done" dword="0" bits="0:0" type="bool" />
@@ -3762,67 +3120,6 @@
   </register>
   <register name="SO_WRITE_OFFSET3" length="1" num="0x528c">
     <field name="Write Offset" dword="0" bits="31:2" type="offset" />
-  </register>
-  <register name="VCS_FAULT_REG" length="1" num="0x4194">
-    <field name="Valid Bit" dword="0" bits="0:0" type="bool" />
-    <field name="Fault Type" dword="0" bits="2:1" type="uint">
-      <value name="Page Fault" value="0" />
-      <value name="Invalid PD Fault" value="1" />
-      <value name="Unloaded PD Fault" value="2" />
-      <value name="Invalid and Unloaded PD fault" value="3" />
-    </field>
-    <field name="SRCID of Fault" dword="0" bits="10:3" type="uint" />
-    <field name="GTTSEL" dword="0" bits="11:11" type="uint">
-      <value name="PPGTT" value="0" />
-      <value name="GGTT" value="1" />
-    </field>
-    <field name="Virtual Address of Fault" dword="0" bits="31:12" type="address" />
-  </register>
-  <register name="VCS_INSTDONE" length="1" num="0x1206c">
-    <field name="Ring Enable" dword="0" bits="0:0" type="bool" />
-    <field name="USB Done" dword="0" bits="1:1" type="bool" />
-    <field name="QRC Done" dword="0" bits="2:2" type="bool" />
-    <field name="SEC Done" dword="0" bits="3:3" type="bool" />
-    <field name="MPC Done" dword="0" bits="4:4" type="bool" />
-    <field name="VFT Done" dword="0" bits="5:5" type="bool" />
-    <field name="BSP Done" dword="0" bits="6:6" type="bool" />
-    <field name="VLF Done" dword="0" bits="7:7" type="bool" />
-    <field name="VOP Done" dword="0" bits="8:8" type="bool" />
-    <field name="VMC Done" dword="0" bits="9:9" type="bool" />
-    <field name="VIP Done" dword="0" bits="10:10" type="bool" />
-    <field name="VIT Done" dword="0" bits="11:11" type="bool" />
-    <field name="VDS Done" dword="0" bits="12:12" type="bool" />
-    <field name="VMX Done" dword="0" bits="13:13" type="bool" />
-    <field name="VCP Done" dword="0" bits="14:14" type="bool" />
-    <field name="VCD Done" dword="0" bits="15:15" type="bool" />
-    <field name="VAD Done" dword="0" bits="16:16" type="bool" />
-    <field name="VMD Done" dword="0" bits="17:17" type="bool" />
-    <field name="VIS Done" dword="0" bits="18:18" type="bool" />
-    <field name="VAC Done" dword="0" bits="19:19" type="bool" />
-    <field name="VAM Done" dword="0" bits="20:20" type="bool" />
-    <field name="JPG Done" dword="0" bits="21:21" type="bool" />
-    <field name="VBP Done" dword="0" bits="22:22" type="bool" />
-    <field name="VHR Done" dword="0" bits="23:23" type="bool" />
-    <field name="VCI Done" dword="0" bits="24:24" type="bool" />
-    <field name="VCR Done" dword="0" bits="25:25" type="bool" />
-    <field name="VIN Done" dword="0" bits="26:26" type="bool" />
-    <field name="VPR Done" dword="0" bits="27:27" type="bool" />
-    <field name="VTQ Done" dword="0" bits="28:28" type="bool" />
-    <field name="VCS Done" dword="0" bits="30:30" type="bool" />
-    <field name="GAC Done" dword="0" bits="31:31" type="bool" />
-  </register>
-  <register name="VCS_RING_BUFFER_CTL" length="1" num="0x1203c">
-    <field name="Ring Buffer Enable" dword="0" bits="0:0" type="bool" />
-    <field name="Automatic Report Head Pointer" dword="0" bits="2:1" type="uint">
-      <value name="MI_AUTOREPORT_OFF" value="0" />
-      <value name="MI_AUTOREPORT_64KB" value="1" />
-      <value name="MI_AUTOREPORT_4KB" value="2" />
-      <value name="MI_AUTOREPORT_128KB" value="3" />
-    </field>
-    <field name="Disable Register Accesses" dword="0" bits="8:8" type="bool" />
-    <field name="Semaphore Wait" dword="0" bits="10:10" type="bool" />
-    <field name="RBWait" dword="0" bits="11:11" type="bool" />
-    <field name="Buffer Length (in pages - 1)" dword="0" bits="20:12" type="uint" />
   </register>
   <register name="VS_INVOCATION_COUNT" length="2" num="0x2320">
     <field name="VS Invocation Count Report" dword="0" bits="63:0" type="uint" />

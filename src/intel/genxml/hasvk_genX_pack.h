@@ -21,9 +21,10 @@
  * IN THE SOFTWARE.
  */
 
-/* This is a hasvk-specific version of genX_pack.h that uses the old-style
- * genxml files (hasvk_gen7_pack.h, etc.) for compatibility with the
- * hasvk-vulkan-video-decode branch.
+/* This is a hasvk-specific version of genX_pack.h that uses separate
+ * genxml files (hasvk_gen7.xml, etc.) to avoid conflicts with anv driver.
+ * These files use the modern import-based XML format while preserving
+ * hasvk-specific video decoding definitions.
  */
 
 #ifndef HASVK_GENX_PACK_H
