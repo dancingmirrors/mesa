@@ -578,7 +578,7 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
 
          /* Top field
             IVB: Must be 64-byte cacheline aligned. Do not scale with frame width because the
-            hardware assumes assumes frame width in MBs fixed at 128, e.g. 1920x1088. */
+            hardware assumes frame width in MBs fixed at 128, e.g. 1920x1088. */
          avc_directmode.DirectMVBufferAddress[top_idx] = dmv_addr;
          avc_directmode.DirectMVBufferCacheabilityControl[top_idx] = dmv_read_mocs & 0x3;
          avc_directmode.DirectMVBufferGraphicsDataType[top_idx] = (dmv_read_mocs >> 2) & 0x1;
