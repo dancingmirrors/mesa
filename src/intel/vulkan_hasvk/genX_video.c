@@ -123,12 +123,10 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       ss.SurfacePitch = img->planes[0].primary_surface.isl.row_pitch_B - 1;
       ss.TiledSurface = img->planes[0].primary_surface.isl.tiling != ISL_TILING_LINEAR;
       ss.TileWalk = TW_YMAJOR;
-#if GFX_VER == 7
-      /* On Gen7 (Ivy Bridge), HalfPitchforChroma must be explicitly set.
-       * For Y-tiled NV12, the chroma plane uses the same pitch as luma (not
-       * half), so set to 0. This field doesn't exist on Gen7.5+ (Haswell+). */
+      /* For Y-tiled NV12, the chroma plane uses the same pitch as luma (not
+       * half), so HalfPitchforChroma = 0. This field exists on all Gen versions
+       * with video decode support. */
       ss.HalfPitchforChroma = 0;
-#endif
 
       /* For NV12 (interleaved chroma), both U and V offsets point to the same
        * chroma plane location since they're interleaved in memory. */
