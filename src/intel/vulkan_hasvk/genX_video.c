@@ -23,6 +23,7 @@
 
 #include "anv_private.h"
 
+#include <inttypes.h>
 #include "genxml/gen_macros.h"
 #include "genxml/hasvk_genX_pack.h"
 #include "genxml/hasvk_genX_video_pack.h"
@@ -123,30 +124,30 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
               img->vk.extent.width, img->vk.extent.height);
       fprintf(stderr, "  Luma plane pitch: %u bytes\n",
               img->planes[0].primary_surface.isl.row_pitch_B);
-      fprintf(stderr, "  Luma plane size: %lu bytes\n",
+      fprintf(stderr, "  Luma plane size: %" PRIu64 " bytes\n",
               img->planes[0].primary_surface.memory_range.size);
-      fprintf(stderr, "  Chroma plane offset: %lu bytes\n",
+      fprintf(stderr, "  Chroma plane offset: %" PRIu64 " bytes\n",
               img->planes[1].primary_surface.memory_range.offset);
-      fprintf(stderr, "  Chroma plane size: %lu bytes\n",
+      fprintf(stderr, "  Chroma plane size: %" PRIu64 " bytes\n",
               img->planes[1].primary_surface.memory_range.size);
       fprintf(stderr, "  Tiling mode: %s\n",
               img->planes[0].primary_surface.isl.tiling == ISL_TILING_LINEAR ? "Linear" :
               img->planes[0].primary_surface.isl.tiling == ISL_TILING_X ? "X-tiled" :
               img->planes[0].primary_surface.isl.tiling == ISL_TILING_Y0 ? "Y0-tiled" : "Other");
       if (img->planes[0].primary_surface.isl.row_pitch_B > 0) {
-         fprintf(stderr, "  Chroma YOffset: %lu rows\n",
+         fprintf(stderr, "  Chroma YOffset: %" PRIu64 " rows\n",
                  img->planes[1].primary_surface.memory_range.offset / img->planes[0].primary_surface.isl.row_pitch_B);
       }
 #if GFX_VERx10 == 70
       uint64_t expected_luma_size = img->vk.extent.width * img->vk.extent.height;
-      fprintf(stderr, "  [IVB] Expected luma size: %lu bytes\n", expected_luma_size);
-      fprintf(stderr, "  [IVB] Actual luma size: %lu bytes\n",
+      fprintf(stderr, "  [IVB] Expected luma size: %" PRIu64 " bytes\n", expected_luma_size);
+      fprintf(stderr, "  [IVB] Actual luma size: %" PRIu64 " bytes\n",
               img->planes[0].primary_surface.memory_range.size);
       if (img->planes[0].primary_surface.memory_range.size >= expected_luma_size) {
          uint64_t padding = img->planes[0].primary_surface.memory_range.size - expected_luma_size;
-         fprintf(stderr, "  [IVB] Padding: %lu bytes", padding);
+         fprintf(stderr, "  [IVB] Padding: %" PRIu64 " bytes", padding);
          if (img->vk.extent.width > 0) {
-            fprintf(stderr, " (%lu rows)", padding / img->vk.extent.width);
+            fprintf(stderr, " (%" PRIu64 " rows)", padding / img->vk.extent.width);
          }
          fprintf(stderr, "\n");
       }
