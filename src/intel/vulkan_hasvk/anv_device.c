@@ -1325,7 +1325,7 @@ anv_GetPhysicalDeviceProperties2(
       
       if (ext->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_4_PROPERTIES) {
          VkPhysicalDeviceMaintenance4Properties *props = (VkPhysicalDeviceMaintenance4Properties *)ext;
-         props->maxBufferSize = pdevice->isl_dev.max_buffer_size;
+         props->maxBufferSize = pdevice->vk.properties.maxBufferSize;
          found_maintenance4 = true;
          
          if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
@@ -1334,7 +1334,7 @@ anv_GetPhysicalDeviceProperties2(
          }
       } else if (ext->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_PROPERTIES) {
          VkPhysicalDeviceVulkan13Properties *props = (VkPhysicalDeviceVulkan13Properties *)ext;
-         props->maxBufferSize = pdevice->isl_dev.max_buffer_size;
+         props->maxBufferSize = pdevice->vk.properties.maxBufferSize;
          found_vulkan13 = true;
          
          if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
