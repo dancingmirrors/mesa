@@ -168,8 +168,18 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
        * the chroma plane via YOffset. The logical video dimensions are specified
        * separately in MFX_AVC_IMG_STATE.
        */
-      ss.Width = img->planes[0].primary_surface.isl.phys_level0_sa.width - 1;
-      ss.Height = img->planes[0].primary_surface.isl.phys_level0_sa.height - 1;
+      uint32_t phys_width = img->planes[0].primary_surface.isl.phys_level0_sa.width;
+      uint32_t phys_height = img->planes[0].primary_surface.isl.phys_level0_sa.height;
+      
+      /* Physical dimensions should be at least as large as logical dimensions
+       * and should be macroblock-aligned for video decode surfaces. */
+      assert(phys_width >= img->vk.extent.width);
+      assert(phys_height >= img->vk.extent.height);
+      assert(phys_width % ANV_MB_WIDTH == 0);
+      assert(phys_height % ANV_MB_HEIGHT == 0);
+      
+      ss.Width = phys_width - 1;
+      ss.Height = phys_height - 1;
       ss.SurfaceFormat = PLANAR_420_8; // assert on this?
       ss.InterleaveChroma = 1;
       ss.SurfacePitch = img->planes[0].primary_surface.isl.row_pitch_B - 1;
