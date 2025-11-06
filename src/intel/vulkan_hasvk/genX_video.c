@@ -336,49 +336,6 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
 #endif
    }
 
-   /* Debug DPB state */
-   if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
-      fprintf(stderr, "DPB State Configuration:\n");
-   }
-
-   anv_batch_emit(&cmd_buffer->batch, GENX(MFD_AVC_DPB_STATE), avc_dpb) {
-      for (unsigned i = 0; i < frame_info->referenceSlotCount; i++) {
-         const struct VkVideoDecodeH264DpbSlotInfoKHR *dpb_slot =
-            vk_find_struct_const(frame_info->pReferenceSlots[i].pNext, VIDEO_DECODE_H264_DPB_SLOT_INFO_KHR);
-         const StdVideoDecodeH264ReferenceInfo *ref_info = dpb_slot->pStdReferenceInfo;
-         int slot_idx = frame_info->pReferenceSlots[i].slotIndex;
-
-         if (slot_idx < 0)
-            continue;
-
-         /* Map DPB slot index to reference picture array index */
-         int idx = dpb_slots[slot_idx];
-
-         avc_dpb.NonExistingFrame[idx] = ref_info->flags.is_non_existing;
-         avc_dpb.LongTermFrame[idx] = ref_info->flags.used_for_long_term_reference;
-         if (!ref_info->flags.top_field_flag && !ref_info->flags.bottom_field_flag)
-            avc_dpb.UsedforReference[idx] = 3;
-         else
-            avc_dpb.UsedforReference[idx] = ref_info->flags.top_field_flag | (ref_info->flags.bottom_field_flag << 1);
-         avc_dpb.LTSTFrameNumberList[idx] = ref_info->FrameNum;
-
-         /* Debug DPB entries */
-         if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
-            fprintf(stderr, "  DPB[%u] slot=%d->idx=%d, FrameNum=%u, UsedForRef=%u, LongTerm=%u, NonExisting=%u\n",
-                    i, slot_idx, idx, ref_info->FrameNum,
-                    avc_dpb.UsedforReference[idx],
-                    avc_dpb.LongTermFrame[idx],
-                    avc_dpb.NonExistingFrame[idx]);
-         }
-      }
-   }
-
-#if GFX_VERx10 >= 75
-   anv_batch_emit(&cmd_buffer->batch, GENX(MFD_AVC_PICID_STATE), picid) {
-      picid.PictureIDRemappingDisable = true;
-   }
-#endif
-
    uint32_t pic_height = sps->pic_height_in_map_units_minus1 + 1;
    if (!sps->flags.frame_mbs_only_flag)
       pic_height *= 2;
@@ -528,6 +485,49 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
          }
       }
    }
+
+   /* Debug DPB state */
+   if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+      fprintf(stderr, "DPB State Configuration:\n");
+   }
+
+   anv_batch_emit(&cmd_buffer->batch, GENX(MFD_AVC_DPB_STATE), avc_dpb) {
+      for (unsigned i = 0; i < frame_info->referenceSlotCount; i++) {
+         const struct VkVideoDecodeH264DpbSlotInfoKHR *dpb_slot =
+            vk_find_struct_const(frame_info->pReferenceSlots[i].pNext, VIDEO_DECODE_H264_DPB_SLOT_INFO_KHR);
+         const StdVideoDecodeH264ReferenceInfo *ref_info = dpb_slot->pStdReferenceInfo;
+         int slot_idx = frame_info->pReferenceSlots[i].slotIndex;
+
+         if (slot_idx < 0)
+            continue;
+
+         /* Map DPB slot index to reference picture array index */
+         int idx = dpb_slots[slot_idx];
+
+         avc_dpb.NonExistingFrame[idx] = ref_info->flags.is_non_existing;
+         avc_dpb.LongTermFrame[idx] = ref_info->flags.used_for_long_term_reference;
+         if (!ref_info->flags.top_field_flag && !ref_info->flags.bottom_field_flag)
+            avc_dpb.UsedforReference[idx] = 3;
+         else
+            avc_dpb.UsedforReference[idx] = ref_info->flags.top_field_flag | (ref_info->flags.bottom_field_flag << 1);
+         avc_dpb.LTSTFrameNumberList[idx] = ref_info->FrameNum;
+
+         /* Debug DPB entries */
+         if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+            fprintf(stderr, "  DPB[%u] slot=%d->idx=%d, FrameNum=%u, UsedForRef=%u, LongTerm=%u, NonExisting=%u\n",
+                    i, slot_idx, idx, ref_info->FrameNum,
+                    avc_dpb.UsedforReference[idx],
+                    avc_dpb.LongTermFrame[idx],
+                    avc_dpb.NonExistingFrame[idx]);
+         }
+      }
+   }
+
+#if GFX_VERx10 >= 75
+   anv_batch_emit(&cmd_buffer->batch, GENX(MFD_AVC_PICID_STATE), picid) {
+      picid.PictureIDRemappingDisable = true;
+   }
+#endif
 
    /* Debug direct mode / POC configuration */
    if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
