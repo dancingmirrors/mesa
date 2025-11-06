@@ -1653,9 +1653,6 @@ anv_bind_image_memory(struct anv_device *device,
    const VkBindMemoryStatusKHR *bind_status =
       vk_find_struct_const(bind_info->pNext, BIND_MEMORY_STATUS_KHR);
 
-
-   assert(!anv_image_is_sparse(image));
-
    /* Resolve will alter the image's aspects, do this first. */
    if (mem && mem->ahw)
       resolve_ahw_image(device, image, mem);
