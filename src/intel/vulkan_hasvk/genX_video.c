@@ -120,8 +120,11 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
    /* Debug output for decode surface configuration */
    if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
       fprintf(stderr, "H264 Decode Surface Configuration:\n");
-      fprintf(stderr, "  Surface dimensions: %ux%u\n",
+      fprintf(stderr, "  Logical dimensions: %ux%u\n",
               img->vk.extent.width, img->vk.extent.height);
+      fprintf(stderr, "  Physical dimensions: %ux%u\n",
+              img->planes[0].primary_surface.isl.phys_level0_sa.width,
+              img->planes[0].primary_surface.isl.phys_level0_sa.height);
       fprintf(stderr, "  Luma plane pitch: %u bytes\n",
               img->planes[0].primary_surface.isl.row_pitch_B);
       fprintf(stderr, "  Luma plane size: %" PRIu64 " bytes\n",
@@ -158,7 +161,15 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
 
    anv_batch_emit(&cmd_buffer->batch, GENX(MFX_SURFACE_STATE), ss) {
       ss.Width = img->vk.extent.width - 1;
-      ss.Height = img->vk.extent.height - 1;
+      /* On Ivy Bridge, MFX_SURFACE_STATE describes the physical surface layout
+       * in memory, not the logical video dimensions. ISL may allocate surfaces
+       * with MB-aligned (macroblock-aligned) dimensions for video decode.
+       * For example, 1920x1080 video uses a 1920x1088 surface (68 MBs tall).
+       * We must use the physical height so the hardware correctly locates the
+       * chroma plane via YOffset. The logical video dimensions are specified
+       * separately in MFX_AVC_IMG_STATE.
+       */
+      ss.Height = img->planes[0].primary_surface.isl.phys_level0_sa.height - 1;
       ss.SurfaceFormat = PLANAR_420_8; // assert on this?
       ss.InterleaveChroma = 1;
       ss.SurfacePitch = img->planes[0].primary_surface.isl.row_pitch_B - 1;
