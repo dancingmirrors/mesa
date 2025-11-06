@@ -122,7 +122,10 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       ss.InterleaveChroma = 1;
       ss.SurfacePitch = img->planes[0].primary_surface.isl.row_pitch_B - 1;
       ss.TiledSurface = img->planes[0].primary_surface.isl.tiling != ISL_TILING_LINEAR;
-      ss.TileWalk = TW_YMAJOR;
+      if (ss.TiledSurface) {
+         /* hasvk only supports Y-tiled for video decode */
+         ss.TileWalk = TW_YMAJOR;
+      }
       /* For Y-tiled NV12, the chroma plane uses the same pitch as luma (not
        * half), so HalfPitchforChroma = 0. This field exists on all Gen versions
        * with video decode support. */
