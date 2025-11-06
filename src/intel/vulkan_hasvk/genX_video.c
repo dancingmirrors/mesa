@@ -139,15 +139,17 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
                  img->planes[1].primary_surface.memory_range.offset / img->planes[0].primary_surface.isl.row_pitch_B);
       }
 #if GFX_VERx10 == 70
+      /* Simple calculation: width × height in pixels for NV12 luma plane.
+       * Actual size may differ due to row pitch alignment and padding. */
       uint64_t expected_luma_size = img->vk.extent.width * img->vk.extent.height;
-      fprintf(stderr, "  [IVB] Expected luma size: %" PRIu64 " bytes\n", expected_luma_size);
+      fprintf(stderr, "  [IVB] Expected luma size (WxH): %" PRIu64 " bytes\n", expected_luma_size);
       fprintf(stderr, "  [IVB] Actual luma size: %" PRIu64 " bytes\n",
               img->planes[0].primary_surface.memory_range.size);
       if (img->planes[0].primary_surface.memory_range.size >= expected_luma_size) {
          uint64_t padding = img->planes[0].primary_surface.memory_range.size - expected_luma_size;
          fprintf(stderr, "  [IVB] Padding: %" PRIu64 " bytes", padding);
-         if (img->vk.extent.width > 0) {
-            fprintf(stderr, " (%" PRIu64 " rows)", padding / img->vk.extent.width);
+         if (img->planes[0].primary_surface.isl.row_pitch_B > 0) {
+            fprintf(stderr, " (%" PRIu64 " rows)", padding / img->planes[0].primary_surface.isl.row_pitch_B);
          }
          fprintf(stderr, "\n");
       }
