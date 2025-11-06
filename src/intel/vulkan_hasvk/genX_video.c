@@ -160,15 +160,15 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
    }
 
    anv_batch_emit(&cmd_buffer->batch, GENX(MFX_SURFACE_STATE), ss) {
-      ss.Width = img->vk.extent.width - 1;
       /* On Ivy Bridge, MFX_SURFACE_STATE describes the physical surface layout
        * in memory, not the logical video dimensions. ISL may allocate surfaces
        * with MB-aligned (macroblock-aligned) dimensions for video decode.
        * For example, 1920x1080 video uses a 1920x1088 surface (68 MBs tall).
-       * We must use the physical height so the hardware correctly locates the
-       * chroma plane via YOffset. The logical video dimensions are specified
+       * We must use the physical dimensions so the hardware correctly locates
+       * the chroma plane via YOffset. The logical video dimensions are specified
        * separately in MFX_AVC_IMG_STATE.
        */
+      ss.Width = img->planes[0].primary_surface.isl.phys_level0_sa.width - 1;
       ss.Height = img->planes[0].primary_surface.isl.phys_level0_sa.height - 1;
       ss.SurfaceFormat = PLANAR_420_8; // assert on this?
       ss.InterleaveChroma = 1;
