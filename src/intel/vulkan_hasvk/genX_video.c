@@ -133,16 +133,23 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
               img->planes[0].primary_surface.isl.tiling == ISL_TILING_LINEAR ? "Linear" :
               img->planes[0].primary_surface.isl.tiling == ISL_TILING_X ? "X-tiled" :
               img->planes[0].primary_surface.isl.tiling == ISL_TILING_Y0 ? "Y0-tiled" : "Other");
-      fprintf(stderr, "  Chroma YOffset: %lu rows\n",
-              img->planes[1].primary_surface.memory_range.offset / img->planes[0].primary_surface.isl.row_pitch_B);
+      if (img->planes[0].primary_surface.isl.row_pitch_B > 0) {
+         fprintf(stderr, "  Chroma YOffset: %lu rows\n",
+                 img->planes[1].primary_surface.memory_range.offset / img->planes[0].primary_surface.isl.row_pitch_B);
+      }
 #if GFX_VERx10 == 70
-      fprintf(stderr, "  [IVB] Expected luma size: %u bytes\n",
-              img->vk.extent.width * img->vk.extent.height);
+      uint64_t expected_luma_size = img->vk.extent.width * img->vk.extent.height;
+      fprintf(stderr, "  [IVB] Expected luma size: %lu bytes\n", expected_luma_size);
       fprintf(stderr, "  [IVB] Actual luma size: %lu bytes\n",
               img->planes[0].primary_surface.memory_range.size);
-      fprintf(stderr, "  [IVB] Padding: %lu bytes (%lu rows)\n",
-              img->planes[0].primary_surface.memory_range.size - (img->vk.extent.width * img->vk.extent.height),
-              (img->planes[0].primary_surface.memory_range.size - (img->vk.extent.width * img->vk.extent.height)) / img->vk.extent.width);
+      if (img->planes[0].primary_surface.memory_range.size >= expected_luma_size) {
+         uint64_t padding = img->planes[0].primary_surface.memory_range.size - expected_luma_size;
+         fprintf(stderr, "  [IVB] Padding: %lu bytes", padding);
+         if (img->vk.extent.width > 0) {
+            fprintf(stderr, " (%lu rows)", padding / img->vk.extent.width);
+         }
+         fprintf(stderr, "\n");
+      }
 #endif
    }
 
@@ -582,10 +589,12 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
 
          /* Debug POC values for reference frames */
          if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
-            fprintf(stderr, "  Ref[%u] slot=%d, idx=%d, POC=[%d, %d], flags=0x%x\n",
+            fprintf(stderr, "  Ref[%u] slot=%d, idx=%d, POC=[%d, %d], top_field=%u, bottom_field=%u, long_term=%u\n",
                     i, slot_idx, idx,
                     ref_info->PicOrderCnt[0], ref_info->PicOrderCnt[1],
-                    *(uint32_t*)&ref_info->flags);
+                    ref_info->flags.top_field_flag,
+                    ref_info->flags.bottom_field_flag,
+                    ref_info->flags.used_for_long_term_reference);
          }
       }
 
