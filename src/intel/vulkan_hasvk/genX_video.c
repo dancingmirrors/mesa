@@ -627,7 +627,6 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       avc_directmode.POCList[33] = h264_pic_info->pStdPictureInfo->PicOrderCnt[1];
    }
 
-   uint32_t buffer_offset = frame_info->srcBufferOffset & 4095;
 #define HEADER_OFFSET 3
    for (unsigned s = 0; s < h264_pic_info->sliceCount; s++) {
       bool last_slice = s == (h264_pic_info->sliceCount - 1);
@@ -641,7 +640,8 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
          anv_batch_emit(&cmd_buffer->batch, GENX(MFD_AVC_SLICEADDR), sliceaddr) {
             sliceaddr.IndirectBSDDataLength = next_end - next_offset - HEADER_OFFSET;
             /* start decoding after the 3-byte header. */
-            sliceaddr.IndirectBSDDataStartAddress = buffer_offset + next_offset + HEADER_OFFSET;
+            sliceaddr.IndirectBSDDataStartAddress = anv_address_add(src_buffer->address,
+                                                                    frame_info->srcBufferOffset + next_offset + HEADER_OFFSET);
          };
          this_end = next_offset;
       } else
@@ -649,7 +649,8 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       anv_batch_emit(&cmd_buffer->batch, GENX(MFD_AVC_BSD_OBJECT), avc_bsd) {
          avc_bsd.IndirectBSDDataLength = this_end - current_offset - HEADER_OFFSET;
          /* start decoding after the 3-byte header. */
-         avc_bsd.IndirectBSDDataStartAddress = buffer_offset + current_offset + HEADER_OFFSET;
+         avc_bsd.IndirectBSDDataStartAddress = anv_address_add(src_buffer->address,
+                                                               frame_info->srcBufferOffset + current_offset + HEADER_OFFSET);
          avc_bsd.InlineData.LastSlice = last_slice;
          avc_bsd.InlineData.FixPrevMBSkipped = 1;
 #if GFX_VERx10 >= 75
