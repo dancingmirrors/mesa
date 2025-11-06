@@ -395,6 +395,12 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
               sps->flags.frame_mbs_only_flag);
    }
 
+/* The IVB PRM states that MFX_AVC_IMG_STATE must be the first command to
+ * issue after the surface state, the pipe select, and base address setting
+ * commands. The extra 8 bytes of padding we saw before might actually be
+ * correct, e.g. 1080 / 16, rounded up to 1088. First and Second Chroma QP
+ * offset should be a signed integer in the range of -12 to +12.
+ */
    anv_batch_emit(&cmd_buffer->batch, GENX(MFX_AVC_IMG_STATE), avc_img) {
       avc_img.FrameWidth = sps->pic_width_in_mbs_minus1;
       avc_img.FrameHeight = pic_height - 1;
@@ -531,6 +537,7 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
               h264_pic_info->pStdPictureInfo->PicOrderCnt[1]);
    }
 
+   /* IVB: All of these buffers must be 64-byte cachline aligned. */
    anv_batch_emit(&cmd_buffer->batch, GENX(MFX_AVC_DIRECTMODE_STATE), avc_directmode) {
       /* bind reference frame DMV */
       #if defined(__GNUC__)
@@ -569,12 +576,14 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
                                                          &ref_iv->image->vid_dmv_top_surface);
          uint32_t dmv_read_mocs = anv_mocs(cmd_buffer->device, ref_iv->image->bindings[0].address.bo, 0);
 
-         /* Top field */
+         /* Top field
+            IVB: Must be 64-byte cacheline aligned. Do not scale with frame width because the
+            hardware assumes assumes frame width in MBs fixed at 128, e.g. 1920x1088. */
          avc_directmode.DirectMVBufferAddress[top_idx] = dmv_addr;
          avc_directmode.DirectMVBufferCacheabilityControl[top_idx] = dmv_read_mocs & 0x3;
          avc_directmode.DirectMVBufferGraphicsDataType[top_idx] = (dmv_read_mocs >> 2) & 0x1;
 
-         /* Bottom field (typically same as top for decode) */
+         /* Bottom field (typically the same as the top for decode) */
          avc_directmode.DirectMVBufferAddress[bottom_idx] = dmv_addr;
          avc_directmode.DirectMVBufferCacheabilityControl[bottom_idx] = dmv_read_mocs & 0x3;
          avc_directmode.DirectMVBufferGraphicsDataType[bottom_idx] = (dmv_read_mocs >> 2) & 0x1;
@@ -602,7 +611,9 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       }
 
 #if GFX_VERx10 == 70
-      /* IVB: Write buffer also uses grouped arrays with two entries */
+      /* IVB: Write buffer also uses grouped arrays with two entries.
+       * Picture 0 DMV Buffer must always be programmed but is otherwise ignored (1-33).
+       */
       uint32_t dmv_write_mocs = anv_mocs(cmd_buffer->device, img->bindings[0].address.bo, 0);
       struct anv_address write_addr = anv_image_address(img, &img->vid_dmv_top_surface);
 
