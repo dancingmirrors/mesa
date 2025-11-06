@@ -1029,6 +1029,7 @@ static void radeon_vcn_enc_av1_get_param(struct radeon_encoder *enc,
    enc_pic->force_integer_mv = pic->force_integer_mv;
    enc_pic->disable_screen_content_tools = !pic->allow_screen_content_tools;
    enc_pic->is_obu_frame = pic->enable_frame_obu;
+   enc_pic->av1_enc_params.cur_order_hint = pic->order_hint;
 
    enc_pic->enc_params.reference_picture_index =
       pic->ref_list0[0] == PIPE_H2645_LIST_REF_INVALID_ENTRY ?
@@ -1565,7 +1566,7 @@ static void radeon_enc_begin_frame(struct pipe_video_codec *encoder,
       dpb_slots = 0;
 
    radeon_vcn_enc_get_param(enc, picture);
-   if (dpb_slots && !enc->dpb && setup_dpb(enc, dpb_slots)) {
+   if (enc->first_frame && setup_dpb(enc, dpb_slots)) {
       enc->dpb = si_resource(pipe_buffer_create(enc->screen, 0, PIPE_USAGE_DEFAULT, enc->dpb_size));
       if (!enc->dpb) {
          RADEON_ENC_ERR("Can't create DPB buffer.\n");
@@ -1935,6 +1936,8 @@ static int radeon_enc_end_frame(struct pipe_video_codec *encoder, struct pipe_vi
    if (enc->error)
       return -1;
 
+   enc->first_frame = false;
+
    return flush(enc, picture->flush_flags, picture->out_fence);
 }
 
@@ -2200,6 +2203,8 @@ struct pipe_video_codec *radeon_create_encoder(struct pipe_context *context,
          enc->enc_pic.use_rc_per_pic_ex = true;
       radeon_enc_1_2_init(enc);
    }
+
+   enc->first_frame = true;
 
    return &enc->base;
 

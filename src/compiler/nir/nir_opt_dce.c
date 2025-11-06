@@ -88,14 +88,6 @@ is_live(BITSET_WORD *defs_live, nir_instr *instr)
       nir_undef_instr *undef = nir_instr_as_undef(instr);
       return is_def_live(&undef->def, defs_live);
    }
-   case nir_instr_type_parallel_copy: {
-      nir_parallel_copy_instr *pc = nir_instr_as_parallel_copy(instr);
-      nir_foreach_parallel_copy_entry(entry, pc) {
-         if (entry->dest_is_reg || is_def_live(&entry->dest.def, defs_live))
-            return true;
-      }
-      return false;
-   }
    default:
       UNREACHABLE("unexpected instr type");
    }
@@ -223,8 +215,7 @@ nir_opt_dce_impl(nir_function_impl *impl)
 {
    assert(impl->structured);
 
-   BITSET_WORD *defs_live = rzalloc_array(NULL, BITSET_WORD,
-                                          BITSET_WORDS(impl->ssa_alloc));
+   BITSET_WORD *defs_live = BITSET_RZALLOC(NULL, impl->ssa_alloc);
 
    struct exec_list dead_instrs;
    exec_list_make_empty(&dead_instrs);

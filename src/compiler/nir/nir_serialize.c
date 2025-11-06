@@ -1717,8 +1717,6 @@ write_instr(write_ctx *ctx, const nir_instr *instr)
       blob_write_uint32(ctx->blob, instr->type);
       write_call(ctx, nir_instr_as_call(instr));
       break;
-   case nir_instr_type_parallel_copy:
-      UNREACHABLE("Cannot write parallel copies");
    default:
       UNREACHABLE("bad instr type");
    }
@@ -1771,8 +1769,6 @@ read_instr(read_ctx *ctx, nir_block *block)
    case nir_instr_type_call:
       instr = &read_call(ctx)->instr;
       break;
-   case nir_instr_type_parallel_copy:
-      UNREACHABLE("Cannot read parallel copies");
    default:
       UNREACHABLE("bad instr type");
    }
@@ -2138,7 +2134,7 @@ nir_serialize_function(struct blob *blob, const nir_function *fxn)
    ctx.blob = blob;
    ctx.nir = fxn->shader;
    ctx.strip = true;
-   util_dynarray_init(&ctx.phi_fixups, NULL);
+   ctx.phi_fixups = UTIL_DYNARRAY_INIT;
 
    size_t idx_size_offset = blob_reserve_uint32(blob);
 
@@ -2160,7 +2156,7 @@ serialize_internal(struct blob *blob, const nir_shader *nir, bool strip, bool se
    ctx.nir = nir;
    ctx.strip = strip;
    ctx.debug_info = nir->has_debug_info && !strip;
-   util_dynarray_init(&ctx.phi_fixups, NULL);
+   ctx.phi_fixups = UTIL_DYNARRAY_INIT;
 
    size_t idx_size_offset = blob_reserve_uint32(blob);
 

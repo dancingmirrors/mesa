@@ -344,8 +344,12 @@ panfrost_lower_yuv_format(struct panfrost_device *dev,
       TRY_LOWERING(PIPE_FORMAT_R10G10B10_420_UNORM_PACKED);
       break;
    case PIPE_FORMAT_Y210:
+      TRY_LOWERING(PIPE_FORMAT_X6R10X6G10_X6R10X6B10_422_UNORM);
+      TRY_LOWERING(PIPE_FORMAT_RG1616_UNORM, PIPE_FORMAT_R16G16B16A16_UNORM);
+      break;
    case PIPE_FORMAT_Y212:
    case PIPE_FORMAT_Y216:
+      TRY_LOWERING(PIPE_FORMAT_R16G16_R16B16_422_UNORM);
       TRY_LOWERING(PIPE_FORMAT_RG1616_UNORM, PIPE_FORMAT_R16G16B16A16_UNORM);
       break;
    case PIPE_FORMAT_P010:
@@ -519,13 +523,26 @@ panfrost_is_dmabuf_modifier_supported(struct pipe_screen *screen,
    unsigned int uint_extern_only = 0;
    int count;
 
+   if (format_requires_afbc(format) && !drm_is_afbc(modifier))
+      return false;
+
    panfrost_walk_dmabuf_modifiers(screen, format, 1, &unused, &uint_extern_only,
                                   &count, modifier, true);
 
    if (external_only)
       *external_only = uint_extern_only ? true : false;
 
+
    return count > 0;
+}
+
+static unsigned int
+panfrost_get_dmabuf_modifier_planes(struct pipe_screen *pscreen, uint64_t modifier,
+                                    enum pipe_format format)
+{
+   unsigned int planes = util_format_get_num_planes(format);
+
+   return planes;
 }
 
 static void
@@ -1100,7 +1117,8 @@ panfrost_create_screen(int fd, const struct pipe_screen_config *config,
    screen->base.query_compression_rates = panfrost_query_compression_rates;
    screen->base.query_compression_modifiers =
       panfrost_query_compression_modifiers;
-
+   screen->base.get_dmabuf_modifier_planes =
+      panfrost_get_dmabuf_modifier_planes;
    panfrost_resource_screen_init(&screen->base);
 
    panfrost_init_shader_caps(screen);

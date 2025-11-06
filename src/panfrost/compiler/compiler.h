@@ -921,6 +921,7 @@ typedef struct bi_block {
    /* Scalar liveness indexed by SSA index */
    BITSET_WORD *ssa_live_in;
    BITSET_WORD *ssa_live_out;
+   uint32_t ssa_max_live;
 
    /* If true, uses clauses; if false, uses instructions */
    bool scheduled;
@@ -1102,6 +1103,9 @@ typedef struct {
 
    /* alignment needed for registers during register allocation */
    uint8_t *reg_alignment;
+
+   /* Computed after RA */
+   uint64_t spill_cost;
 } bi_context;
 
 static inline enum bi_round
@@ -1734,6 +1738,8 @@ bi_record_use(bi_instr **uses, BITSET_WORD *multiple, bi_instr *I, unsigned s)
 /* NIR passes */
 
 bool bi_lower_divergent_indirects(nir_shader *shader, unsigned lanes);
+
+bool *bi_find_loop_blocks(const bi_context *ctx, bi_block *header);
 
 #ifdef __cplusplus
 } /* extern C */
