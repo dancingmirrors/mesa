@@ -277,9 +277,12 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
 #endif
    }
 
+   /* Store the base address for later offset calculations */
+   uint64_t bitstream_base_offset = frame_info->srcBufferOffset & ~4095;
+   
    anv_batch_emit(&cmd_buffer->batch, GENX(MFX_IND_OBJ_BASE_ADDR_STATE), index_obj) {
       index_obj.MFXIndirectBitstreamObjectAddress = anv_address_add(src_buffer->address,
-                                                                    frame_info->srcBufferOffset & ~4095);
+                                                                    bitstream_base_offset);
 #if GFX_VERx10 == 75
       index_obj.MFXIndirectBitstreamObjectMOCS = anv_mocs(cmd_buffer->device, src_buffer->address.bo,
                                                           0);
@@ -639,18 +642,16 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
             next_end = frame_info->srcBufferRange;
          anv_batch_emit(&cmd_buffer->batch, GENX(MFD_AVC_SLICEADDR), sliceaddr) {
             sliceaddr.IndirectBSDDataLength = next_end - next_offset - HEADER_OFFSET;
-            /* start decoding after the 3-byte header. */
-            sliceaddr.IndirectBSDDataStartAddress = anv_address_add(src_buffer->address,
-                                                                    frame_info->srcBufferOffset + next_offset + HEADER_OFFSET);
+            /* Calculate offset from base address (after 3-byte header) */
+            sliceaddr.IndirectBSDDataStartAddress = (frame_info->srcBufferOffset + next_offset + HEADER_OFFSET) - bitstream_base_offset;
          };
          this_end = next_offset;
       } else
          this_end = frame_info->srcBufferRange;
       anv_batch_emit(&cmd_buffer->batch, GENX(MFD_AVC_BSD_OBJECT), avc_bsd) {
          avc_bsd.IndirectBSDDataLength = this_end - current_offset - HEADER_OFFSET;
-         /* start decoding after the 3-byte header. */
-         avc_bsd.IndirectBSDDataStartAddress = anv_address_add(src_buffer->address,
-                                                               frame_info->srcBufferOffset + current_offset + HEADER_OFFSET);
+         /* Calculate offset from base address (after 3-byte header) */
+         avc_bsd.IndirectBSDDataStartAddress = (frame_info->srcBufferOffset + current_offset + HEADER_OFFSET) - bitstream_base_offset;
          avc_bsd.InlineData.LastSlice = last_slice;
          avc_bsd.InlineData.FixPrevMBSkipped = 1;
 #if GFX_VERx10 >= 75
