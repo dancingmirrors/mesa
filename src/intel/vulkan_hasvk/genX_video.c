@@ -119,9 +119,18 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
 
    /* Debug output for decode surface configuration */
    if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+      uint32_t actual_height_rows = 
+         img->planes[0].primary_surface.memory_range.size / 
+         img->planes[0].primary_surface.isl.row_pitch_B;
+      uint32_t yoffset = 
+         img->planes[1].primary_surface.memory_range.offset / 
+         img->planes[0].primary_surface.isl.row_pitch_B;
+         
       fprintf(stderr, "H264 Decode Surface Configuration:\n");
-      fprintf(stderr, "  Surface dimensions: %ux%u\n",
+      fprintf(stderr, "  Logical dimensions: %ux%u\n",
               img->vk.extent.width, img->vk.extent.height);
+      fprintf(stderr, "  Surface height in memory: %u rows (luma_size/pitch)\n",
+              actual_height_rows);
       fprintf(stderr, "  Luma plane pitch: %u bytes\n",
               img->planes[0].primary_surface.isl.row_pitch_B);
       fprintf(stderr, "  Luma plane size: %" PRIu64 " bytes\n",
@@ -130,35 +139,41 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
               img->planes[1].primary_surface.memory_range.offset);
       fprintf(stderr, "  Chroma plane size: %" PRIu64 " bytes\n",
               img->planes[1].primary_surface.memory_range.size);
+      fprintf(stderr, "  Chroma YOffset: %u rows\n", yoffset);
+      fprintf(stderr, "  MFX_SURFACE_STATE: Width=%u, Height=%u\n",
+              img->vk.extent.width - 1, actual_height_rows - 1);
       fprintf(stderr, "  Tiling mode: %s\n",
               img->planes[0].primary_surface.isl.tiling == ISL_TILING_LINEAR ? "Linear" :
               img->planes[0].primary_surface.isl.tiling == ISL_TILING_X ? "X-tiled" :
               img->planes[0].primary_surface.isl.tiling == ISL_TILING_Y0 ? "Y0-tiled" : "Other");
-      if (img->planes[0].primary_surface.isl.row_pitch_B > 0) {
-         fprintf(stderr, "  Chroma YOffset: %" PRIu64 " rows\n",
-                 img->planes[1].primary_surface.memory_range.offset / img->planes[0].primary_surface.isl.row_pitch_B);
-      }
 #if GFX_VERx10 == 70
-      /* Simple calculation: width × height in pixels for NV12 luma plane.
-       * Actual size may differ due to row pitch alignment and padding. */
-      uint64_t expected_luma_size = img->vk.extent.width * img->vk.extent.height;
-      fprintf(stderr, "  [IVB] Expected luma size (WxH): %" PRIu64 " bytes\n", expected_luma_size);
-      fprintf(stderr, "  [IVB] Actual luma size: %" PRIu64 " bytes\n",
-              img->planes[0].primary_surface.memory_range.size);
-      if (img->planes[0].primary_surface.memory_range.size >= expected_luma_size) {
-         uint64_t padding = img->planes[0].primary_surface.memory_range.size - expected_luma_size;
-         fprintf(stderr, "  [IVB] Padding: %" PRIu64 " bytes", padding);
-         if (img->planes[0].primary_surface.isl.row_pitch_B > 0) {
-            fprintf(stderr, " (%" PRIu64 " rows)", padding / img->planes[0].primary_surface.isl.row_pitch_B);
-         }
-         fprintf(stderr, "\n");
+      /* Verify YOffset is within the surface height we're telling hardware */
+      if (yoffset > actual_height_rows) {
+         fprintf(stderr, "  ⚠️  ERROR: YOffset (%u) > surface height (%u)!\n",
+                 yoffset, actual_height_rows);
       }
 #endif
    }
 
    anv_batch_emit(&cmd_buffer->batch, GENX(MFX_SURFACE_STATE), ss) {
       ss.Width = img->vk.extent.width - 1;
-      ss.Height = img->vk.extent.height - 1;
+      
+      /* For Y-tiled surfaces, ISL may allocate more memory than width×height
+       * due to tile alignment. The actual surface height in memory is
+       * luma_size / pitch. We must use this actual height, not the logical
+       * video height, because YOffset is calculated relative to it.
+       * 
+       * Example: 16×16 video with 128-byte pitch
+       *   - Logical: 16×16 pixels
+       *   - Allocation: 128 bytes/row × 32 rows = 4096 bytes
+       *   - YOffset: 4096 / 128 = 32 rows
+       *   - If we set Height=15 but YOffset=32, hardware can't find chroma!
+       */
+      uint32_t actual_height_rows = 
+         img->planes[0].primary_surface.memory_range.size / 
+         img->planes[0].primary_surface.isl.row_pitch_B;
+      ss.Height = actual_height_rows - 1;
+      
       ss.SurfaceFormat = PLANAR_420_8; // assert on this?
       ss.InterleaveChroma = 1;
       ss.SurfacePitch = img->planes[0].primary_surface.isl.row_pitch_B - 1;
