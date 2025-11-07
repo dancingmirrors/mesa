@@ -689,6 +689,14 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
          avc_bsd.InlineData.Intra8x84x4PredictionErrorConcealmentControl = 1;
          avc_bsd.InlineData.ISliceConcealmentMode = 1;
 #endif
+#if GFX_VER >= 7
+         /* Enable basic error concealment for Gen 7+ (including Ivy Bridge).
+          * These fields are available on both Gen 7.0 and Gen 7.5+. */
+         avc_bsd.InlineData.MBHeaderErrorHandling = 1;
+         avc_bsd.InlineData.EntropyErrorHandling = 1;
+         avc_bsd.InlineData.MPRErrorHandling = 1;
+         avc_bsd.InlineData.BSDPrematureCompleteErrorHandling = 1;
+#endif
      };
 }
 }
