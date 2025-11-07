@@ -391,11 +391,11 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       avc_img.WeightedBiPredictionIDC = pps->weighted_bipred_idc;
       avc_img.WeightedPredictionEnable = pps->flags.weighted_pred_flag;
 #if GFX_VERx10 == 70
-      /* On Gen7 (Ivy Bridge), the hardware has an off-by-one bug where it
-       * adds 1 to the chroma QP offset values. Subtract 1 to compensate.
+      /* On Gen7 (Ivy Bridge), the chroma QP offset fields don't work correctly.
+       * Set them to 0 as a workaround, matching the legacy VA-API driver behavior.
        */
-      avc_img.FirstChromaQPOffset = pps->chroma_qp_index_offset - 1;
-      avc_img.SecondChromaQPOffset = pps->second_chroma_qp_index_offset - 1;
+      avc_img.FirstChromaQPOffset = 0;
+      avc_img.SecondChromaQPOffset = 0;
 #else
       avc_img.FirstChromaQPOffset = pps->chroma_qp_index_offset;
       avc_img.SecondChromaQPOffset = pps->second_chroma_qp_index_offset;
