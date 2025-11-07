@@ -551,6 +551,20 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
               h264_pic_info->pStdPictureInfo->PicOrderCnt[1]);
    }
 
+#if GFX_VER <= 75
+   /* On Haswell and earlier, ensure DMV buffers written by previous decode
+    * operations are flushed and visible before setting up direct mode state
+    * for motion prediction. This prevents corruption in inter-frame prediction.
+    */
+   anv_batch_emit(&cmd_buffer->batch, GENX(PIPE_CONTROL), pc) {
+      pc.CommandStreamerStallEnable = 1;
+      pc.DCFlushEnable = 1;
+#if GFX_VER == 75
+      pc.VFCacheInvalidationEnable = 1;
+#endif
+   }
+#endif
+
    anv_batch_emit(&cmd_buffer->batch, GENX(MFX_AVC_DIRECTMODE_STATE), avc_directmode) {
       /* bind reference frame DMV */
       #if defined(__GNUC__)
