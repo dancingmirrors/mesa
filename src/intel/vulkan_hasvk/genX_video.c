@@ -717,6 +717,9 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
        * synchronization on Haswell and earlier generations. This prevents
        * macroblock corruption artifacts by ensuring the previous decode
        * completes before starting the next one.
+       *
+       * Note: This has a performance impact proportional to slice count,
+       * but is required for correctness on these older generations.
        */
       anv_batch_emit(&cmd_buffer->batch, GENX(MFX_WAIT), wait) {
          wait.MFXSyncControlFlag = 1;
