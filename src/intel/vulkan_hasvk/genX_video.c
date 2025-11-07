@@ -135,7 +135,7 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
          total_surface_size / img->planes[0].primary_surface.isl.row_pitch_B;
          
       fprintf(stderr, "H264 Decode Surface Configuration:\n");
-      fprintf(stderr, "  Picture dimensions: %ux%u\n",
+      fprintf(stderr, "  Logical dimensions: %ux%u\n",
               img->vk.extent.width, img->vk.extent.height);
       fprintf(stderr, "  Luma plane: %" PRIu64 " bytes (%u rows)\n",
               img->planes[0].primary_surface.memory_range.size, luma_height_rows);
@@ -144,24 +144,20 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
               img->planes[1].primary_surface.memory_range.offset, yoffset);
       fprintf(stderr, "  Total surface: %" PRIu64 " bytes (%u rows)\n",
               total_surface_size, total_height_rows);
-      fprintf(stderr, "  Pitch: %u bytes/row (may include padding per PRM)\n",
+      fprintf(stderr, "  Pitch: %u bytes/row\n",
               img->planes[0].primary_surface.isl.row_pitch_B);
-      fprintf(stderr, "  MFX_SURFACE_STATE: Width=%u, Height=%u (minus-1 encoding)\n",
-              img->vk.extent.width - 1, img->vk.extent.height - 1);
-      fprintf(stderr, "  Note: Width/Height are picture dimensions, not total surface rows\n");
+      fprintf(stderr, "  MFX_SURFACE_STATE: Width=%u, Height=%u\n",
+              img->vk.extent.width - 1, total_height_rows - 1);
       fprintf(stderr, "  Tiling: %s\n",
               img->planes[0].primary_surface.isl.tiling == ISL_TILING_LINEAR ? "Linear" :
               img->planes[0].primary_surface.isl.tiling == ISL_TILING_X ? "X-tiled" :
               img->planes[0].primary_surface.isl.tiling == ISL_TILING_Y0 ? "Y0-tiled" : "Other");
 #if GFX_VERx10 == 70
-      /* Verify chroma is within the allocated surface memory bounds.
-       * Note: This checks the total surface allocation (total_height_rows), not
-       * the MFX_SURFACE_STATE.Height field (which is the picture height).
-       * Hardware accesses chroma via YOffset within the allocated surface. */
+      /* Verify chroma is within the surface bounds we're telling hardware */
       uint32_t chroma_end_row = yoffset + (img->planes[1].primary_surface.memory_range.size / 
                                             img->planes[0].primary_surface.isl.row_pitch_B);
       if (chroma_end_row > total_height_rows) {
-         fprintf(stderr, "  ⚠️  ERROR: Chroma extends to row %u but allocated surface is only %u rows!\n",
+         fprintf(stderr, "  ⚠️  ERROR: Chroma extends to row %u but surface height is only %u rows!\n",
                  chroma_end_row, total_height_rows);
       }
 #endif
