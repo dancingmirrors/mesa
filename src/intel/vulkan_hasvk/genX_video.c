@@ -117,6 +117,9 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
    const struct anv_image_view *iv = anv_image_view_from_handle(frame_info->dstPictureResource.imageViewBinding);
    const struct anv_image *img = iv->image;
 
+   /* Validate surface has valid pitch before performing calculations */
+   assert(img->planes[0].primary_surface.isl.row_pitch_B > 0);
+   
    /* Debug output for decode surface configuration */
    if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
       uint32_t actual_height_rows = 
