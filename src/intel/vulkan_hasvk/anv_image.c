@@ -702,6 +702,21 @@ add_video_buffers(struct anv_device *device,
       if (profile_list->pProfiles[i].videoCodecOperation == VK_VIDEO_CODEC_OPERATION_DECODE_H264_BIT_KHR) {
          unsigned w_mb = DIV_ROUND_UP(image->vk.extent.width, ANV_MB_WIDTH);
          unsigned h_mb = DIV_ROUND_UP(image->vk.extent.height, ANV_MB_HEIGHT);
+         
+         /* On Ivy Bridge (Gen7), the hardware assumes a fixed frame width of
+          * 128 MBs (2048 pixels) when indexing into the DirectMV buffer,
+          * regardless of the actual frame width. We must allocate the buffer
+          * with this assumption to prevent out-of-bounds access.
+          * 
+          * For frames narrower than 128 MBs, this wastes memory but is required
+          * for correct hardware operation. For frames 128 MBs or wider, use
+          * actual width.
+          */
+         if (device->info->ver == 7) {
+            /* Use maximum of actual width or hardware assumed width (128 MBs) */
+            w_mb = MAX2(w_mb, 128);
+         }
+         
          size = w_mb * h_mb * 128;
       }
    }
