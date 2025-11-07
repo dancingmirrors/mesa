@@ -154,11 +154,14 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
               img->planes[0].primary_surface.isl.tiling == ISL_TILING_X ? "X-tiled" :
               img->planes[0].primary_surface.isl.tiling == ISL_TILING_Y0 ? "Y0-tiled" : "Other");
 #if GFX_VERx10 == 70
-      /* Verify chroma is within the surface bounds we're telling hardware */
+      /* Verify chroma is within the allocated surface memory bounds.
+       * Note: This checks the total surface allocation (total_height_rows), not
+       * the MFX_SURFACE_STATE.Height field (which is the picture height).
+       * Hardware accesses chroma via YOffset within the allocated surface. */
       uint32_t chroma_end_row = yoffset + (img->planes[1].primary_surface.memory_range.size / 
                                             img->planes[0].primary_surface.isl.row_pitch_B);
       if (chroma_end_row > total_height_rows) {
-         fprintf(stderr, "  ⚠️  ERROR: Chroma extends to row %u but surface height is only %u rows!\n",
+         fprintf(stderr, "  ⚠️  ERROR: Chroma extends to row %u but allocated surface is only %u rows!\n",
                  chroma_end_row, total_height_rows);
       }
 #endif
