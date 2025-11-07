@@ -711,6 +711,17 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
          avc_bsd.InlineData.ISliceConcealmentMode = 1;
 #endif
      };
+
+#if GFX_VER <= 75
+      /* Insert MFX_WAIT after each decode operation to ensure proper
+       * synchronization on Haswell and earlier generations. This prevents
+       * macroblock corruption artifacts by ensuring the previous decode
+       * completes before starting the next one.
+       */
+      anv_batch_emit(&cmd_buffer->batch, GENX(MFX_WAIT), wait) {
+         wait.MFXSyncControlFlag = 1;
+      }
+#endif
 }
 }
 
