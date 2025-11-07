@@ -94,7 +94,7 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       int idx = frame_info->pReferenceSlots[i].slotIndex;
       if (idx < 0)
          continue;
-      
+
       assert(idx < ANV_VIDEO_H264_MAX_DPB_SLOTS);
       dpb_slots[idx] = i;
    }
@@ -117,23 +117,21 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
    const struct anv_image_view *iv = anv_image_view_from_handle(frame_info->dstPictureResource.imageViewBinding);
    const struct anv_image *img = iv->image;
 
-   /* Validate surface has valid pitch before performing calculations */
    assert(img->planes[0].primary_surface.isl.row_pitch_B > 0);
-   
-   /* Debug output for decode surface configuration */
+
    if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
-      uint32_t luma_height_rows = 
-         img->planes[0].primary_surface.memory_range.size / 
+      uint32_t luma_height_rows =
+         img->planes[0].primary_surface.memory_range.size /
          img->planes[0].primary_surface.isl.row_pitch_B;
-      uint32_t yoffset = 
-         img->planes[1].primary_surface.memory_range.offset / 
+      uint32_t yoffset =
+         img->planes[1].primary_surface.memory_range.offset /
          img->planes[0].primary_surface.isl.row_pitch_B;
-      uint64_t total_surface_size = 
+      uint64_t total_surface_size =
          img->planes[0].primary_surface.memory_range.size +
          img->planes[1].primary_surface.memory_range.size;
-      uint32_t total_height_rows = 
+      uint32_t total_height_rows =
          total_surface_size / img->planes[0].primary_surface.isl.row_pitch_B;
-         
+
       fprintf(stderr, "H264 Decode Surface Configuration:\n");
       fprintf(stderr, "  Logical dimensions: %ux%u\n",
               img->vk.extent.width, img->vk.extent.height);
@@ -153,11 +151,10 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
               img->planes[0].primary_surface.isl.tiling == ISL_TILING_X ? "X-tiled" :
               img->planes[0].primary_surface.isl.tiling == ISL_TILING_Y0 ? "Y0-tiled" : "Other");
 #if GFX_VERx10 == 70
-      /* Verify chroma is within the surface bounds we're telling hardware */
-      uint32_t chroma_end_row = yoffset + (img->planes[1].primary_surface.memory_range.size / 
+      uint32_t chroma_end_row = yoffset + (img->planes[1].primary_surface.memory_range.size /
                                             img->planes[0].primary_surface.isl.row_pitch_B);
       if (chroma_end_row > total_height_rows) {
-         fprintf(stderr, "  ⚠️  ERROR: Chroma extends to row %u but surface height is only %u rows!\n",
+         fprintf(stderr, "ERROR: Chroma extends to row %u but surface height is only %u rows!\n",
                  chroma_end_row, total_height_rows);
       }
 #endif
@@ -165,16 +162,16 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
 
    anv_batch_emit(&cmd_buffer->batch, GENX(MFX_SURFACE_STATE), ss) {
       ss.Width = img->vk.extent.width - 1;
-      
+
       /* The Height field represents the picture height (luma plane height),
        * not the total surface height including chroma. Hardware uses the
        * YOffset fields to locate the chroma plane within the surface.
-       * 
+       *
        * For NV12 4:2:0 format:
        * - Luma plane height = picture height
        * - Chroma plane height = picture height / 2
        * - Hardware accesses chroma using YOffset, not by extending Height
-       * 
+       *
        * Example: 64×64 NV12 with 128-byte pitch
        *   - Picture dimensions: 64×64
        *   - Luma: 64 rows at offset 0
@@ -183,7 +180,6 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
        *   - Height field: 63 (64-1, picture height, not total rows)
        */
       ss.Height = img->vk.extent.height - 1;
-      
       ss.SurfaceFormat = PLANAR_420_8; // assert on this?
       ss.InterleaveChroma = 1;
       ss.SurfacePitch = img->planes[0].primary_surface.isl.row_pitch_B - 1;
@@ -218,7 +214,6 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       buf.OriginalUncompressedPictureSourceMOCS = anv_mocs(cmd_buffer->device, NULL, 0);
       buf.StreamOutDataDestinationMOCS = anv_mocs(cmd_buffer->device, NULL, 0);
 #elif GFX_VERx10 == 70
-      /* IVB: MOCS fields are split into CacheabilityControl and GraphicsDataType */
       uint32_t dest_mocs = anv_mocs(cmd_buffer->device, buf.PostDeblockingDestinationAddress.bo, 0);
       buf.PostDeblockingDestinationCacheabilityControl = dest_mocs & 0x3;
       buf.PostDeblockingDestinationGraphicsDataType = (dest_mocs >> 2) & 0x1;
@@ -240,14 +235,12 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
 #if GFX_VERx10 >= 75
       buf.IntraRowStoreScratchBufferMOCS = anv_mocs(cmd_buffer->device, vid->vid_mem[ANV_VID_MEM_H264_INTRA_ROW_STORE].mem->bo, 0);
 #elif GFX_VERx10 == 70
-      /* IVB: MOCS fields are split into CacheabilityControl and GraphicsDataType */
       uint32_t intra_mocs = anv_mocs(cmd_buffer->device, vid->vid_mem[ANV_VID_MEM_H264_INTRA_ROW_STORE].mem->bo, 0);
       buf.IntraRowStoreScratchBufferCacheabilityControl = intra_mocs & 0x3;
       buf.IntraRowStoreScratchBufferGraphicsDataType = (intra_mocs >> 2) & 0x1;
 #endif
 #if GFX_VERx10 == 70
       buf.DeblockingFilterRowStoreScratchBufferAddress = (struct anv_address) { vid->vid_mem[ANV_VID_MEM_H264_DEBLOCK_FILTER_ROW_STORE].mem->bo, vid->vid_mem[ANV_VID_MEM_H264_DEBLOCK_FILTER_ROW_STORE].offset };
-      /* IVB: MOCS fields are split into CacheabilityControl and GraphicsDataType */
       uint32_t deblock_mocs = anv_mocs(cmd_buffer->device, vid->vid_mem[ANV_VID_MEM_H264_DEBLOCK_FILTER_ROW_STORE].mem->bo, 0);
       buf.DeblockingFilterRowStoreScratchBufferCacheabilityControl = deblock_mocs & 0x3;
       buf.DeblockingFilterRowStoreScratchBufferGraphicsDataType = (deblock_mocs >> 2) & 0x1;
@@ -264,7 +257,6 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
 #if GFX_VERx10 == 80
       struct anv_bo *ref_bo = NULL;
 #endif
-      /* Debug reference frame configuration */
       if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
          fprintf(stderr, "Reference Frame Configuration:\n");
          fprintf(stderr, "  Total reference slots: %u\n", frame_info->referenceSlotCount);
@@ -276,7 +268,6 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
          buf.ReferencePictureAddress[i] = anv_image_address(ref_iv->image,
                                                             &ref_iv->image->planes[0].primary_surface.memory_range);
 
-         /* Debug each reference frame */
          if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
             fprintf(stderr, "  Ref[%u]: slot_idx=%d, dimensions=%ux%u, pitch=%u, tiling=%s\n",
                     i, frame_info->pReferenceSlots[i].slotIndex,
@@ -288,7 +279,6 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
          }
 
 #if GFX_VERx10 == 70
-         /* IVB: MOCS fields are split into CacheabilityControl and GraphicsDataType */
          uint32_t ref_mocs = anv_mocs(cmd_buffer->device, ref_iv->image->bindings[0].address.bo, 0);
          buf.ReferencePictureCacheabilityControl[i] = ref_mocs & 0x3;
          buf.ReferencePictureGraphicsDataType[i] = (ref_mocs >> 2) & 0x1;
@@ -313,7 +303,6 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       index_obj.MFDIndirectITDBLKObjectMOCS = anv_mocs(cmd_buffer->device, NULL, 0);
       index_obj.MFCIndirectPAKBSEObjectMOCS = anv_mocs(cmd_buffer->device, NULL, 0);
 #elif GFX_VERx10 == 70
-      /* IVB: MOCS fields are split into CacheabilityControl and GraphicsDataType */
       uint32_t bitstream_mocs = anv_mocs(cmd_buffer->device, src_buffer->address.bo, 0);
       index_obj.MFXIndirectBitstreamObjectCacheabilityControl = bitstream_mocs & 0x3;
       index_obj.MFXIndirectBitstreamObjectGraphicsDataType = (bitstream_mocs >> 2) & 0x1;
@@ -338,7 +327,6 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
 #if GFX_VERx10 == 75
       bsp.BSDMPCRowStoreScratchBufferMOCS = anv_mocs(cmd_buffer->device, vid->vid_mem[ANV_VID_MEM_H264_BSD_MPC_ROW_SCRATCH].mem->bo, 0);
 #elif GFX_VERx10 == 70
-      /* IVB: MOCS fields are split into CacheabilityControl and GraphicsDataType */
       uint32_t bsd_mocs = anv_mocs(cmd_buffer->device, vid->vid_mem[ANV_VID_MEM_H264_BSD_MPC_ROW_SCRATCH].mem->bo, 0);
       bsp.BSDMPCRowStoreScratchBufferCacheabilityControl = bsd_mocs & 0x3;
       bsp.BSDMPCRowStoreScratchBufferGraphicsDataType = (bsd_mocs >> 2) & 0x1;
@@ -351,7 +339,6 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       bsp.MPRRowStoreScratchBufferMOCS = anv_mocs(cmd_buffer->device,  vid->vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo, 0);
       bsp.BitplaneReadBufferMOCS = anv_mocs(cmd_buffer->device, NULL, 0);
 #elif GFX_VERx10 == 70
-      /* IVB: MOCS fields are split into CacheabilityControl and GraphicsDataType */
       uint32_t mpr_mocs = anv_mocs(cmd_buffer->device, vid->vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo, 0);
       bsp.MPRRowStoreScratchBufferCacheabilityControl = mpr_mocs & 0x3;
       bsp.MPRRowStoreScratchBufferGraphicsDataType = (mpr_mocs >> 2) & 0x1;
@@ -365,7 +352,6 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
    if (!sps->flags.frame_mbs_only_flag)
       pic_height *= 2;
 
-   /* Debug image state configuration */
    if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
       fprintf(stderr, "AVC Image State:\n");
       fprintf(stderr, "  Frame: %ux%u MBs (width_minus1=%u, height=%u)\n",
@@ -377,12 +363,6 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
               sps->flags.frame_mbs_only_flag);
    }
 
-/* The IVB PRM states that MFX_AVC_IMG_STATE must be the first command to
- * issue after the surface state, the pipe select, and base address setting
- * commands. The extra 8 bytes of padding we saw before might actually be
- * correct, e.g. 1080 / 16, rounded up to 1088. First and Second Chroma QP
- * offset should be a signed integer in the range of -12 to +12.
- */
    anv_batch_emit(&cmd_buffer->batch, GENX(MFX_AVC_IMG_STATE), avc_img) {
       avc_img.FrameWidth = sps->pic_width_in_mbs_minus1;
       avc_img.FrameHeight = pic_height - 1;
@@ -511,7 +491,6 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       }
    }
 
-   /* Debug DPB state */
    if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
       fprintf(stderr, "DPB State Configuration:\n");
    }
@@ -526,7 +505,6 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
          if (slot_idx < 0)
             continue;
 
-         /* Map DPB slot index to reference picture array index */
          int idx = dpb_slots[slot_idx];
 
          avc_dpb.NonExistingFrame[idx] = ref_info->flags.is_non_existing;
@@ -537,7 +515,6 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
             avc_dpb.UsedforReference[idx] = ref_info->flags.top_field_flag | (ref_info->flags.bottom_field_flag << 1);
          avc_dpb.LTSTFrameNumberList[idx] = ref_info->FrameNum;
 
-         /* Debug DPB entries */
          if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
             fprintf(stderr, "  DPB[%u] slot=%d->idx=%d, FrameNum=%u, UsedForRef=%u, LongTerm=%u, NonExisting=%u\n",
                     i, slot_idx, idx, ref_info->FrameNum,
@@ -554,7 +531,6 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
    }
 #endif
 
-   /* Debug direct mode / POC configuration */
    if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
       fprintf(stderr, "Direct Mode State Configuration:\n");
       fprintf(stderr, "  Current frame POC: [%d, %d]\n",
@@ -562,7 +538,6 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
               h264_pic_info->pStdPictureInfo->PicOrderCnt[1]);
    }
 
-   /* IVB: All of these buffers must be 64-byte cachline aligned. */
    anv_batch_emit(&cmd_buffer->batch, GENX(MFX_AVC_DIRECTMODE_STATE), avc_directmode) {
       /* bind reference frame DMV */
       #if defined(__GNUC__)
@@ -579,7 +554,6 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
          if (slot_idx < 0)
             continue;
 
-         /* Map DPB slot index to reference picture array index */
          int idx = dpb_slots[slot_idx];
 
          const struct VkVideoDecodeH264DpbSlotInfoKHR *dpb_slot =
@@ -593,7 +567,6 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
          }
 
 #if GFX_VERx10 == 70
-         /* IVB: Each reference slot needs TWO entries (top/bottom field) in grouped arrays */
          uint32_t top_idx = idx * 2;
          uint32_t bottom_idx = idx * 2 + 1;
 
@@ -601,19 +574,14 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
                                                          &ref_iv->image->vid_dmv_top_surface);
          uint32_t dmv_read_mocs = anv_mocs(cmd_buffer->device, ref_iv->image->bindings[0].address.bo, 0);
 
-         /* Top field
-            IVB: Must be 64-byte cacheline aligned. Do not scale with frame width because the
-            hardware assumes frame width in MBs fixed at 128, e.g. 1920x1088. */
          avc_directmode.DirectMVBufferAddress[top_idx] = dmv_addr;
          avc_directmode.DirectMVBufferCacheabilityControl[top_idx] = dmv_read_mocs & 0x3;
          avc_directmode.DirectMVBufferGraphicsDataType[top_idx] = (dmv_read_mocs >> 2) & 0x1;
 
-         /* Bottom field (typically the same as the top for decode) */
          avc_directmode.DirectMVBufferAddress[bottom_idx] = dmv_addr;
          avc_directmode.DirectMVBufferCacheabilityControl[bottom_idx] = dmv_read_mocs & 0x3;
          avc_directmode.DirectMVBufferGraphicsDataType[bottom_idx] = (dmv_read_mocs >> 2) & 0x1;
 #elif GFX_VERx10 == 75
-         /* HSW: Single address per reference, no top/bottom split */
          if (idx == 0)
             avc_directmode.DirectMVBuffer0Address = anv_image_address(ref_iv->image,
                                                                           &ref_iv->image->vid_dmv_top_surface);
@@ -624,7 +592,6 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
          avc_directmode.POCList[2 * idx] = ref_info->PicOrderCnt[0];
          avc_directmode.POCList[2 * idx + 1] = ref_info->PicOrderCnt[1];
 
-         /* Debug POC values for reference frames */
          if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
             fprintf(stderr, "  Ref[%u] slot=%d, idx=%d, POC=[%d, %d], top_field=%u, bottom_field=%u, long_term=%u\n",
                     i, slot_idx, idx,
@@ -636,9 +603,6 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       }
 
 #if GFX_VERx10 == 70
-      /* IVB: Write buffer also uses grouped arrays with two entries.
-       * Picture 0 DMV Buffer must always be programmed but is otherwise ignored (1-33).
-       */
       uint32_t dmv_write_mocs = anv_mocs(cmd_buffer->device, img->bindings[0].address.bo, 0);
       struct anv_address write_addr = anv_image_address(img, &img->vid_dmv_top_surface);
 
@@ -650,7 +614,6 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       avc_directmode.DirectMVBufferWriteCacheabilityControl[1] = dmv_write_mocs & 0x3;
       avc_directmode.DirectMVBufferWriteGraphicsDataType[1] = (dmv_write_mocs >> 2) & 0x1;
 #else
-      /* HSW and later */
       avc_directmode.DirectMVBufferWriteAddress = anv_image_address(img,
                                                                     &img->vid_dmv_top_surface);
 #if GFX_VERx10 == 75
@@ -663,29 +626,62 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       avc_directmode.POCList[33] = h264_pic_info->pStdPictureInfo->PicOrderCnt[1];
    }
 
-   uint32_t buffer_offset = frame_info->srcBufferOffset & 4095;
-#define HEADER_OFFSET 3
-   for (unsigned s = 0; s < h264_pic_info->sliceCount; s++) {
-      bool last_slice = s == (h264_pic_info->sliceCount - 1);
-      uint32_t current_offset = h264_pic_info->pSliceOffsets[s];
-      uint32_t this_end;
-      if (!last_slice) {
+      #define HEADER_OFFSET 3
+
+      uint32_t buffer_offset = frame_info->srcBufferOffset & 4095;
+
+      for (unsigned s = 0; s < h264_pic_info->sliceCount; s++) {
+           bool last_slice = s == (h264_pic_info->sliceCount - 1);
+           uint32_t current_offset = h264_pic_info->pSliceOffsets[s];
+           uint32_t this_end;
+
+     if (!last_slice) {
          uint32_t next_offset = h264_pic_info->pSliceOffsets[s + 1];
-         uint32_t next_end = h264_pic_info->pSliceOffsets[s + 2];
-         if (s == h264_pic_info->sliceCount - 2)
-            next_end = frame_info->srcBufferRange;
-         anv_batch_emit(&cmd_buffer->batch, GENX(MFD_AVC_SLICEADDR), sliceaddr) {
-            sliceaddr.IndirectBSDDataLength = next_end - next_offset - HEADER_OFFSET;
-            /* start decoding after the 3-byte header. */
-            sliceaddr.IndirectBSDDataStartAddress = buffer_offset + next_offset + HEADER_OFFSET;
-         };
-         this_end = next_offset;
-      } else
-         this_end = frame_info->srcBufferRange;
+         uint32_t next_end;
+
+     if (s + 2 < h264_pic_info->sliceCount)
+         next_end = h264_pic_info->pSliceOffsets[s + 2];
+     else
+        next_end = frame_info->srcBufferRange;
+
+     anv_batch_emit(&cmd_buffer->batch, GENX(MFD_AVC_SLICEADDR), sliceaddr) {
+                    uint32_t start = buffer_offset + next_offset + HEADER_OFFSET;
+                    uint32_t length = 0;
+
+    if (next_end > next_offset + HEADER_OFFSET)
+                   length = next_end - next_offset - HEADER_OFFSET;
+    else
+       length = 0;
+
+            sliceaddr.IndirectBSDDataLength = length;
+            sliceaddr.IndirectBSDDataStartAddress = start;
+     };
+
+            this_end = next_offset;
+            } else {
+              this_end = frame_info->srcBufferRange;
+     }
+
       anv_batch_emit(&cmd_buffer->batch, GENX(MFD_AVC_BSD_OBJECT), avc_bsd) {
-         avc_bsd.IndirectBSDDataLength = this_end - current_offset - HEADER_OFFSET;
-         /* start decoding after the 3-byte header. */
-         avc_bsd.IndirectBSDDataStartAddress = buffer_offset + current_offset + HEADER_OFFSET;
+                  uint32_t start = buffer_offset + current_offset + HEADER_OFFSET;
+                  uint32_t length = 0;
+
+      if (this_end > current_offset + HEADER_OFFSET)
+         length = this_end - current_offset - HEADER_OFFSET;
+      else
+         length = 0;
+
+      if (length == 0) {
+         if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+             fprintf(stderr, "[AVC] zero-length slice (s=%u current=%u this_end=%u)\n",
+                     s, current_offset, this_end);
+            }
+            avc_bsd.IndirectBSDDataLength = 0;
+            avc_bsd.IndirectBSDDataStartAddress = start;
+           } else {
+             avc_bsd.IndirectBSDDataLength = length;
+             avc_bsd.IndirectBSDDataStartAddress = start;
+           }
          avc_bsd.InlineData.LastSlice = last_slice;
          avc_bsd.InlineData.FixPrevMBSkipped = 1;
 #if GFX_VERx10 >= 75
@@ -693,37 +689,8 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
          avc_bsd.InlineData.Intra8x84x4PredictionErrorConcealmentControl = 1;
          avc_bsd.InlineData.ISliceConcealmentMode = 1;
 #endif
-      };
-   }
-
-#if GFX_VERx10 == 70
-   /* On Ivy Bridge, we need comprehensive cache flushes after video decode
-    * operations to ensure decoded frame data is visible when used as
-    * reference frames for subsequent P/B frames. Without these flushes,
-    * we get cache coherency issues causing visual corruption.
-    *
-    * The "nuclear option" approach: flush everything to ensure cache coherency.
-    * This addresses potential issues with:
-    * - Reference frame corruption
-    * - Chroma plane misalignment
-    * - Buffer alignment requirements specific to Ivy Bridge
-    */
-   if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
-      fprintf(stderr, "[IVB] Applying comprehensive PIPE_CONTROL flush after decode\n");
-   }
-
-   anv_batch_emit(&cmd_buffer->batch, GENX(PIPE_CONTROL), pc) {
-      pc.CommandStreamerStallEnable = 1;
-      pc.StallAtPixelScoreboard = 1;
-      pc.DCFlushEnable = 1;
-      pc.RenderTargetCacheFlushEnable = 1;
-      pc.DepthCacheFlushEnable = 1;
-      pc.StateCacheInvalidationEnable = 1;
-      pc.InstructionCacheInvalidateEnable = 1;
-      pc.TextureCacheInvalidationEnable = 1;
-      pc.VFCacheInvalidationEnable = 1;
-   }
-#endif
+     };
+}
 }
 
 void
