@@ -932,11 +932,3 @@ genX(CmdDecodeVideoKHR) (VkCommandBuffer commandBuffer,
       assert(0);
    }
 }
-
-#ifdef VK_ENABLE_BETA_EXTENSIONS
-void
-genX(CmdEncodeVideoKHR) (VkCommandBuffer commandBuffer,
-                         const VkVideoEncodeInfoKHR * pEncodeInfo)
-{
-}
-#endif
