@@ -233,10 +233,6 @@ VkResult genX(CreateQueryPool) (VkDevice _device,
    case VK_QUERY_TYPE_RESULT_STATUS_ONLY_KHR:
       uint64s_per_slot = 1;
       break;
-   case VK_QUERY_TYPE_VIDEO_ENCODE_FEEDBACK_KHR:
-      /* availability flag + bitstream bytes written (read from hardware register) */
-      uint64s_per_slot = 1 + 1;
-      break;
    default:
       UNREACHABLE("Invalid query type");
    }
@@ -273,16 +269,6 @@ VkResult genX(CreateQueryPool) (VkDevice _device,
                               pool->pass_query);
    }
 #endif
-   else if (pool->type == VK_QUERY_TYPE_VIDEO_ENCODE_FEEDBACK_KHR) {
-      const VkVideoProfileInfoKHR *pVideoProfile =
-         vk_find_struct_const(pCreateInfo->pNext, VIDEO_PROFILE_INFO_KHR);
-      if (!pVideoProfile) {
-         vk_free2(&device->vk.alloc, pAllocator, pool);
-         return vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
-      }
-
-      pool->codec = pVideoProfile->videoCodecOperation;
-   }
 
    uint64_t size = pool->slots * (uint64_t) pool->stride;
    result = anv_device_alloc_bo(device, "query-pool", size,
@@ -546,8 +532,7 @@ VkResult genX(GetQueryPoolResults) (VkDevice _device,
           pool->type == VK_QUERY_TYPE_PERFORMANCE_QUERY_KHR ||
           pool->type == VK_QUERY_TYPE_PERFORMANCE_QUERY_INTEL ||
           pool->type == VK_QUERY_TYPE_PRIMITIVES_GENERATED_EXT ||
-          pool->type == VK_QUERY_TYPE_RESULT_STATUS_ONLY_KHR ||
-          pool->type == VK_QUERY_TYPE_VIDEO_ENCODE_FEEDBACK_KHR);
+          pool->type == VK_QUERY_TYPE_RESULT_STATUS_ONLY_KHR);
 
    if (vk_device_is_lost(&device->vk))
       return VK_ERROR_DEVICE_LOST;
@@ -713,25 +698,6 @@ VkResult genX(GetQueryPoolResults) (VkDevice _device,
          cpu_write_query_result(pData, flags, idx, result);
          break;
 
-      case VK_QUERY_TYPE_VIDEO_ENCODE_FEEDBACK_KHR:{
-            if (!write_results)
-               break;
-
-            /*
-             * Video encode feedback query results per VK_KHR_video_encode_queue:
-             * - Result 0: VkDeviceSize offset (always 0 for single-pass encoding)
-             * - Result 1: VkDeviceSize size (bitstream bytes written)
-             *
-             * Query pool layout:
-             * - Slot 0: Availability flag
-             * - Slot 1: Bitstream bytes written (read from hardware register)
-             */
-            const uint64_t *slot = query_slot(pool, firstQuery + i);
-            cpu_write_query_result(pData, flags, idx++, 0);     /* offset */
-            cpu_write_query_result(pData, flags, idx++, slot[1]);       /* size */
-            break;
-         }
-
       default:
          UNREACHABLE("invalid pool type");
       }
@@ -854,15 +820,6 @@ emit_zero_queries(struct anv_cmd_buffer *cmd_buffer,
       }
       break;
 
-   case VK_QUERY_TYPE_VIDEO_ENCODE_FEEDBACK_KHR:
-      for (uint32_t i = 0; i < num_queries; i++) {
-         struct anv_address slot_addr =
-            anv_query_address(pool, first_index + i);
-         mi_memset(b, anv_address_add(slot_addr, 8), 0, pool->stride - 8);
-         emit_query_mi_availability(b, slot_addr, true);
-      }
-      break;
-
    default:
       UNREACHABLE("Unsupported query type");
    }
@@ -951,18 +908,6 @@ void genX(CmdResetQueryPool) (VkCommandBuffer commandBuffer,
                                                             firstQuery + i),
                                           false);
       break;
-
-   case VK_QUERY_TYPE_VIDEO_ENCODE_FEEDBACK_KHR:{
-         struct mi_builder b;
-         mi_builder_init(&b, cmd_buffer->device->info, &cmd_buffer->batch);
-
-         for (uint32_t i = 0; i < queryCount; i++)
-            emit_query_mi_availability(&b,
-                                       anv_query_address(pool,
-                                                         firstQuery + i),
-                                       false);
-         break;
-      }
 
    default:
       UNREACHABLE("Unsupported query type");
@@ -1288,9 +1233,6 @@ void genX(CmdBeginQueryIndexedEXT) (VkCommandBuffer commandBuffer,
    case VK_QUERY_TYPE_RESULT_STATUS_ONLY_KHR:
       emit_query_mi_flush_availability(cmd_buffer, query_addr, false);
       break;
-   case VK_QUERY_TYPE_VIDEO_ENCODE_FEEDBACK_KHR:
-      emit_query_mi_availability(&b, query_addr, false);
-      break;
    default:
       UNREACHABLE("");
    }
@@ -1481,29 +1423,6 @@ void genX(CmdEndQueryIndexedEXT) (VkCommandBuffer commandBuffer,
       emit_query_mi_flush_availability(cmd_buffer, query_addr, true);
       break;
 
-   case VK_QUERY_TYPE_VIDEO_ENCODE_FEEDBACK_KHR:{
-         /* Select hardware register based on codec operation.
-          * Video codec operation should be a single flag, not a combination.
-          */
-         uint32_t reg_addr;
-         switch (pool->codec) {
-         case VK_VIDEO_CODEC_OPERATION_ENCODE_H264_BIT_KHR:
-            reg_addr = MFC_BITSTREAM_BYTECOUNT_FRAME_REG;
-            break;
-         case VK_VIDEO_CODEC_OPERATION_ENCODE_H265_BIT_KHR:
-            reg_addr = HCP_BITSTREAM_BYTECOUNT_FRAME_REG;
-            break;
-         default:
-            UNREACHABLE
-               ("Video query codec must be exactly one of H264 or H265 encode");
-         }
-
-         mi_store(&b,
-                  mi_mem64(anv_address_add(query_addr, QUERY_DATA_OFFSET)),
-                  mi_reg32(reg_addr));
-         emit_query_mi_availability(&b, query_addr, true);
-         break;
-      }
    default:
       UNREACHABLE("");
    }
