@@ -132,7 +132,7 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       sel.DecoderShortFormatMode = ShortFormatDriverInterface;
       sel.DecoderModeSelect = VLDMode;  // Hardcoded
 
-      sel.PreDeblockingOutputEnable = 0;
+      sel.PreDeblockingOutputEnable = 1;
       sel.PostDeblockingOutputEnable = 1;
    }
 
@@ -234,10 +234,6 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
    }
 
    anv_batch_emit(&cmd_buffer->batch, GENX(MFX_PIPE_BUF_ADDR_STATE), buf) {
-      /* Set both pre and post deblocking addresses to the destination surface.
-       * The MFX_PIPE_MODE_SELECT determines which output is actually used.
-       * This matches intel-vaapi-driver's approach where both addresses point
-       * to the same surface regardless of which output is enabled. */
       struct anv_address dest_addr = anv_image_address(img,
                                                         &img->planes[0].
                                                         primary_surface.
