@@ -1828,9 +1828,11 @@ isl_choose_array_pitch_span(const struct isl_device *dev,
           */
          return ISL_ARRAY_PITCH_SPAN_COMPACT;
       } else if (ISL_GFX_VER(dev) >= 7) {
-         /* Note that Ivybridge introduces
-          * RENDER_SURFACE_STATE.SurfaceArraySpacing, which provides the
-          * driver more control over the QPitch.
+         /* Ivybridge introduced RENDER_SURFACE_STATE.SurfaceArraySpacing,
+          * which provides the driver control over the QPitch in some cases.
+          * This allows us to use ARYSPC_LOD0 (compact) for single-level
+          * surfaces. However, for multi-level surfaces, we must use
+          * ARYSPC_FULL to ensure correct rendering.
           */
 
          if (phys_level0_sa->array_len == 1) {
@@ -1859,6 +1861,11 @@ isl_choose_array_pitch_span(const struct isl_device *dev,
             return ISL_ARRAY_PITCH_SPAN_COMPACT;
          }
 
+         /* For multi-level surfaces that are not depth/stencil, we need to
+          * use ARYSPC_FULL. While Ivybridge introduced the SurfaceArraySpacing
+          * field, ARYSPC_FULL is still required for correct rendering of
+          * multi-level, multi-layer surfaces.
+          */
          return ISL_ARRAY_PITCH_SPAN_FULL;
       } else if ((ISL_GFX_VER(dev) == 5 || ISL_GFX_VER(dev) == 6) &&
                  dev->use_separate_stencil &&
