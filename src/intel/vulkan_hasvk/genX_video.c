@@ -156,6 +156,16 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       uint32_t total_height_rows =
          total_surface_size / img->planes[0].primary_surface.isl.row_pitch_B;
 
+      /* Calculate the actual Height value that will be set in MFX_SURFACE_STATE */
+      uint32_t mfx_height_value;
+#if GFX_VERx10 == 70
+      /* IVB uses aligned height * 3/2 for total surface height */
+      uint32_t aligned_height = ALIGN(img->vk.extent.height, 16);
+      mfx_height_value = (aligned_height * 3 / 2) - 1;
+#else
+      mfx_height_value = img->vk.extent.height - 1;
+#endif
+
       fprintf(stderr, "H264 Decode Surface Configuration:\n");
       fprintf(stderr, "  Logical dimensions: %ux%u\n",
               img->vk.extent.width, img->vk.extent.height);
@@ -172,7 +182,7 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       fprintf(stderr, "  Pitch: %u bytes/row\n",
               img->planes[0].primary_surface.isl.row_pitch_B);
       fprintf(stderr, "  MFX_SURFACE_STATE: Width=%u, Height=%u\n",
-              img->vk.extent.width - 1, total_height_rows - 1);
+              img->vk.extent.width - 1, mfx_height_value);
       fprintf(stderr, "  Tiling: %s\n",
               img->planes[0].primary_surface.isl.tiling ==
               ISL_TILING_LINEAR ? "Linear" : img->planes[0].primary_surface.
@@ -808,8 +818,8 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
                anv_image_address(ref_iv->image,
                                  &ref_iv->image->vid_dmv_top_surface);
 #endif
-         avc_directmode.POCList[2 * idx] = ref_info->PicOrderCnt[0];
-         avc_directmode.POCList[2 * idx + 1] = ref_info->PicOrderCnt[1];
+         avc_directmode.POCList[2 * idx] = ref_info->PicOrderCnt[0] & 0xFFFF;
+         avc_directmode.POCList[2 * idx + 1] = ref_info->PicOrderCnt[1] & 0xFFFF;
 
          if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
             fprintf(stderr,
@@ -857,9 +867,9 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
 #endif
 
       avc_directmode.POCList[32] =
-         h264_pic_info->pStdPictureInfo->PicOrderCnt[0];
+         h264_pic_info->pStdPictureInfo->PicOrderCnt[0] & 0xFFFF;
       avc_directmode.POCList[33] =
-         h264_pic_info->pStdPictureInfo->PicOrderCnt[1];
+         h264_pic_info->pStdPictureInfo->PicOrderCnt[1] & 0xFFFF;
    }
 
 #define HEADER_OFFSET 3
