@@ -347,17 +347,25 @@ vid->vid_mem[ANV_VID_MEM_H264_DEBLOCK_FILTER_ROW_STORE].offset };
          const struct anv_image_view *ref_iv =
             anv_image_view_from_handle(frame_info->pReferenceSlots[i].
                                        pPictureResource->imageViewBinding);
-         /* Use iteration index i for hardware reference picture arrays */
+
+#if GFX_VERx10 == 70
+         /* IVB: Use the actual binding address instead of memory_range for reference pictures */
+         buf.ReferencePictureAddress[i] = ref_iv->image->bindings[0].address;
+#else
+         /* Non-IVB: Use the standard approach with memory_range */
          buf.ReferencePictureAddress[i] = anv_image_address(ref_iv->image,
-                                                            &ref_iv->image->
-                                                            planes[0].
-                                                            primary_surface.
-                                                            memory_range);
+                                                           &ref_iv->image->
+                                                           planes[0].
+                                                           primary_surface.
+                                                           memory_range);
+#endif
 
          if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
             fprintf(stderr,
-                    "  Ref[%u]: slot_idx=%d, dimensions=%ux%u, pitch=%u, tiling=%s\n",
+                    "  Ref[%u]: slot_idx=%d, addr=%llx (bo=%p), dimensions=%ux%u, pitch=%u, tiling=%s\n",
                     i, frame_info->pReferenceSlots[i].slotIndex,
+                    (unsigned long long)buf.ReferencePictureAddress[i].offset,
+                    buf.ReferencePictureAddress[i].bo,
                     ref_iv->image->vk.extent.width,
                     ref_iv->image->vk.extent.height,
                     ref_iv->image->planes[0].primary_surface.isl.row_pitch_B,
@@ -368,6 +376,17 @@ vid->vid_mem[ANV_VID_MEM_H264_DEBLOCK_FILTER_ROW_STORE].offset };
                     primary_surface.isl.tiling ==
                     ISL_TILING_Y0 ? "Y0-tiled" : "Other");
          }
+
+#if GFX_VERx10 == 70
+         /* IVB: Ensure reference picture addresses are properly aligned */
+         assert((buf.ReferencePictureAddress[i].offset & 0xFFF) == 0);
+         assert(buf.ReferencePictureAddress[i].bo != NULL);
+         if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+            fprintf(stderr, "  IVB Ref[%u]: addr=%llx, bo=%p\n", i,
+                    (unsigned long long)buf.ReferencePictureAddress[i].offset,
+                    buf.ReferencePictureAddress[i].bo);
+         }
+#endif
 
 #if GFX_VERx10 == 70
          uint32_t ref_mocs =
@@ -793,6 +812,13 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
             dmv_read_mocs & 0x3;
          avc_directmode.DirectMVBufferGraphicsDataType[bottom_idx] =
             (dmv_read_mocs >> 2) & 0x1;
+
+         if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+            fprintf(stderr, "  IVB DMV[%u]: top_idx=%u @ %llx, bottom_idx=%u @ %llx\n",
+                    i, top_idx, (unsigned long long)dmv_top_addr.offset,
+                    bottom_idx, (unsigned long long)dmv_bottom_addr.offset);
+         }
+
 #elif GFX_VERx10 == 75
          if (idx == 0)
             avc_directmode.DirectMVBuffer0Address =
