@@ -349,22 +349,24 @@ vid->vid_mem[ANV_VID_MEM_H264_DEBLOCK_FILTER_ROW_STORE].offset };
                                        pPictureResource->imageViewBinding);
 
 #if GFX_VERx10 == 70
-         /* IVB: Get the standard address first */
+         /* IVB: Debug what anv_image_address is returning */
          struct anv_address ref_addr = anv_image_address(ref_iv->image,
                                                          &ref_iv->image->planes[0].primary_surface.memory_range);
          
-         /* For IVB, we need to ensure the address has the BO's GPU offset */
-         buf.ReferencePictureAddress[i] = (struct anv_address) {
-            .bo = NULL,  /* Set BO to NULL so genxml doesn't add offset again */
-            .offset = ref_addr.bo->offset + ref_addr.offset
-         };
-         
          if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
-            fprintf(stderr, "  IVB Ref[%u] using absolute GPU address: offset=%llu (bo->offset=%llu + ref_addr.offset=%llu)\n",
-                    i, (unsigned long long)buf.ReferencePictureAddress[i].offset,
-                    (unsigned long long)ref_addr.bo->offset,
-                    (unsigned long long)ref_addr.offset);
+            fprintf(stderr, "  IVB Ref[%u] address debug:\n", i);
+            fprintf(stderr, "    memory_range.offset=%llu\n", 
+                    (unsigned long long)ref_iv->image->planes[0].primary_surface.memory_range.offset);
+            fprintf(stderr, "    anv_image_address returned: bo=%p, offset=%llu\n",
+                    ref_addr.bo, (unsigned long long)ref_addr.offset);
+            fprintf(stderr, "    BO's GPU address (bo->offset): 0x%llx\n",
+                    (unsigned long long)ref_addr.bo->offset);
+            fprintf(stderr, "    Final absolute address would be: 0x%llx\n",
+                    (unsigned long long)(ref_addr.bo->offset + ref_addr.offset));
          }
+         
+         /* For now, use the standard approach to see the bo->offset values */
+         buf.ReferencePictureAddress[i] = ref_addr;
 #else
          /* Non-IVB: Use the standard approach with memory_range */
          buf.ReferencePictureAddress[i] = anv_image_address(ref_iv->image,
