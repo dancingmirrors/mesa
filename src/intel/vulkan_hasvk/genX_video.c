@@ -215,9 +215,12 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
        * IVB has a hardware quirk where the Height field needs to represent
        * the total surface height including chroma, not just luma height.
        * For NV12 4:2:0, total height = luma_height + (luma_height / 2).
+       * Height should be aligned to 16 for proper macroblock handling.
        */
 #if GFX_VERx10 == 70
-      ss.Height = (img->vk.extent.height * 3 / 2) - 1;
+      /* Total height for NV12 = aligned_luma_height + (aligned_luma_height / 2) */
+      uint32_t aligned_height = ALIGN(img->vk.extent.height, 16);
+      ss.Height = (aligned_height * 3 / 2) - 1;
 #else
       ss.Height = img->vk.extent.height - 1;
 #endif
@@ -815,6 +818,9 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
                     ref_info->PicOrderCnt[1], ref_info->flags.top_field_flag,
                     ref_info->flags.bottom_field_flag,
                     ref_info->flags.used_for_long_term_reference);
+            fprintf(stderr,
+                    "  Raw POC data: PicOrderCnt[0]=%d, PicOrderCnt[1]=%d\n",
+                    ref_info->PicOrderCnt[0], ref_info->PicOrderCnt[1]);
          }
       }
 
