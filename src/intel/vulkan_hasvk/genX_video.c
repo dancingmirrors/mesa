@@ -679,7 +679,14 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
 
 #if GFX_VERx10 >= 75
    anv_batch_emit(&cmd_buffer->batch, GENX(MFD_AVC_PICID_STATE), picid) {
-      picid.PictureIDRemappingDisable = true;
+      unsigned i = 0;
+      picid.PictureIDRemappingDisable = false;
+
+      for (i = 0; i < frame_info->referenceSlotCount; i++)
+         picid.PictureID[i] = frame_info->pReferenceSlots[i].slotIndex;
+
+      for (; i < ANV_VIDEO_H264_MAX_NUM_REF_FRAME; i++)
+         picid.PictureID[i] = 0xffff;
    }
 #endif
 
