@@ -349,9 +349,24 @@ vid->vid_mem[ANV_VID_MEM_H264_DEBLOCK_FILTER_ROW_STORE].offset };
                                        pPictureResource->imageViewBinding);
 
 #if GFX_VERx10 == 70
-         /* IVB: Use the standard anv_image_address but ensure it's properly set */
-         buf.ReferencePictureAddress[i] = anv_image_address(ref_iv->image,
-                                                           &ref_iv->image->planes[0].primary_surface.memory_range);
+         /* IVB: Debug what anv_image_address is returning */
+         struct anv_address ref_addr = anv_image_address(ref_iv->image,
+                                                         &ref_iv->image->planes[0].primary_surface.memory_range);
+         
+         if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+            fprintf(stderr, "  IVB Ref[%u] address debug:\n", i);
+            fprintf(stderr, "    memory_range.offset=%llu\n", 
+                    (unsigned long long)ref_iv->image->planes[0].primary_surface.memory_range.offset);
+            fprintf(stderr, "    memory_range.size=%llu\n",
+                    (unsigned long long)ref_iv->image->planes[0].primary_surface.memory_range.size);
+            fprintf(stderr, "    anv_image_address returned: bo=%p, offset=%llu\n",
+                    ref_addr.bo, (unsigned long long)ref_addr.offset);
+            fprintf(stderr, "    image->bindings[0].address: bo=%p, offset=%llu\n",
+                    ref_iv->image->bindings[0].address.bo,
+                    (unsigned long long)ref_iv->image->bindings[0].address.offset);
+         }
+         
+         buf.ReferencePictureAddress[i] = ref_addr;
 #else
          /* Non-IVB: Use the standard approach with memory_range */
          buf.ReferencePictureAddress[i] = anv_image_address(ref_iv->image,
