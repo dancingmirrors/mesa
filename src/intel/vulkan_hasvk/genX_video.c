@@ -349,15 +349,16 @@ vid->vid_mem[ANV_VID_MEM_H264_DEBLOCK_FILTER_ROW_STORE].offset };
                                        pPictureResource->imageViewBinding);
 
 #if GFX_VERx10 == 70
-         /* IVB: Use the buffer object's GPU address directly */
+         /* IVB: Use the buffer object's GPU address plus the surface offset */
          struct anv_bo *ref_bo = ref_iv->image->bindings[0].address.bo;
          if (ref_bo) {
+            /* Add the surface offset within the buffer to the BO's GPU address */
             buf.ReferencePictureAddress[i] = (struct anv_address) {
                .bo = ref_bo,
-               .offset = ref_bo->offset
+               .offset = ref_bo->offset + ref_iv->image->planes[0].primary_surface.memory_range.offset
             };
          } else {
-            /* This shouldn't happen, but fallback just in case */
+            /* Fallback */
             buf.ReferencePictureAddress[i] = anv_image_address(ref_iv->image,
                                                               &ref_iv->image->
                                                               planes[0].
@@ -806,7 +807,7 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
 
          struct anv_bo *dmv_bo = ref_iv->image->bindings[0].address.bo;
          if (dmv_bo) {
-            /* Use BO offset plus the surface offsets */
+            /* Use BO's GPU address plus the actual surface offsets */
             avc_directmode.DirectMVBufferAddress[top_idx] = (struct anv_address) {
                .bo = dmv_bo,
                .offset = dmv_bo->offset + ref_iv->image->vid_dmv_top_surface.offset
