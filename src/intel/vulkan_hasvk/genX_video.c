@@ -422,7 +422,12 @@ vid->vid_mem[ANV_VID_MEM_H264_DEBLOCK_FILTER_ROW_STORE].offset };
       index_obj.MFCIndirectPAKBSEObjectGraphicsDataType =
          (null_mocs >> 2) & 0x1;
 #endif
-#if GFX_VER == 7
+#if GFX_VERx10 <= 75
+      /* Set upper bound to 2GB. This is required on Gen 7.0 and Gen 7.5
+       * to properly define the accessible range for the bitstream buffer.
+       * Without this, the hardware may not correctly access the full bitstream,
+       * potentially causing decode errors or artifacts.
+       */
       index_obj.MFXIndirectBitstreamObjectAccessUpperBound =
          (struct anv_address) { NULL, 0x80000000 };
 #endif
