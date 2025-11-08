@@ -349,14 +349,9 @@ vid->vid_mem[ANV_VID_MEM_H264_DEBLOCK_FILTER_ROW_STORE].offset };
                                        pPictureResource->imageViewBinding);
 
 #if GFX_VERx10 == 70
-         /* IVB: Get the actual GPU address of the image */
-         struct anv_address ref_addr = anv_image_address(ref_iv->image,
-                                                         &ref_iv->image->planes[0].primary_surface.memory_range);
-         /* On IVB, we need the absolute GPU address, not relative */
-         buf.ReferencePictureAddress[i] = (struct anv_address) {
-            .bo = ref_addr.bo,
-            .offset = ref_addr.bo->offset + ref_addr.offset
-         };
+         /* IVB: Use the standard anv_image_address but ensure it's properly set */
+         buf.ReferencePictureAddress[i] = anv_image_address(ref_iv->image,
+                                                           &ref_iv->image->planes[0].primary_surface.memory_range);
 #else
          /* Non-IVB: Use the standard approach with memory_range */
          buf.ReferencePictureAddress[i] = anv_image_address(ref_iv->image,
@@ -797,24 +792,15 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
          uint32_t top_idx = idx * 2;
          uint32_t bottom_idx = idx * 2 + 1;
 
-         /* Get the addresses using anv_image_address first */
-         struct anv_address top_addr = anv_image_address(ref_iv->image, 
-                                                         &ref_iv->image->vid_dmv_top_surface);
-         struct anv_address bottom_addr = anv_image_address(ref_iv->image,
-                                                           &ref_iv->image->vid_dmv_bottom_surface);
-         
-         /* Then convert to absolute GPU addresses for IVB */
-         avc_directmode.DirectMVBufferAddress[top_idx] = (struct anv_address) {
-            .bo = top_addr.bo,
-            .offset = top_addr.bo->offset + top_addr.offset
-         };
-         avc_directmode.DirectMVBufferAddress[bottom_idx] = (struct anv_address) {
-            .bo = bottom_addr.bo,  
-            .offset = bottom_addr.bo->offset + bottom_addr.offset
-         };
-
+         /* Use standard anv_image_address for IVB too */
+         avc_directmode.DirectMVBufferAddress[top_idx] = 
+            anv_image_address(ref_iv->image, &ref_iv->image->vid_dmv_top_surface);
+         avc_directmode.DirectMVBufferAddress[bottom_idx] = 
+            anv_image_address(ref_iv->image, &ref_iv->image->vid_dmv_bottom_surface);
+            
          uint32_t dmv_read_mocs =
-            anv_mocs(cmd_buffer->device, top_addr.bo, 0);
+            anv_mocs(cmd_buffer->device,
+                     ref_iv->image->bindings[0].address.bo, 0);
          avc_directmode.DirectMVBufferCacheabilityControl[top_idx] =
             dmv_read_mocs & 0x3;
          avc_directmode.DirectMVBufferGraphicsDataType[top_idx] =
