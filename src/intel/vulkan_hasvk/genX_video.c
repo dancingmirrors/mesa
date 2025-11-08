@@ -208,38 +208,15 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
    anv_batch_emit(&cmd_buffer->batch, GENX(MFX_SURFACE_STATE), ss) {
       ss.Width = img->vk.extent.width - 1;
 
-      /* The Height field represents the picture height (luma plane height),
-       * not the total surface height including chroma. Hardware uses the
-       * YOffset fields to locate the chroma plane within the surface.
-       *
-       * For NV12 4:2:0 format:
-       * - Luma plane height = picture height
-       * - Chroma plane height = picture height / 2
-       * - Hardware accesses chroma using YOffset, not by extending Height
-       *
-       * Example: 64×64 NV12 with 128-byte pitch
-       *   - Picture dimensions: 64×64
-       *   - Luma: 64 rows at offset 0
-       *   - Chroma: 32 rows at YOffset=64
-       *   - Width field: 63 (64-1, minus-1 encoding)
-       *   - Height field: 63 (64-1, picture height, not total rows)
-       *
-       * EXCEPTION for Ivy Bridge (Gen 7.0):
-       * IVB has a hardware quirk where the Height field needs to represent
-       * the total surface height including chroma, not just luma height.
-       * For NV12 4:2:0, total height = luma_height + (luma_height / 2).
-       * Height should be aligned to 16 for proper macroblock handling.
-       */
 #if GFX_VERx10 == 70
-      /* Use the actual surface layout - the surface was already created with proper alignment */
+      /* IVB: Use total surface height including chroma */
       uint32_t luma_rows = img->planes[0].primary_surface.memory_range.size /
                            img->planes[0].primary_surface.isl.row_pitch_B;
-      uint32_t chroma_offset_rows = img->planes[1].primary_surface.memory_range.offset /
-                                     img->planes[0].primary_surface.isl.row_pitch_B;
       uint32_t chroma_rows = img->planes[1].primary_surface.memory_range.size /
                              img->planes[0].primary_surface.isl.row_pitch_B;
       ss.Height = (luma_rows + chroma_rows) - 1;
 #else
+      /* Non-IVB: Use logical picture height */
       ss.Height = img->vk.extent.height - 1;
 #endif
       ss.SurfaceFormat = PLANAR_420_8;  // assert on this?
@@ -839,14 +816,12 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
 
          if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
             fprintf(stderr,
-                    "  Ref[%u] slot=%d, idx=%d, POC=[%d, %d], top_field=%u, bottom_field=%u, long_term=%u\n",
-                    i, slot_idx, idx, ref_info->PicOrderCnt[0],
-                    ref_info->PicOrderCnt[1], ref_info->flags.top_field_flag,
+                    "  Ref[%u] slot=%d, idx=%d, POC=[%d, %d] (raw: [%d, %d]), top_field=%u, bottom_field=%u, long_term=%u\n",
+                    i, slot_idx, idx, poc0, poc1,
+                    ref_info->PicOrderCnt[0], ref_info->PicOrderCnt[1],
+                    ref_info->flags.top_field_flag,
                     ref_info->flags.bottom_field_flag,
                     ref_info->flags.used_for_long_term_reference);
-            fprintf(stderr,
-                    "  Raw POC data: PicOrderCnt[0]=%d, PicOrderCnt[1]=%d\n",
-                    ref_info->PicOrderCnt[0], ref_info->PicOrderCnt[1]);
          }
       }
 
