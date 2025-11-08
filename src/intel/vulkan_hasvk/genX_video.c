@@ -812,6 +812,14 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
 
    uint32_t buffer_offset = frame_info->srcBufferOffset & 4095;
 
+   /* Note: MFX_AVC_WEIGHTOFFSET_STATE is NOT emitted for H.264 decode.
+    * Per Intel IVB/HSW PRM, for AVC decoder VLD and IT modes, implicit
+    * weights are computed in hardware, so this command is not issued.
+    * The hardware parses the pred_weight_table() from the slice header
+    * in the bitstream and handles weighted prediction internally.
+    * This command is only required for AVC encoder mode.
+    */
+
    /* Ensure proper synchronization before slice processing to prevent
     * macroblock and motion prediction corruption on Haswell.
     * This MI_FLUSH_DW ensures all prior operations complete and caches
