@@ -24,7 +24,8 @@
 #include "dev/intel_device_info.h"
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
 #define ASSERT(cond)                                                               \
@@ -35,8 +36,9 @@ extern "C" {
       }                                                                            \
    } while (false)
 
-void FAIL_IN_GTEST(const char *file_path, unsigned line_number, const char *msg);
+   void FAIL_IN_GTEST(const char *file_path, unsigned line_number,
+                      const char *msg);
 
 #ifdef __cplusplus
-} // extern "C"
+}                               // extern "C"
 #endif
