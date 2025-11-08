@@ -811,15 +811,25 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
          struct anv_address top_addr = anv_image_address(ref_iv->image, &ref_iv->image->vid_dmv_top_surface);
          struct anv_address bottom_addr = anv_image_address(ref_iv->image, &ref_iv->image->vid_dmv_bottom_surface);
          
-         /* For IVB, use absolute GPU addresses with NULL BO */
-         avc_directmode.DirectMVBufferAddress[top_idx] = (struct anv_address) {
-            .bo = NULL,
-            .offset = top_addr.bo->offset + top_addr.offset
-         };
-         avc_directmode.DirectMVBufferAddress[bottom_idx] = (struct anv_address) {
-            .bo = NULL,
-            .offset = bottom_addr.bo->offset + bottom_addr.offset
-         };
+         if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+            fprintf(stderr, "  IVB DMV[%u] debug:\n", i);
+            fprintf(stderr, "    Top DMV: bo=%p, offset=0x%llx, bo->offset=0x%llx\n",
+                    top_addr.bo, (unsigned long long)top_addr.offset,
+                    (unsigned long long)top_addr.bo->offset);
+            fprintf(stderr, "    Bottom DMV: bo=%p, offset=0x%llx, bo->offset=0x%llx\n",
+                    bottom_addr.bo, (unsigned long long)bottom_addr.offset,
+                    (unsigned long long)bottom_addr.bo->offset);
+            fprintf(stderr, "    Top absolute: 0x%llx (lower 6 bits: 0x%llx)\n",
+                    (unsigned long long)(top_addr.bo->offset + top_addr.offset),
+                    (unsigned long long)((top_addr.bo->offset + top_addr.offset) & 0x3F));
+            fprintf(stderr, "    Bottom absolute: 0x%llx (lower 6 bits: 0x%llx)\n",
+                    (unsigned long long)(bottom_addr.bo->offset + bottom_addr.offset),
+                    (unsigned long long)((bottom_addr.bo->offset + bottom_addr.offset) & 0x3F));
+         }
+         
+         /* Keep standard addressing for now */
+         avc_directmode.DirectMVBufferAddress[top_idx] = top_addr;
+         avc_directmode.DirectMVBufferAddress[bottom_idx] = bottom_addr;
             
          uint32_t dmv_read_mocs =
             anv_mocs(cmd_buffer->device, top_addr.bo, 0);
@@ -831,12 +841,6 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
             dmv_read_mocs & 0x3;
          avc_directmode.DirectMVBufferGraphicsDataType[bottom_idx] =
             (dmv_read_mocs >> 2) & 0x1;
-
-         if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
-            fprintf(stderr, "  IVB DMV[%u]: top_idx=%u @ %llu, bottom_idx=%u @ %llu\n",
-                    i, top_idx, (unsigned long long)avc_directmode.DirectMVBufferAddress[top_idx].offset,
-                    bottom_idx, (unsigned long long)avc_directmode.DirectMVBufferAddress[bottom_idx].offset);
-         }
 
 #elif GFX_VERx10 == 75
          if (idx == 0)
