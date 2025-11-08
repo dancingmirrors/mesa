@@ -210,8 +210,17 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
        *   - Chroma: 32 rows at YOffset=64
        *   - Width field: 63 (64-1, minus-1 encoding)
        *   - Height field: 63 (64-1, picture height, not total rows)
+       *
+       * EXCEPTION for Ivy Bridge (Gen 7.0):
+       * IVB has a hardware quirk where the Height field needs to represent
+       * the total surface height including chroma, not just luma height.
+       * For NV12 4:2:0, total height = luma_height + (luma_height / 2).
        */
+#if GFX_VERx10 == 70
+      ss.Height = (img->vk.extent.height * 3 / 2) - 1;
+#else
       ss.Height = img->vk.extent.height - 1;
+#endif
       ss.SurfaceFormat = PLANAR_420_8;  // assert on this?
       ss.InterleaveChroma = 1;
       ss.SurfacePitch = img->planes[0].primary_surface.isl.row_pitch_B - 1;
@@ -719,6 +728,16 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
 
    anv_batch_emit(&cmd_buffer->batch, GENX(MFX_AVC_DIRECTMODE_STATE),
                   avc_directmode) {
+#if GFX_VERx10 == 70
+      /* Ivy Bridge quirk: Initialize all POC entries to zero first.
+       * Invalid POC values in unused slots can cause hardware issues
+       * on IVB, leading to motion vector corruption and decode errors.
+       */
+      for (int i = 0; i < 34; i++) {
+         avc_directmode.POCList[i] = 0;
+      }
+#endif
+
       /* bind reference frame DMV */
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
@@ -926,6 +945,21 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
          avc_bsd.InlineData.ISliceConcealmentMode = 1;
 #endif
       };
+
+#if GFX_VERx10 == 70
+      /* Ivy Bridge: Add PIPE_CONTROL synchronization between slices.
+       * This addresses motion vector corruption issues on IVB by ensuring
+       * DC flush and command streamer stall between each MFD_AVC_BSD_OBJECT.
+       * Without this, motion vectors and reference data may not be properly
+       * synchronized, causing visual artifacts and decode errors.
+       */
+      if (!last_slice) {
+         anv_batch_emit(&cmd_buffer->batch, GENX(PIPE_CONTROL), pc) {
+            pc.DCFlushEnable = 1;
+            pc.CommandStreamerStallEnable = 1;
+         };
+      }
+#endif
    }
 
    /* Wait for MFX pipeline to complete all slice processing before ending
