@@ -1144,7 +1144,7 @@ anv_h264_encode_video(struct anv_cmd_buffer *cmd, const VkVideoEncodeInfoKHR *en
       if (pps->flags.weighted_pred_flag && slice_type == STD_VIDEO_H264_SLICE_TYPE_P && weight_table) {
          anv_batch_emit(&cmd->batch, GENX(MFX_AVC_WEIGHTOFFSET_STATE), w) {
             w.WeightandOffsetSelect = 0; /* L0 table */
-            
+
             /* Pack weights and offsets for L0 reference list.
              * Format: For each of 32 reference pictures, provide weights/offsets
              * for Y, Cb, Cr components. Each dword contains weight in lower 8 bits
@@ -1152,17 +1152,17 @@ anv_h264_encode_video(struct anv_cmd_buffer *cmd, const VkVideoEncodeInfoKHR *en
              */
             for (unsigned i = 0; i < STD_VIDEO_H264_MAX_NUM_LIST_REF; i++) {
                /* Y component (luma) */
-               w.WeightOffset[i * 3 + 0] = 
+               w.WeightOffset[i * 3 + 0] =
                   ((weight_table->luma_offset_l0[i] & 0xff) << 8) |
                   (weight_table->luma_weight_l0[i] & 0xff);
-               
+
                /* Cb component (chroma) */
-               w.WeightOffset[i * 3 + 1] = 
+               w.WeightOffset[i * 3 + 1] =
                   ((weight_table->chroma_offset_l0[i][0] & 0xff) << 8) |
                   (weight_table->chroma_weight_l0[i][0] & 0xff);
                
                /* Cr component (chroma) */
-               w.WeightOffset[i * 3 + 2] = 
+               w.WeightOffset[i * 3 + 2] =
                   ((weight_table->chroma_offset_l0[i][1] & 0xff) << 8) |
                   (weight_table->chroma_weight_l0[i][1] & 0xff);
             }
@@ -1174,36 +1174,36 @@ anv_h264_encode_video(struct anv_cmd_buffer *cmd, const VkVideoEncodeInfoKHR *en
          /* L0 table for B slices */
          anv_batch_emit(&cmd->batch, GENX(MFX_AVC_WEIGHTOFFSET_STATE), w) {
             w.WeightandOffsetSelect = 0; /* L0 table */
-            
+
             for (unsigned i = 0; i < STD_VIDEO_H264_MAX_NUM_LIST_REF; i++) {
-               w.WeightOffset[i * 3 + 0] = 
+               w.WeightOffset[i * 3 + 0] =
                   ((weight_table->luma_offset_l0[i] & 0xff) << 8) |
                   (weight_table->luma_weight_l0[i] & 0xff);
-               
-               w.WeightOffset[i * 3 + 1] = 
+
+               w.WeightOffset[i * 3 + 1] =
                   ((weight_table->chroma_offset_l0[i][0] & 0xff) << 8) |
                   (weight_table->chroma_weight_l0[i][0] & 0xff);
-               
-               w.WeightOffset[i * 3 + 2] = 
+
+               w.WeightOffset[i * 3 + 2] =
                   ((weight_table->chroma_offset_l0[i][1] & 0xff) << 8) |
                   (weight_table->chroma_weight_l0[i][1] & 0xff);
             }
          }
-         
+
          /* L1 table for B slices */
          anv_batch_emit(&cmd->batch, GENX(MFX_AVC_WEIGHTOFFSET_STATE), w) {
             w.WeightandOffsetSelect = 1; /* L1 table */
-            
+
             for (unsigned i = 0; i < STD_VIDEO_H264_MAX_NUM_LIST_REF; i++) {
-               w.WeightOffset[i * 3 + 0] = 
+               w.WeightOffset[i * 3 + 0] =
                   ((weight_table->luma_offset_l1[i] & 0xff) << 8) |
                   (weight_table->luma_weight_l1[i] & 0xff);
-               
-               w.WeightOffset[i * 3 + 1] = 
+
+               w.WeightOffset[i * 3 + 1] =
                   ((weight_table->chroma_offset_l1[i][0] & 0xff) << 8) |
                   (weight_table->chroma_weight_l1[i][0] & 0xff);
-               
-               w.WeightOffset[i * 3 + 2] = 
+
+               w.WeightOffset[i * 3 + 2] =
                   ((weight_table->chroma_offset_l1[i][1] & 0xff) << 8) |
                   (weight_table->chroma_weight_l1[i][1] & 0xff);
             }
