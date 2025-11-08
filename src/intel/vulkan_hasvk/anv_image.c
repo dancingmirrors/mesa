@@ -700,7 +700,7 @@ add_video_buffers(struct anv_device *device,
                   struct anv_image *image,
                   const struct VkVideoProfileListInfoKHR *profile_list)
 {
-   ASSERTED bool ok;
+   VkResult result;
    unsigned size = 0;
 
    for (unsigned i = 0; i < profile_list->profileCount; i++) {
@@ -730,10 +730,18 @@ add_video_buffers(struct anv_device *device,
    if (size == 0)
       return VK_SUCCESS;
 
-   ok = image_binding_grow(device, image, ANV_IMAGE_MEMORY_BINDING_PRIVATE,
-                           ANV_OFFSET_IMPLICIT, size, 65536,
-                           &image->vid_dmv_top_surface);
-   return ok;
+   /* Allocate DirectMV buffer for top field/frame */
+   result = image_binding_grow(device, image, ANV_IMAGE_MEMORY_BINDING_PRIVATE,
+                                ANV_OFFSET_IMPLICIT, size, 65536,
+                                &image->vid_dmv_top_surface);
+   if (result != VK_SUCCESS)
+      return result;
+
+   /* Allocate DirectMV buffer for bottom field (interlaced video support) */
+   result = image_binding_grow(device, image, ANV_IMAGE_MEMORY_BINDING_PRIVATE,
+                                ANV_OFFSET_IMPLICIT, size, 65536,
+                                &image->vid_dmv_bottom_surface);
+   return result;
 }
 
 /**
@@ -1330,6 +1338,12 @@ anv_image_init(struct anv_device *device, struct anv_image *image,
             fprintf(stderr, "hasvk: WARNING: Video surface plane %u is using %s tiling instead of Y0 tiling. "
                     "This may cause video decode failures on Ivy Bridge.\n",
                     p, isl_tiling_to_name(tiling));
+         }
+
+         /* Video surfaces should not have shadow surfaces */
+         if (anv_surface_is_valid(&image->planes[p].shadow_surface)) {
+            fprintf(stderr, "hasvk: WARNING: Video surface plane %u has a shadow surface. "
+                    "This is unexpected and may cause issues.\n", p);
          }
       }
    }
