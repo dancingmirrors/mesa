@@ -221,26 +221,15 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
          /* hasvk only supports Y-tiled for video decode */
          ss.TileWalk = TW_YMAJOR;
 #if GFX_VERx10 == 70
-         /* Ivy Bridge PRM: For Y-tiled surfaces, pitch must be 128-byte aligned
-          * (i.e., a multiple of the tile width). Range: [128B, 256KB] */
          assert(img->planes[0].primary_surface.isl.row_pitch_B >= 128);
          assert(img->planes[0].primary_surface.isl.row_pitch_B <= 262144);
          assert((img->planes[0].primary_surface.isl.row_pitch_B % 128) == 0);
 #endif
       }
-      /* For Y-tiled NV12, the chroma plane uses the same pitch as luma (not
-       * half), so HalfPitchforChroma = 0. This field exists on all Gen versions
-       * with video decode support. */
       ss.HalfPitchforChroma = 0;
-
-      /* For NV12 (interleaved chroma), both U and V offsets point to the same
-       * chroma plane location since they're interleaved in memory. */
       ss.YOffsetforUCb = ss.YOffsetforVCr =
          img->planes[1].primary_surface.memory_range.offset /
          img->planes[0].primary_surface.isl.row_pitch_B;
-
-      /* Ivy Bridge PRM: X Offset for V(Cr) must be zero for NV12.
-       * For NV12 (interleaved chroma), both U and V X offsets must be zero. */
       ss.XOffsetforUCb = 0;
       ss.XOffsetforVCr = 0;
    }
@@ -516,17 +505,11 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
        * proper B picture detection would require slice header parsing.
        */
       bool is_intra_picture = h264_pic_info->pStdPictureInfo->flags.is_intra;
-      
+
       if (is_intra_picture) {
-         /* I pictures: disable both weighted prediction and weighted biprediction */
          avc_img.WeightedBiPredictionIDC = 0;
          avc_img.WeightedPredictionEnable = 0;
       } else {
-         /* Non-intra pictures: For Ivy Bridge, we should also disable weighted
-          * prediction for B pictures. However, without slice header parsing,
-          * we cannot definitively identify B pictures here. As a workaround,
-          * we could disable weighted biprediction entirely on Ivy Bridge.
-          */
 #if GFX_VERx10 == 70
          /* Ivy Bridge: Disable weighted prediction for B and I pictures.
           * Since we cannot reliably detect B pictures without slice headers,
@@ -932,8 +915,6 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
          avc_bsd.InlineData.LastSlice = last_slice;
          avc_bsd.InlineData.FixPrevMBSkipped = 1;
 #if GFX_VERx10 == 70
-         /* Enable basic error concealment for Ivy Bridge (Gen 7.0).
-          * Haswell+ has more advanced error concealment fields below. */
          avc_bsd.InlineData.MBHeaderErrorHandling = 1;
          avc_bsd.InlineData.EntropyErrorHandling = 1;
          avc_bsd.InlineData.MPRErrorHandling = 1;
