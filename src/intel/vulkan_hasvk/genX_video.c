@@ -774,20 +774,23 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
          uint32_t top_idx = idx * 2;
          uint32_t bottom_idx = idx * 2 + 1;
 
-         struct anv_address dmv_addr = anv_image_address(ref_iv->image,
-                                                         &ref_iv->image->
-                                                         vid_dmv_top_surface);
+         struct anv_address dmv_top_addr = anv_image_address(ref_iv->image,
+                                                             &ref_iv->image->
+                                                             vid_dmv_top_surface);
+         struct anv_address dmv_bottom_addr = anv_image_address(ref_iv->image,
+                                                                &ref_iv->image->
+                                                                vid_dmv_bottom_surface);
          uint32_t dmv_read_mocs =
             anv_mocs(cmd_buffer->device,
                      ref_iv->image->bindings[0].address.bo, 0);
 
-         avc_directmode.DirectMVBufferAddress[top_idx] = dmv_addr;
+         avc_directmode.DirectMVBufferAddress[top_idx] = dmv_top_addr;
          avc_directmode.DirectMVBufferCacheabilityControl[top_idx] =
             dmv_read_mocs & 0x3;
          avc_directmode.DirectMVBufferGraphicsDataType[top_idx] =
             (dmv_read_mocs >> 2) & 0x1;
 
-         avc_directmode.DirectMVBufferAddress[bottom_idx] = dmv_addr;
+         avc_directmode.DirectMVBufferAddress[bottom_idx] = dmv_bottom_addr;
          avc_directmode.DirectMVBufferCacheabilityControl[bottom_idx] =
             dmv_read_mocs & 0x3;
          avc_directmode.DirectMVBufferGraphicsDataType[bottom_idx] =
@@ -818,16 +821,18 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
 #if GFX_VERx10 == 70
       uint32_t dmv_write_mocs =
          anv_mocs(cmd_buffer->device, img->bindings[0].address.bo, 0);
-      struct anv_address write_addr =
+      struct anv_address write_top_addr =
          anv_image_address(img, &img->vid_dmv_top_surface);
+      struct anv_address write_bottom_addr =
+         anv_image_address(img, &img->vid_dmv_bottom_surface);
 
-      avc_directmode.DirectMVBufferWriteAddress[0] = write_addr;
+      avc_directmode.DirectMVBufferWriteAddress[0] = write_top_addr;
       avc_directmode.DirectMVBufferWriteCacheabilityControl[0] =
          dmv_write_mocs & 0x3;
       avc_directmode.DirectMVBufferWriteGraphicsDataType[0] =
          (dmv_write_mocs >> 2) & 0x1;
 
-      avc_directmode.DirectMVBufferWriteAddress[1] = write_addr;
+      avc_directmode.DirectMVBufferWriteAddress[1] = write_bottom_addr;
       avc_directmode.DirectMVBufferWriteCacheabilityControl[1] =
          dmv_write_mocs & 0x3;
       avc_directmode.DirectMVBufferWriteGraphicsDataType[1] =
