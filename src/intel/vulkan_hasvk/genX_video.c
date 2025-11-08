@@ -349,24 +349,22 @@ vid->vid_mem[ANV_VID_MEM_H264_DEBLOCK_FILTER_ROW_STORE].offset };
                                        pPictureResource->imageViewBinding);
 
 #if GFX_VERx10 == 70
-         /* IVB: Debug what anv_image_address is returning */
+         /* IVB: Get the standard address first */
          struct anv_address ref_addr = anv_image_address(ref_iv->image,
                                                          &ref_iv->image->planes[0].primary_surface.memory_range);
          
-         if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
-            fprintf(stderr, "  IVB Ref[%u] address debug:\n", i);
-            fprintf(stderr, "    memory_range.offset=%llu\n", 
-                    (unsigned long long)ref_iv->image->planes[0].primary_surface.memory_range.offset);
-            fprintf(stderr, "    memory_range.size=%llu\n",
-                    (unsigned long long)ref_iv->image->planes[0].primary_surface.memory_range.size);
-            fprintf(stderr, "    anv_image_address returned: bo=%p, offset=%llu\n",
-                    ref_addr.bo, (unsigned long long)ref_addr.offset);
-            fprintf(stderr, "    image->bindings[0].address: bo=%p, offset=%llu\n",
-                    ref_iv->image->bindings[0].address.bo,
-                    (unsigned long long)ref_iv->image->bindings[0].address.offset);
-         }
+         /* For IVB, we need to ensure the address has the BO's GPU offset */
+         buf.ReferencePictureAddress[i] = (struct anv_address) {
+            .bo = NULL,  /* Set BO to NULL so genxml doesn't add offset again */
+            .offset = ref_addr.bo->offset + ref_addr.offset
+         };
          
-         buf.ReferencePictureAddress[i] = ref_addr;
+         if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+            fprintf(stderr, "  IVB Ref[%u] using absolute GPU address: offset=%llu (bo->offset=%llu + ref_addr.offset=%llu)\n",
+                    i, (unsigned long long)buf.ReferencePictureAddress[i].offset,
+                    (unsigned long long)ref_addr.bo->offset,
+                    (unsigned long long)ref_addr.offset);
+         }
 #else
          /* Non-IVB: Use the standard approach with memory_range */
          buf.ReferencePictureAddress[i] = anv_image_address(ref_iv->image,
@@ -807,15 +805,22 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
          uint32_t top_idx = idx * 2;
          uint32_t bottom_idx = idx * 2 + 1;
 
-         /* Use standard anv_image_address for IVB too */
-         avc_directmode.DirectMVBufferAddress[top_idx] = 
-            anv_image_address(ref_iv->image, &ref_iv->image->vid_dmv_top_surface);
-         avc_directmode.DirectMVBufferAddress[bottom_idx] = 
-            anv_image_address(ref_iv->image, &ref_iv->image->vid_dmv_bottom_surface);
+         /* Get the addresses using anv_image_address */
+         struct anv_address top_addr = anv_image_address(ref_iv->image, &ref_iv->image->vid_dmv_top_surface);
+         struct anv_address bottom_addr = anv_image_address(ref_iv->image, &ref_iv->image->vid_dmv_bottom_surface);
+         
+         /* For IVB, use absolute GPU addresses with NULL BO */
+         avc_directmode.DirectMVBufferAddress[top_idx] = (struct anv_address) {
+            .bo = NULL,
+            .offset = top_addr.bo->offset + top_addr.offset
+         };
+         avc_directmode.DirectMVBufferAddress[bottom_idx] = (struct anv_address) {
+            .bo = NULL,
+            .offset = bottom_addr.bo->offset + bottom_addr.offset
+         };
             
          uint32_t dmv_read_mocs =
-            anv_mocs(cmd_buffer->device,
-                     ref_iv->image->bindings[0].address.bo, 0);
+            anv_mocs(cmd_buffer->device, top_addr.bo, 0);
          avc_directmode.DirectMVBufferCacheabilityControl[top_idx] =
             dmv_read_mocs & 0x3;
          avc_directmode.DirectMVBufferGraphicsDataType[top_idx] =
@@ -826,7 +831,7 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
             (dmv_read_mocs >> 2) & 0x1;
 
          if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
-            fprintf(stderr, "  IVB DMV[%u]: top_idx=%u @ %llx, bottom_idx=%u @ %llx\n",
+            fprintf(stderr, "  IVB DMV[%u]: top_idx=%u @ %llu, bottom_idx=%u @ %llu\n",
                     i, top_idx, (unsigned long long)avc_directmode.DirectMVBufferAddress[top_idx].offset,
                     bottom_idx, (unsigned long long)avc_directmode.DirectMVBufferAddress[bottom_idx].offset);
          }
