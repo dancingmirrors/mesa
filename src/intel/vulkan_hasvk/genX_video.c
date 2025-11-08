@@ -349,8 +349,21 @@ vid->vid_mem[ANV_VID_MEM_H264_DEBLOCK_FILTER_ROW_STORE].offset };
                                        pPictureResource->imageViewBinding);
 
 #if GFX_VERx10 == 70
-         /* IVB: Use the actual binding address instead of memory_range for reference pictures */
-         buf.ReferencePictureAddress[i] = ref_iv->image->bindings[0].address;
+         /* IVB: Use the buffer object's GPU address directly */
+         struct anv_bo *ref_bo = ref_iv->image->bindings[0].address.bo;
+         if (ref_bo) {
+            buf.ReferencePictureAddress[i] = (struct anv_address) {
+               .bo = ref_bo,
+               .offset = ref_bo->offset
+            };
+         } else {
+            /* This shouldn't happen, but fallback just in case */
+            buf.ReferencePictureAddress[i] = anv_image_address(ref_iv->image,
+                                                              &ref_iv->image->
+                                                              planes[0].
+                                                              primary_surface.
+                                                              memory_range);
+         }
 #else
          /* Non-IVB: Use the standard approach with memory_range */
          buf.ReferencePictureAddress[i] = anv_image_address(ref_iv->image,
@@ -791,23 +804,32 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
          uint32_t top_idx = idx * 2;
          uint32_t bottom_idx = idx * 2 + 1;
 
-         struct anv_address dmv_top_addr = anv_image_address(ref_iv->image,
-                                                             &ref_iv->image->
-                                                             vid_dmv_top_surface);
-         struct anv_address dmv_bottom_addr = anv_image_address(ref_iv->image,
-                                                                &ref_iv->image->
-                                                                vid_dmv_bottom_surface);
+         struct anv_bo *dmv_bo = ref_iv->image->bindings[0].address.bo;
+         if (dmv_bo) {
+            /* Use BO offset plus the surface offsets */
+            avc_directmode.DirectMVBufferAddress[top_idx] = (struct anv_address) {
+               .bo = dmv_bo,
+               .offset = dmv_bo->offset + ref_iv->image->vid_dmv_top_surface.offset
+            };
+            avc_directmode.DirectMVBufferAddress[bottom_idx] = (struct anv_address) {
+               .bo = dmv_bo,
+               .offset = dmv_bo->offset + ref_iv->image->vid_dmv_bottom_surface.offset
+            };
+         } else {
+            /* Fallback */
+            avc_directmode.DirectMVBufferAddress[top_idx] = 
+               anv_image_address(ref_iv->image, &ref_iv->image->vid_dmv_top_surface);
+            avc_directmode.DirectMVBufferAddress[bottom_idx] = 
+               anv_image_address(ref_iv->image, &ref_iv->image->vid_dmv_bottom_surface);
+         }
+
          uint32_t dmv_read_mocs =
             anv_mocs(cmd_buffer->device,
                      ref_iv->image->bindings[0].address.bo, 0);
-
-         avc_directmode.DirectMVBufferAddress[top_idx] = dmv_top_addr;
          avc_directmode.DirectMVBufferCacheabilityControl[top_idx] =
             dmv_read_mocs & 0x3;
          avc_directmode.DirectMVBufferGraphicsDataType[top_idx] =
             (dmv_read_mocs >> 2) & 0x1;
-
-         avc_directmode.DirectMVBufferAddress[bottom_idx] = dmv_bottom_addr;
          avc_directmode.DirectMVBufferCacheabilityControl[bottom_idx] =
             dmv_read_mocs & 0x3;
          avc_directmode.DirectMVBufferGraphicsDataType[bottom_idx] =
@@ -815,8 +837,8 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
 
          if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
             fprintf(stderr, "  IVB DMV[%u]: top_idx=%u @ %llx, bottom_idx=%u @ %llx\n",
-                    i, top_idx, (unsigned long long)dmv_top_addr.offset,
-                    bottom_idx, (unsigned long long)dmv_bottom_addr.offset);
+                    i, top_idx, (unsigned long long)avc_directmode.DirectMVBufferAddress[top_idx].offset,
+                    bottom_idx, (unsigned long long)avc_directmode.DirectMVBufferAddress[bottom_idx].offset);
          }
 
 #elif GFX_VERx10 == 75
