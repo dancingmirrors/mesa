@@ -28,14 +28,15 @@
 
 VkResult
 anv_CreateVideoSessionKHR(VkDevice _device,
-                           const VkVideoSessionCreateInfoKHR *pCreateInfo,
-                           const VkAllocationCallbacks *pAllocator,
-                           VkVideoSessionKHR *pVideoSession)
+                          const VkVideoSessionCreateInfoKHR *pCreateInfo,
+                          const VkAllocationCallbacks *pAllocator,
+                          VkVideoSessionKHR *pVideoSession)
 {
    ANV_FROM_HANDLE(anv_device, device, _device);
 
    struct anv_video_session *vid =
-      vk_alloc2(&device->vk.alloc, pAllocator, sizeof(*vid), 8, VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
+      vk_alloc2(&device->vk.alloc, pAllocator, sizeof(*vid), 8,
+                VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
    if (!vid)
       return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
 
@@ -75,15 +76,19 @@ anv_DestroyVideoSessionKHR(VkDevice _device,
 
 VkResult
 anv_CreateVideoSessionParametersKHR(VkDevice _device,
-                                     const VkVideoSessionParametersCreateInfoKHR *pCreateInfo,
-                                     const VkAllocationCallbacks *pAllocator,
-                                     VkVideoSessionParametersKHR *pVideoSessionParameters)
+                                    const
+                                    VkVideoSessionParametersCreateInfoKHR
+                                    *pCreateInfo,
+                                    const VkAllocationCallbacks *pAllocator,
+                                    VkVideoSessionParametersKHR
+                                    *pVideoSessionParameters)
 {
    ANV_FROM_HANDLE(anv_device, device, _device);
-   
+
    struct vk_video_session_parameters *params =
-      vk_video_session_parameters_create(&device->vk, pCreateInfo, pAllocator, 
-                                         sizeof(struct anv_video_session_params));
+      vk_video_session_parameters_create(&device->vk, pCreateInfo, pAllocator,
+                                         sizeof(struct
+                                                anv_video_session_params));
    if (!params)
       return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
 
@@ -93,19 +98,21 @@ anv_CreateVideoSessionParametersKHR(VkDevice _device,
 
 void
 anv_DestroyVideoSessionParametersKHR(VkDevice _device,
-                                      VkVideoSessionParametersKHR _params,
-                                      const VkAllocationCallbacks *pAllocator)
+                                     VkVideoSessionParametersKHR _params,
+                                     const VkAllocationCallbacks *pAllocator)
 {
    ANV_FROM_HANDLE(anv_device, device, _device);
    VK_FROM_HANDLE(vk_video_session_parameters, params, _params);
-   
+
    vk_video_session_parameters_destroy(&device->vk, pAllocator, params);
 }
 
 VkResult
 anv_GetPhysicalDeviceVideoCapabilitiesKHR(VkPhysicalDevice physicalDevice,
-                                           const VkVideoProfileInfoKHR *pVideoProfile,
-                                           VkVideoCapabilitiesKHR *pCapabilities)
+                                          const VkVideoProfileInfoKHR
+                                          *pVideoProfile,
+                                          VkVideoCapabilitiesKHR
+                                          *pCapabilities)
 {
    pCapabilities->minBitstreamBufferOffsetAlignment = 32;
    pCapabilities->minBitstreamBufferSizeAlignment = 32;
@@ -115,27 +122,34 @@ anv_GetPhysicalDeviceVideoCapabilitiesKHR(VkPhysicalDevice physicalDevice,
    pCapabilities->minCodedExtent.height = ANV_MB_HEIGHT;
    pCapabilities->maxCodedExtent.width = 4096;
    pCapabilities->maxCodedExtent.height = 4096;
-   pCapabilities->flags = VK_VIDEO_CAPABILITY_SEPARATE_REFERENCE_IMAGES_BIT_KHR;
+   pCapabilities->flags =
+      VK_VIDEO_CAPABILITY_SEPARATE_REFERENCE_IMAGES_BIT_KHR;
 
-   struct VkVideoDecodeCapabilitiesKHR *dec_caps = (struct VkVideoDecodeCapabilitiesKHR *)
+   struct VkVideoDecodeCapabilitiesKHR *dec_caps =
+      (struct VkVideoDecodeCapabilitiesKHR *)
       vk_find_struct(pCapabilities->pNext, VIDEO_DECODE_CAPABILITIES_KHR);
    if (dec_caps)
-      dec_caps->flags = VK_VIDEO_DECODE_CAPABILITY_DPB_AND_OUTPUT_COINCIDE_BIT_KHR;
+      dec_caps->flags =
+         VK_VIDEO_DECODE_CAPABILITY_DPB_AND_OUTPUT_COINCIDE_BIT_KHR;
 
    switch (pVideoProfile->videoCodecOperation) {
-   case VK_VIDEO_CODEC_OPERATION_DECODE_H264_BIT_KHR: {
-      struct VkVideoDecodeH264CapabilitiesKHR *ext = (struct VkVideoDecodeH264CapabilitiesKHR *)
-         vk_find_struct(pCapabilities->pNext, VIDEO_DECODE_H264_CAPABILITIES_KHR);
-      pCapabilities->maxDpbSlots = 17;
-      pCapabilities->maxActiveReferencePictures = 16;
+   case VK_VIDEO_CODEC_OPERATION_DECODE_H264_BIT_KHR:{
+         struct VkVideoDecodeH264CapabilitiesKHR *ext =
+            (struct VkVideoDecodeH264CapabilitiesKHR *)
+            vk_find_struct(pCapabilities->pNext,
+                           VIDEO_DECODE_H264_CAPABILITIES_KHR);
+         pCapabilities->maxDpbSlots = 17;
+         pCapabilities->maxActiveReferencePictures = 16;
 
-      ext->fieldOffsetGranularity.x = 0;
-      ext->fieldOffsetGranularity.y = 0;
-      ext->maxLevelIdc = 51;
-      strcpy(pCapabilities->stdHeaderVersion.extensionName, VK_STD_VULKAN_VIDEO_CODEC_H264_DECODE_EXTENSION_NAME);
-      pCapabilities->stdHeaderVersion.specVersion = VK_STD_VULKAN_VIDEO_CODEC_H264_DECODE_SPEC_VERSION;
-      break;
-   }
+         ext->fieldOffsetGranularity.x = 0;
+         ext->fieldOffsetGranularity.y = 0;
+         ext->maxLevelIdc = 51;
+         strcpy(pCapabilities->stdHeaderVersion.extensionName,
+                VK_STD_VULKAN_VIDEO_CODEC_H264_DECODE_EXTENSION_NAME);
+         pCapabilities->stdHeaderVersion.specVersion =
+            VK_STD_VULKAN_VIDEO_CODEC_H264_DECODE_SPEC_VERSION;
+         break;
+      }
    default:
       break;
    }
@@ -144,9 +158,13 @@ anv_GetPhysicalDeviceVideoCapabilitiesKHR(VkPhysicalDevice physicalDevice,
 
 VkResult
 anv_GetPhysicalDeviceVideoFormatPropertiesKHR(VkPhysicalDevice physicalDevice,
-                                               const VkPhysicalDeviceVideoFormatInfoKHR *pVideoFormatInfo,
-                                               uint32_t *pVideoFormatPropertyCount,
-                                               VkVideoFormatPropertiesKHR *pVideoFormatProperties)
+                                              const
+                                              VkPhysicalDeviceVideoFormatInfoKHR
+                                              *pVideoFormatInfo,
+                                              uint32_t
+                                              *pVideoFormatPropertyCount,
+                                              VkVideoFormatPropertiesKHR
+                                              *pVideoFormatProperties)
 {
    *pVideoFormatPropertyCount = 1;
 
@@ -154,21 +172,27 @@ anv_GetPhysicalDeviceVideoFormatPropertiesKHR(VkPhysicalDevice physicalDevice,
       return VK_SUCCESS;
 
    VkImageUsageFlags usage_flags = pVideoFormatInfo->imageUsage;
-   
+
    /* Add additional usage flags for decode destination images */
    if (usage_flags & VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR)
-      usage_flags |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+      usage_flags |=
+         VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
 
-   pVideoFormatProperties[0].sType = VK_STRUCTURE_TYPE_VIDEO_FORMAT_PROPERTIES_KHR;
+   pVideoFormatProperties[0].sType =
+      VK_STRUCTURE_TYPE_VIDEO_FORMAT_PROPERTIES_KHR;
    pVideoFormatProperties[0].pNext = NULL;
    pVideoFormatProperties[0].format = VK_FORMAT_G8_B8R8_2PLANE_420_UNORM;
-   pVideoFormatProperties[0].componentMapping.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-   pVideoFormatProperties[0].componentMapping.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-   pVideoFormatProperties[0].componentMapping.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-   pVideoFormatProperties[0].componentMapping.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-   pVideoFormatProperties[0].imageCreateFlags = VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT | 
-                                                 VK_IMAGE_CREATE_EXTENDED_USAGE_BIT |
-                                                 VK_IMAGE_CREATE_ALIAS_BIT;
+   pVideoFormatProperties[0].componentMapping.r =
+      VK_COMPONENT_SWIZZLE_IDENTITY;
+   pVideoFormatProperties[0].componentMapping.g =
+      VK_COMPONENT_SWIZZLE_IDENTITY;
+   pVideoFormatProperties[0].componentMapping.b =
+      VK_COMPONENT_SWIZZLE_IDENTITY;
+   pVideoFormatProperties[0].componentMapping.a =
+      VK_COMPONENT_SWIZZLE_IDENTITY;
+   pVideoFormatProperties[0].imageCreateFlags =
+      VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT | VK_IMAGE_CREATE_EXTENDED_USAGE_BIT
+      | VK_IMAGE_CREATE_ALIAS_BIT;
    pVideoFormatProperties[0].imageType = VK_IMAGE_TYPE_2D;
    pVideoFormatProperties[0].imageTiling = VK_IMAGE_TILING_OPTIMAL;
    pVideoFormatProperties[0].imageUsageFlags = usage_flags;
@@ -180,14 +204,15 @@ get_h264_video_session_mem_reqs(struct anv_video_session *vid,
                                 VkVideoSessionMemoryRequirementsKHR *mem_reqs,
                                 uint32_t memory_types)
 {
-   uint32_t width_in_mb = align(vid->vk.max_coded.width, ANV_MB_WIDTH) / ANV_MB_WIDTH;
+   uint32_t width_in_mb =
+      align(vid->vk.max_coded.width, ANV_MB_WIDTH) / ANV_MB_WIDTH;
    /* intra row store is width in macroblocks * 64 */
    mem_reqs[0].memoryBindIndex = ANV_VID_MEM_H264_INTRA_ROW_STORE;
    mem_reqs[0].memoryRequirements.size = width_in_mb * 64;
    mem_reqs[0].memoryRequirements.alignment = 4096;
    mem_reqs[0].memoryRequirements.memoryTypeBits = memory_types;
 
-   /* deblocking filter row store is width in macroblocks * 64 * 4*/
+   /* deblocking filter row store is width in macroblocks * 64 * 4 */
    mem_reqs[1].memoryBindIndex = ANV_VID_MEM_H264_DEBLOCK_FILTER_ROW_STORE;
    mem_reqs[1].memoryRequirements.size = width_in_mb * 64 * 4;
    mem_reqs[1].memoryRequirements.alignment = 4096;
@@ -209,8 +234,10 @@ get_h264_video_session_mem_reqs(struct anv_video_session *vid,
 VkResult
 anv_GetVideoSessionMemoryRequirementsKHR(VkDevice _device,
                                          VkVideoSessionKHR videoSession,
-                                         uint32_t *pVideoSessionMemoryRequirementsCount,
-                                         VkVideoSessionMemoryRequirementsKHR *mem_reqs)
+                                         uint32_t
+                                         *pVideoSessionMemoryRequirementsCount,
+                                         VkVideoSessionMemoryRequirementsKHR
+                                         *mem_reqs)
 {
    ANV_FROM_HANDLE(anv_device, device, _device);
    ANV_FROM_HANDLE(anv_video_session, vid, videoSession);
@@ -239,16 +266,17 @@ anv_GetVideoSessionMemoryRequirementsKHR(VkDevice _device,
 
 VkResult
 anv_UpdateVideoSessionParametersKHR(VkDevice _device,
-                                     VkVideoSessionParametersKHR _params,
-                                     const VkVideoSessionParametersUpdateInfoKHR *pUpdateInfo)
+                                    VkVideoSessionParametersKHR _params,
+                                    const
+                                    VkVideoSessionParametersUpdateInfoKHR
+                                    *pUpdateInfo)
 {
    ANV_FROM_HANDLE(anv_video_session_params, params, _params);
    return vk_video_session_parameters_update(&params->vk, pUpdateInfo);
 }
 
 static void
-copy_bind(struct anv_vid_mem *dst,
-          const VkBindVideoSessionMemoryInfoKHR *src)
+copy_bind(struct anv_vid_mem *dst, const VkBindVideoSessionMemoryInfoKHR *src)
 {
    dst->mem = anv_device_memory_from_handle(src->memory);
    dst->offset = src->memoryOffset;

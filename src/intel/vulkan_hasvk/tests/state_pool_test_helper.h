@@ -25,13 +25,15 @@
 
 #include "util/u_math.h"
 
-struct job {
+struct job
+{
    struct state_pool_test_context *ctx;
    unsigned id;
    pthread_t thread;
 };
 
-struct state_pool_test_context {
+struct state_pool_test_context
+{
    struct anv_state_pool *pool;
    unsigned states_per_thread;
    pthread_barrier_t barrier;
@@ -39,12 +41,14 @@ struct state_pool_test_context {
    struct job *jobs;
 };
 
-static void *alloc_states(void *void_job)
+static void *
+alloc_states(void *void_job)
 {
    struct job *job = void_job;
    struct state_pool_test_context *ctx = job->ctx;
 
-   const unsigned states_per_thread_log2 = util_logbase2(ctx->states_per_thread);
+   const unsigned states_per_thread_log2 =
+      util_logbase2(ctx->states_per_thread);
    const unsigned chunk_size = 1 << (job->id % states_per_thread_log2);
    const unsigned num_chunks = ctx->states_per_thread / chunk_size;
 
@@ -66,8 +70,9 @@ static void *alloc_states(void *void_job)
    return NULL;
 }
 
-static void run_state_pool_test(struct anv_state_pool *state_pool, unsigned num_threads,
-                                unsigned states_per_thread)
+static void
+run_state_pool_test(struct anv_state_pool *state_pool, unsigned num_threads,
+                    unsigned states_per_thread)
 {
    struct state_pool_test_context ctx = {
       .pool = state_pool,
