@@ -809,6 +809,18 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
 
    uint32_t buffer_offset = frame_info->srcBufferOffset & 4095;
 
+   /* Ensure proper synchronization before slice processing to prevent
+    * macroblock and motion prediction corruption on Haswell.
+    * This MI_FLUSH_DW ensures all prior operations complete and caches
+    * are flushed before the MFX pipeline starts processing slices.
+    */
+#if GFX_VER <= 75
+   anv_batch_emit(&cmd_buffer->batch, GENX(MI_FLUSH_DW), flush) {
+      flush.DWordLength = 2;
+      flush.VideoPipelineCacheInvalidate = 1;
+   };
+#endif
+
    for (unsigned s = 0; s < h264_pic_info->sliceCount; s++) {
       bool last_slice = s == (h264_pic_info->sliceCount - 1);
       uint32_t current_offset = h264_pic_info->pSliceOffsets[s];
@@ -882,6 +894,18 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
 #endif
       };
    }
+
+   /* Wait for MFX pipeline to complete all slice processing before ending
+    * the frame decode. This is critical on Haswell to prevent macroblock
+    * and motion prediction artifacts caused by incomplete processing.
+    * The MFX_WAIT ensures all motion vectors and macroblocks are properly
+    * written before the frame is considered complete.
+    */
+#if GFX_VER <= 75
+   anv_batch_emit(&cmd_buffer->batch, GENX(MFX_WAIT), wait) {
+      wait.MFXSyncControlFlag = 1;
+   };
+#endif
 }
 
 void
