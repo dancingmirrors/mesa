@@ -159,9 +159,12 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       /* Calculate the actual Height value that will be set in MFX_SURFACE_STATE */
       uint32_t mfx_height_value;
 #if GFX_VERx10 == 70
-      /* IVB uses aligned height * 3/2 for total surface height */
-      uint32_t aligned_height = ALIGN(img->vk.extent.height, 16);
-      mfx_height_value = (aligned_height * 3 / 2) - 1;
+      /* IVB uses actual surface layout: luma_rows + chroma_rows */
+      uint32_t mfx_luma_rows = img->planes[0].primary_surface.memory_range.size /
+                               img->planes[0].primary_surface.isl.row_pitch_B;
+      uint32_t mfx_chroma_rows = img->planes[1].primary_surface.memory_range.size /
+                                 img->planes[0].primary_surface.isl.row_pitch_B;
+      mfx_height_value = (mfx_luma_rows + mfx_chroma_rows) - 1;
 #else
       mfx_height_value = img->vk.extent.height - 1;
 #endif
@@ -228,9 +231,14 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
        * Height should be aligned to 16 for proper macroblock handling.
        */
 #if GFX_VERx10 == 70
-      /* Total height for NV12 = aligned_luma_height + (aligned_luma_height / 2) */
-      uint32_t aligned_height = ALIGN(img->vk.extent.height, 16);
-      ss.Height = (aligned_height * 3 / 2) - 1;
+      /* Use the actual surface layout - the surface was already created with proper alignment */
+      uint32_t luma_rows = img->planes[0].primary_surface.memory_range.size /
+                           img->planes[0].primary_surface.isl.row_pitch_B;
+      uint32_t chroma_offset_rows = img->planes[1].primary_surface.memory_range.offset /
+                                     img->planes[0].primary_surface.isl.row_pitch_B;
+      uint32_t chroma_rows = img->planes[1].primary_surface.memory_range.size /
+                             img->planes[0].primary_surface.isl.row_pitch_B;
+      ss.Height = (luma_rows + chroma_rows) - 1;
 #else
       ss.Height = img->vk.extent.height - 1;
 #endif
@@ -818,8 +826,16 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
                anv_image_address(ref_iv->image,
                                  &ref_iv->image->vid_dmv_top_surface);
 #endif
-         avc_directmode.POCList[2 * idx] = ref_info->PicOrderCnt[0] & 0xFFFF;
-         avc_directmode.POCList[2 * idx + 1] = ref_info->PicOrderCnt[1] & 0xFFFF;
+         /* POC values may have 0x10000 (65536) offset that needs to be corrected */
+         int32_t poc0 = ref_info->PicOrderCnt[0];
+         int32_t poc1 = ref_info->PicOrderCnt[1];
+
+         /* Check if POC has the 0x10000 offset and correct it */
+         if (poc0 >= 65536) poc0 -= 65536;
+         if (poc1 >= 65536) poc1 -= 65536;
+
+         avc_directmode.POCList[2 * idx] = poc0;
+         avc_directmode.POCList[2 * idx + 1] = poc1;
 
          if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
             fprintf(stderr,
@@ -866,10 +882,15 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
 #endif
 #endif
 
-      avc_directmode.POCList[32] =
-         h264_pic_info->pStdPictureInfo->PicOrderCnt[0] & 0xFFFF;
-      avc_directmode.POCList[33] =
-         h264_pic_info->pStdPictureInfo->PicOrderCnt[1] & 0xFFFF;
+      /* POC values may have 0x10000 (65536) offset that needs to be corrected */
+      int32_t curr_poc0 = h264_pic_info->pStdPictureInfo->PicOrderCnt[0];
+      int32_t curr_poc1 = h264_pic_info->pStdPictureInfo->PicOrderCnt[1];
+
+      if (curr_poc0 >= 65536) curr_poc0 -= 65536;
+      if (curr_poc1 >= 65536) curr_poc1 -= 65536;
+
+      avc_directmode.POCList[32] = curr_poc0;
+      avc_directmode.POCList[33] = curr_poc1;
    }
 
 #define HEADER_OFFSET 3
