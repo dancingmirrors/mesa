@@ -129,13 +129,7 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
    anv_batch_emit(&cmd_buffer->batch, GENX(MFX_PIPE_MODE_SELECT), sel) {
       sel.StandardSelect = SS_AVC;
       sel.CodecSelect = Decode;
-      /* Use long format mode for better compatibility with Ivy Bridge and
-       * Haswell hardware. Long format mode eliminates the need for
-       * MFD_AVC_SLICEADDR prefetch commands and provides more reliable
-       * decoding, particularly fixing chroma corruption on Ivy Bridge and
-       * macroblock/motion prediction issues on Haswell.
-       */
-      sel.DecoderShortFormatMode = LongFormatDriverInterface;
+      sel.DecoderShortFormatMode = ShortFormatDriverInterface;
       sel.DecoderModeSelect = VLDMode;  // Hardcoded
 
       sel.PreDeblockingOutputEnable = 0;
@@ -834,21 +828,35 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
    };
 #endif
 
-   /* Long format mode: Process each slice without MFD_AVC_SLICEADDR prefetch.
-    * This simpler approach is more reliable on Ivy Bridge and Haswell hardware.
-    * In short format mode, MFD_AVC_SLICEADDR is used to prefetch the next
-    * slice for performance, but this can cause synchronization issues leading
-    * to chroma corruption and macroblock/motion prediction problems on older
-    * Intel graphics hardware.
-    */
    for (unsigned s = 0; s < h264_pic_info->sliceCount; s++) {
       bool last_slice = s == (h264_pic_info->sliceCount - 1);
       uint32_t current_offset = h264_pic_info->pSliceOffsets[s];
       uint32_t this_end;
 
-      /* Calculate the end of this slice */
       if (!last_slice) {
-         this_end = h264_pic_info->pSliceOffsets[s + 1];
+         uint32_t next_offset = h264_pic_info->pSliceOffsets[s + 1];
+         uint32_t next_end;
+
+         if (s + 2 < h264_pic_info->sliceCount)
+            next_end = h264_pic_info->pSliceOffsets[s + 2];
+         else
+            next_end = frame_info->srcBufferRange;
+
+         anv_batch_emit(&cmd_buffer->batch, GENX(MFD_AVC_SLICEADDR),
+                        sliceaddr) {
+            uint32_t start = buffer_offset + next_offset + HEADER_OFFSET;
+            uint32_t length = 0;
+
+            if (next_end > next_offset + HEADER_OFFSET)
+               length = next_end - next_offset - HEADER_OFFSET;
+            else
+               length = 0;
+
+            sliceaddr.IndirectBSDDataLength = length;
+            sliceaddr.IndirectBSDDataStartAddress = start;
+         };
+
+         this_end = next_offset;
       }
       else {
          this_end = frame_info->srcBufferRange;
