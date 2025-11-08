@@ -3799,6 +3799,7 @@ khr_perf_query_preamble_offset(const struct anv_query_pool *pool,
 
 #define ANV_VIDEO_MEM_REQS_H264 4
 #define ANV_VIDEO_H264_MAX_DPB_SLOTS 17
+#define ANV_VIDEO_H264_MAX_NUM_REF_FRAME 16
 #define ANV_MB_WIDTH 16
 #define ANV_MB_HEIGHT 16
 
