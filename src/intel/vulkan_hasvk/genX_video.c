@@ -129,7 +129,12 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
    anv_batch_emit(&cmd_buffer->batch, GENX(MFX_PIPE_MODE_SELECT), sel) {
       sel.StandardSelect = SS_AVC;
       sel.CodecSelect = Decode;
-      sel.DecoderShortFormatMode = ShortFormatDriverInterface;
+      /* Use Long Format mode for H.264 decode. The VA-API driver uses long
+       * format because the Vulkan H.264 decode API is designed around short
+       * format, but Intel hardware documentation and reference drivers
+       * primarily use long format. This requires the driver to handle more
+       * of the slice header parsing. */
+      sel.DecoderShortFormatMode = LongFormatDriverInterface;
       sel.DecoderModeSelect = VLDMode;  // Hardcoded
 
       sel.PreDeblockingOutputEnable = 0;
