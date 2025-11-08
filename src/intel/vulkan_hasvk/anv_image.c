@@ -1322,6 +1322,16 @@ anv_image_init(struct anv_device *device, struct anv_image *image,
       r = add_video_buffers(device, image, video_profile);
       if (r != VK_SUCCESS)
          goto fail;
+
+      /* Check that video surfaces are using Y tiling as required for Ivy Bridge */
+      for (uint32_t p = 0; p < image->n_planes; p++) {
+         enum isl_tiling tiling = image->planes[p].primary_surface.isl.tiling;
+         if (tiling != ISL_TILING_Y0) {
+            fprintf(stderr, "hasvk: WARNING: Video surface plane %u is using %s tiling instead of Y0 tiling. "
+                    "This may cause video decode failures on Ivy Bridge.\n",
+                    p, isl_tiling_to_name(tiling));
+         }
+      }
    }
 
    r = alloc_private_binding(device, image, pCreateInfo);
@@ -1409,6 +1419,21 @@ anv_image_init_from_create_info(struct anv_device *device,
       return anv_image_init_from_gralloc(device, image, pCreateInfo,
                                          gralloc_info);
 
+   /* Check if this is a video decode/encode image */
+   const VkVideoProfileListInfoKHR *video_profile =
+      vk_find_struct_const(pCreateInfo->pNext, VIDEO_PROFILE_LIST_INFO_KHR);
+
+   /* For video surfaces, we need to strip VK_IMAGE_CREATE_BLOCK_TEXEL_VIEW_COMPATIBLE_BIT
+    * as it causes linear tiling fallback which breaks video decode. We also need to
+    * force Y tiling for proper hardware support on Ivy Bridge.
+    */
+   VkImageCreateInfo modified_create_info;
+   if (video_profile) {
+      modified_create_info = *pCreateInfo;
+      modified_create_info.flags &= ~VK_IMAGE_CREATE_BLOCK_TEXEL_VIEW_COMPATIBLE_BIT;
+      pCreateInfo = &modified_create_info;
+   }
+
    struct anv_image_create_info create_info = {
       .vk_info = pCreateInfo,
    };
@@ -1424,6 +1449,11 @@ anv_image_init_from_create_info(struct anv_device *device,
    if (mod_explicit_info &&
        !isl_drm_modifier_has_aux(mod_explicit_info->drmFormatModifier))
       create_info.isl_extra_usage_flags |= ISL_SURF_USAGE_DISABLE_AUX_BIT;
+
+   /* For video surfaces, force Y tiling for proper hardware support */
+   if (video_profile && pCreateInfo->tiling == VK_IMAGE_TILING_OPTIMAL) {
+      create_info.isl_tiling_flags = ISL_TILING_Y0_BIT;
+   }
 
    return anv_image_init(device, image, &create_info);
 }
