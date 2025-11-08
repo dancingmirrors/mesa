@@ -323,7 +323,7 @@ anv_GetPhysicalDeviceVideoCapabilitiesKHR(VkPhysicalDevice physicalDevice,
       }
 
 
-      pCapabilities->minBitstreamBufferOffsetAlignment = 32;
+      pCapabilities->minBitstreamBufferOffsetAlignment = 4096;
       pCapabilities->minBitstreamBufferSizeAlignment = 4096;
 
       pCapabilities->maxDpbSlots = ANV_VIDEO_H264_MAX_NUM_REF_FRAME;
