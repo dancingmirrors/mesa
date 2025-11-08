@@ -893,17 +893,18 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
          avc_bsd.InlineData.FixPrevMBSkipped = 1;
 #if GFX_VERx10 == 70
          /* Enable basic error concealment for Ivy Bridge (Gen 7.0).
-          * Haswell+ has more advanced error concealment fields below. */
+          * Note: Gen 7.0 doesn't work well currently, this is a separate issue. */
          avc_bsd.InlineData.MBHeaderErrorHandling = 1;
          avc_bsd.InlineData.EntropyErrorHandling = 1;
          avc_bsd.InlineData.MPRErrorHandling = 1;
          avc_bsd.InlineData.BSDPrematureCompleteErrorHandling = 1;
 #endif
-#if GFX_VERx10 >= 75
-         avc_bsd.InlineData.IntraPredictionErrorControl = 1;
-         avc_bsd.InlineData.Intra8x84x4PredictionErrorConcealmentControl = 1;
-         avc_bsd.InlineData.ISliceConcealmentMode = 1;
-#endif
+         /* For Haswell (Gen 7.5), do NOT enable error concealment fields.
+          * The intel-vaapi-driver leaves these at 0, and enabling them causes
+          * macroblock and motion prediction problems. Match the working VAAPI
+          * behavior by leaving IntraPredictionErrorControl, 
+          * Intra8x84x4PredictionErrorConcealmentControl, and ISliceConcealmentMode
+          * at their default value of 0. */
       };
    }
 
