@@ -26,12 +26,13 @@
 
 void block_pool_grow_first_test(void);
 
-void block_pool_grow_first_test(void)
+void
+block_pool_grow_first_test(void)
 {
    struct anv_physical_device physical_device = {
       .use_softpin = true,
    };
-   struct anv_device device = {};
+   struct anv_device device = { };
    struct anv_block_pool pool;
 
    /* Create a pool with initial size smaller than the block allocated, so
