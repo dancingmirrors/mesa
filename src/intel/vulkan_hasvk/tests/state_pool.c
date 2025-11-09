@@ -30,13 +30,14 @@
 
 void state_pool_test(void);
 
-void state_pool_test(void)
+void
+state_pool_test(void)
 {
    const unsigned num_threads = 8;
    const unsigned states_per_thread = 1 << 10;
 
    struct anv_physical_device physical_device = { };
-   struct anv_device device = {};
+   struct anv_device device = { };
    struct anv_state_pool state_pool;
 
    anv_device_set_physical(&device, &physical_device);
