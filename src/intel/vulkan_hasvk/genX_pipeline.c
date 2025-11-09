@@ -24,7 +24,7 @@
 #include "anv_private.h"
 
 #include "genxml/gen_macros.h"
-#include "genxml/genX_pack.h"
+#include "genxml/hasvk_genX_pack.h"
 #include "genxml/genX_rt_pack.h"
 
 #include "common/intel_compute_slm.h"
@@ -37,6 +37,7 @@
 #include "vk_log.h"
 #include "vk_render_pass.h"
 
+/* *INDENT-OFF* */
 static uint32_t
 vertex_element_comp_control(enum isl_format format, unsigned comp)
 {
@@ -1956,3 +1957,4 @@ genX(compute_pipeline_emit)(struct anv_compute_pipeline *pipeline)
                                         pipeline->interface_descriptor_data,
                                         &desc);
 }
+/* *INDENT-ON* */

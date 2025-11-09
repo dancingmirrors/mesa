@@ -30,7 +30,8 @@
 #define BLOCKS_PER_THREAD 1024
 #define NUM_RUNS 64
 
-static struct job {
+static struct job
+{
    pthread_t thread;
    unsigned id;
    struct anv_block_pool *pool;
@@ -39,7 +40,8 @@ static struct job {
 } jobs[NUM_THREADS];
 
 
-static void *alloc_blocks(void *_job)
+static void *
+alloc_blocks(void *_job)
 {
    struct job *job = _job;
    uint32_t job_id = job - jobs;
@@ -73,7 +75,8 @@ static void *alloc_blocks(void *_job)
    return NULL;
 }
 
-static void validate_monotonic(int32_t **blocks)
+static void
+validate_monotonic(int32_t **blocks)
 {
    /* A list of indices, one per thread */
    unsigned next[NUM_THREADS];
@@ -108,12 +111,13 @@ static void validate_monotonic(int32_t **blocks)
    }
 }
 
-static void run_test()
+static void
+run_test()
 {
    struct anv_physical_device physical_device = {
       .use_relocations = true,
    };
-   struct anv_device device = {};
+   struct anv_device device = { };
    struct anv_block_pool pool;
 
    anv_device_set_physical(&device, &physical_device);
@@ -148,7 +152,8 @@ static void run_test()
 
 void block_pool_no_free_test(void);
 
-void block_pool_no_free_test(void)
+void
+block_pool_no_free_test(void)
 {
    for (unsigned i = 0; i < NUM_RUNS; i++)
       run_test();
