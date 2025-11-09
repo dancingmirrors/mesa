@@ -184,6 +184,17 @@ but the simplest form compatible with Mesa options is to use a comma to
 separate values (``-D platforms=drm,wayland``) and brackets to represent
 an empty list (``-D platforms=[]``).
 
+.. warning::
+
+   **Common Mistake:** All Meson build options must be prefixed with ``-D``.
+   
+   If you see Meson print just a version number (e.g., ``1.7.0``) and exit,
+   you likely forgot the ``-D`` prefix on one of your options.
+   
+   **Wrong:** ``meson setup build/ -video-codecs=all``
+   
+   **Correct:** ``meson setup build/ -Dvideo-codecs=all``
+
 Once you've run the initial ``meson`` command successfully you can use
 your configured backend to build the project in your build directory:
 
