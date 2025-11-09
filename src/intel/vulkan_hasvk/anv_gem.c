@@ -67,7 +67,7 @@ anv_gem_close(struct anv_device *device, uint32_t gem_handle)
 /**
  * Wrapper around DRM_IOCTL_I915_GEM_MMAP. Returns MAP_FAILED on error.
  */
-static void*
+static void *
 anv_gem_mmap_offset(struct anv_device *device, uint32_t gem_handle,
                     uint64_t offset, uint64_t size, uint32_t flags)
 {
@@ -79,7 +79,8 @@ anv_gem_mmap_offset(struct anv_device *device, uint32_t gem_handle,
    assert(offset == 0);
 
    /* Get the fake offset back */
-   int ret = intel_ioctl(device->fd, DRM_IOCTL_I915_GEM_MMAP_OFFSET, &gem_mmap);
+   int ret =
+      intel_ioctl(device->fd, DRM_IOCTL_I915_GEM_MMAP_OFFSET, &gem_mmap);
    if (ret != 0)
       return MAP_FAILED;
 
@@ -89,7 +90,7 @@ anv_gem_mmap_offset(struct anv_device *device, uint32_t gem_handle,
    return map;
 }
 
-static void*
+static void *
 anv_gem_mmap_legacy(struct anv_device *device, uint32_t gem_handle,
                     uint64_t offset, uint64_t size, uint32_t flags)
 {
@@ -106,13 +107,13 @@ anv_gem_mmap_legacy(struct anv_device *device, uint32_t gem_handle,
    if (ret != 0)
       return MAP_FAILED;
 
-   return (void *)(uintptr_t) gem_mmap.addr_ptr;
+   return (void *) (uintptr_t) gem_mmap.addr_ptr;
 }
 
 /**
  * Wrapper around DRM_IOCTL_I915_GEM_MMAP. Returns MAP_FAILED on error.
  */
-void*
+void *
 anv_gem_mmap(struct anv_device *device, uint32_t gem_handle,
              uint64_t offset, uint64_t size, uint32_t flags)
 {
@@ -142,7 +143,7 @@ uint32_t
 anv_gem_userptr(struct anv_device *device, void *mem, size_t size)
 {
    struct drm_i915_gem_userptr userptr = {
-      .user_ptr = (__u64)((unsigned long) mem),
+      .user_ptr = (__u64) ((unsigned long) mem),
       .user_size = size,
       .flags = 0,
    };
@@ -166,14 +167,16 @@ anv_gem_set_caching(struct anv_device *device,
       .caching = caching,
    };
 
-   return intel_ioctl(device->fd, DRM_IOCTL_I915_GEM_SET_CACHING, &gem_caching);
+   return intel_ioctl(device->fd, DRM_IOCTL_I915_GEM_SET_CACHING,
+                      &gem_caching);
 }
 
 /**
  * On error, \a timeout_ns holds the remaining time.
  */
 int
-anv_gem_wait(struct anv_device *device, uint32_t gem_handle, int64_t *timeout_ns)
+anv_gem_wait(struct anv_device *device, uint32_t gem_handle,
+             int64_t *timeout_ns)
 {
    struct drm_i915_gem_wait wait = {
       .bo_handle = gem_handle,
@@ -192,7 +195,8 @@ anv_gem_execbuffer(struct anv_device *device,
                    struct drm_i915_gem_execbuffer2 *execbuf)
 {
    if (execbuf->flags & I915_EXEC_FENCE_OUT)
-      return intel_ioctl(device->fd, DRM_IOCTL_I915_GEM_EXECBUFFER2_WR, execbuf);
+      return intel_ioctl(device->fd, DRM_IOCTL_I915_GEM_EXECBUFFER2_WR,
+                         execbuf);
    else
       return intel_ioctl(device->fd, DRM_IOCTL_I915_GEM_EXECBUFFER2, execbuf);
 }
@@ -251,7 +255,8 @@ anv_gem_has_context_priority(int fd, int priority)
 }
 
 int
-anv_gem_set_context_param(int fd, uint32_t context, uint32_t param, uint64_t value)
+anv_gem_set_context_param(int fd, uint32_t context, uint32_t param,
+                          uint64_t value)
 {
    int err = 0;
    if (!intel_gem_set_context_param(fd, context, param, value))
