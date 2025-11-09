@@ -36,8 +36,9 @@
 
 #include "ds/intel_tracepoints.h"
 
-static void blorp_measure_start(struct blorp_batch *_batch,
-                                const struct blorp_params *params)
+static void
+blorp_measure_start(struct blorp_batch *_batch,
+                    const struct blorp_params *params)
 {
    struct anv_cmd_buffer *cmd_buffer = _batch->driver_batch;
    trace_intel_begin_blorp(&cmd_buffer->trace);
@@ -46,8 +47,9 @@ static void blorp_measure_start(struct blorp_batch *_batch,
                         NULL, 0);
 }
 
-static void blorp_measure_end(struct blorp_batch *_batch,
-                              const struct blorp_params *params)
+static void
+blorp_measure_end(struct blorp_batch *_batch,
+                  const struct blorp_params *params)
 {
    struct anv_cmd_buffer *cmd_buffer = _batch->driver_batch;
    trace_intel_end_blorp(&cmd_buffer->trace,
@@ -90,13 +92,13 @@ blorp_surface_reloc(struct blorp_batch *batch, uint32_t ss_offset,
    result = anv_reloc_list_add(&cmd_buffer->surface_relocs,
                                &cmd_buffer->vk.pool->alloc,
                                ss_offset, address.buffer,
-                               address.offset + delta,
-                               &address_u64);
+                               address.offset + delta, &address_u64);
    if (result != VK_SUCCESS)
       anv_batch_set_error(&cmd_buffer->batch, result);
 
-   void *dest = anv_block_pool_map(
-      &cmd_buffer->device->surface_state_pool.block_pool, ss_offset, 8);
+   void *dest =
+      anv_block_pool_map(&cmd_buffer->device->surface_state_pool.block_pool,
+                         ss_offset, 8);
    write_reloc(cmd_buffer->device, dest, address_u64, false);
 }
 
@@ -120,9 +122,7 @@ blorp_get_surface_base_address(struct blorp_batch *batch)
 
 static void *
 blorp_alloc_dynamic_state(struct blorp_batch *batch,
-                          uint32_t size,
-                          uint32_t alignment,
-                          uint32_t *offset)
+                          uint32_t size, uint32_t alignment, uint32_t *offset)
 {
    struct anv_cmd_buffer *cmd_buffer = batch->driver_batch;
 
@@ -135,9 +135,7 @@ blorp_alloc_dynamic_state(struct blorp_batch *batch,
 
 UNUSED static void *
 blorp_alloc_general_state(struct blorp_batch *batch,
-                          uint32_t size,
-                          uint32_t alignment,
-                          uint32_t *offset)
+                          uint32_t size, uint32_t alignment, uint32_t *offset)
 {
    struct anv_cmd_buffer *cmd_buffer = batch->driver_batch;
 
@@ -208,8 +206,7 @@ blorp_alloc_vertex_buffer(struct blorp_batch *batch, uint32_t size,
 static void
 blorp_vf_invalidate_for_vb_48b_transitions(struct blorp_batch *batch,
                                            const struct blorp_address *addrs,
-                                           uint32_t *sizes,
-                                           unsigned num_vbs)
+                                           uint32_t *sizes, unsigned num_vbs)
 {
    struct anv_cmd_buffer *cmd_buffer = batch->driver_batch;
 
@@ -218,18 +215,19 @@ blorp_vf_invalidate_for_vb_48b_transitions(struct blorp_batch *batch,
          .bo = addrs[i].buffer,
          .offset = addrs[i].offset,
       };
-      genX(cmd_buffer_set_binding_for_gfx8_vb_flush)(cmd_buffer,
-                                                     i, anv_addr, sizes[i]);
+      genX(cmd_buffer_set_binding_for_gfx8_vb_flush) (cmd_buffer,
+                                                      i, anv_addr, sizes[i]);
    }
 
-   genX(cmd_buffer_apply_pipe_flushes)(cmd_buffer);
+   genX(cmd_buffer_apply_pipe_flushes) (cmd_buffer);
 
    /* Technically, we should call this *after* 3DPRIMITIVE but it doesn't
     * really matter for blorp because we never call apply_pipe_flushes after
     * this point.
     */
-   genX(cmd_buffer_update_dirty_vbs_for_gfx8_vb_flush)(cmd_buffer, SEQUENTIAL,
-                                                       (1 << num_vbs) - 1);
+   genX(cmd_buffer_update_dirty_vbs_for_gfx8_vb_flush) (cmd_buffer,
+                                                        SEQUENTIAL,
+                                                        (1 << num_vbs) - 1);
 }
 
 UNUSED static struct blorp_address
@@ -273,17 +271,17 @@ blorp_exec_on_render(struct blorp_batch *batch,
    struct anv_cmd_buffer *cmd_buffer = batch->driver_batch;
    assert(cmd_buffer->queue_family->queueFlags & VK_QUEUE_GRAPHICS_BIT);
 
-   genX(flush_pipeline_select_3d)(cmd_buffer);
+   genX(flush_pipeline_select_3d) (cmd_buffer);
 
    /* Apply any outstanding flushes in case pipeline select haven't. */
-   genX(cmd_buffer_apply_pipe_flushes)(cmd_buffer);
+   genX(cmd_buffer_apply_pipe_flushes) (cmd_buffer);
 
-   genX(cmd_buffer_emit_gfx7_depth_flush)(cmd_buffer);
+   genX(cmd_buffer_emit_gfx7_depth_flush) (cmd_buffer);
 
    /* BLORP doesn't do anything fancy with depth such as discards, so we want
     * the PMA fix off.  Also, off is always the safe option.
     */
-   genX(cmd_buffer_enable_pma_fix)(cmd_buffer, false);
+   genX(cmd_buffer_enable_pma_fix) (cmd_buffer, false);
 
    blorp_exec(batch, params);
 
@@ -322,10 +320,10 @@ blorp_exec_on_compute(struct blorp_batch *batch,
    struct anv_cmd_buffer *cmd_buffer = batch->driver_batch;
    assert(cmd_buffer->queue_family->queueFlags & VK_QUEUE_COMPUTE_BIT);
 
-   genX(flush_pipeline_select_gpgpu)(cmd_buffer);
+   genX(flush_pipeline_select_gpgpu) (cmd_buffer);
 
    /* Apply any outstanding flushes in case pipeline select haven't. */
-   genX(cmd_buffer_apply_pipe_flushes)(cmd_buffer);
+   genX(cmd_buffer_apply_pipe_flushes) (cmd_buffer);
 
    blorp_exec(batch, params);
 
@@ -333,15 +331,15 @@ blorp_exec_on_compute(struct blorp_batch *batch,
 }
 
 void
-genX(blorp_exec)(struct blorp_batch *batch,
-                 const struct blorp_params *params)
+genX(blorp_exec) (struct blorp_batch * batch,
+                  const struct blorp_params * params)
 {
    struct anv_cmd_buffer *cmd_buffer = batch->driver_batch;
 
    if (!cmd_buffer->state.current_l3_config) {
       const struct intel_l3_config *cfg =
          intel_get_default_l3_config(cmd_buffer->device->info);
-      genX(cmd_buffer_config_l3)(cmd_buffer, cfg);
+      genX(cmd_buffer_config_l3) (cmd_buffer, cfg);
    }
 
 #if GFX_VER == 7
@@ -364,13 +362,15 @@ genX(blorp_exec)(struct blorp_batch *batch,
 }
 
 static void
-blorp_emit_pre_draw(struct blorp_batch *batch, const struct blorp_params *params)
+blorp_emit_pre_draw(struct blorp_batch *batch,
+                    const struct blorp_params *params)
 {
    /* "Not implemented" */
 }
 
 static void
-blorp_emit_post_draw(struct blorp_batch *batch, const struct blorp_params *params)
+blorp_emit_post_draw(struct blorp_batch *batch,
+                     const struct blorp_params *params)
 {
    /* "Not implemented" */
 }
