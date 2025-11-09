@@ -217,7 +217,6 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
                              img->planes[0].primary_surface.isl.row_pitch_B;
       ss.Height = (luma_rows + chroma_rows) - 1;
 #else
-      /* Non-IVB: Use logical picture height */
       ss.Height = img->vk.extent.height - 1;
 #endif
       ss.SurfaceFormat = PLANAR_420_8;  // assert on this?
@@ -353,10 +352,10 @@ vid->vid_mem[ANV_VID_MEM_H264_DEBLOCK_FILTER_ROW_STORE].offset };
          /* IVB: Debug what anv_image_address is returning */
          struct anv_address ref_addr = anv_image_address(ref_iv->image,
                                                          &ref_iv->image->planes[0].primary_surface.memory_range);
-         
+
          if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
             fprintf(stderr, "  IVB Ref[%u] address debug:\n", i);
-            fprintf(stderr, "    memory_range.offset=%llu\n", 
+            fprintf(stderr, "    memory_range.offset=%llu\n",
                     (unsigned long long)ref_iv->image->planes[0].primary_surface.memory_range.offset);
             fprintf(stderr, "    anv_image_address returned: bo=%p, offset=%llu\n",
                     ref_addr.bo, (unsigned long long)ref_addr.offset);
@@ -365,11 +364,10 @@ vid->vid_mem[ANV_VID_MEM_H264_DEBLOCK_FILTER_ROW_STORE].offset };
             fprintf(stderr, "    Final absolute address would be: 0x%llx\n",
                     (unsigned long long)(ref_addr.bo->offset + ref_addr.offset));
          }
-         
+
          /* For now, use the standard approach to see the bo->offset values */
          buf.ReferencePictureAddress[i] = ref_addr;
 #else
-         /* Non-IVB: Use the standard approach with memory_range */
          buf.ReferencePictureAddress[i] = anv_image_address(ref_iv->image,
                                                            &ref_iv->image->
                                                            planes[0].
@@ -764,8 +762,6 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
                   avc_directmode) {
 #if GFX_VERx10 == 70
       /* Ivy Bridge quirk: Initialize all POC entries to zero first.
-       * Invalid POC values in unused slots can cause hardware issues
-       * on IVB, leading to motion vector corruption and decode errors.
        */
       for (int i = 0; i < 34; i++) {
          avc_directmode.POCList[i] = 0;
@@ -818,7 +814,7 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
          /* Get the addresses using anv_image_address */
          struct anv_address top_addr = anv_image_address(ref_iv->image, &ref_iv->image->vid_dmv_top_surface);
          struct anv_address bottom_addr = anv_image_address(ref_iv->image, &ref_iv->image->vid_dmv_bottom_surface);
-         
+
          if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
             fprintf(stderr, "  IVB DMV[%u] ref_idx=%u:\n", i, idx);
             fprintf(stderr, "    Top DMV[%u]: bo=%p, offset=0x%llx\n",
@@ -826,11 +822,11 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
             fprintf(stderr, "    Bottom DMV[%u]: bo=%p, offset=0x%llx\n",
                     bottom_idx, bottom_addr.bo, (unsigned long long)bottom_addr.offset);
          }
-         
+
          /* Use clean addresses - hardware will OR in lower 6 bits from separate fields */
          avc_directmode.DirectMVBufferAddress[top_idx] = top_addr;
          avc_directmode.DirectMVBufferAddress[bottom_idx] = bottom_addr;
-            
+
          uint32_t dmv_read_mocs =
             anv_mocs(cmd_buffer->device, top_addr.bo, 0);
          avc_directmode.DirectMVBufferCacheabilityControl[top_idx] =
@@ -923,19 +919,6 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
 
    uint32_t buffer_offset = frame_info->srcBufferOffset & 4095;
 
-   /* Note: MFX_AVC_WEIGHTOFFSET_STATE is NOT emitted for H.264 decode.
-    * Per Intel IVB/HSW PRM, for AVC decoder VLD and IT modes, implicit
-    * weights are computed in hardware, so this command is not issued.
-    * The hardware parses the pred_weight_table() from the slice header
-    * in the bitstream and handles weighted prediction internally.
-    * This command is only required for AVC encoder mode.
-    */
-
-   /* Ensure proper synchronization before slice processing to prevent
-    * macroblock and motion prediction corruption on Haswell.
-    * This MI_FLUSH_DW ensures all prior operations complete and caches
-    * are flushed before the MFX pipeline starts processing slices.
-    */
 #if GFX_VER <= 75
    anv_batch_emit(&cmd_buffer->batch, GENX(MI_FLUSH_DW), flush) {
       flush.DWordLength = 2;
@@ -949,6 +932,15 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
       uint32_t this_end;
 
       if (!last_slice) {
+#if GFX_VER <= 75
+    anv_batch_emit(&cmd_buffer->batch, GENX(PIPE_CONTROL), pc) {
+        pc.DCFlushEnable = 1;
+        pc.RenderTargetCacheFlushEnable = 1;
+        pc.VFCacheInvalidationEnable = 1;
+        pc.StateCacheInvalidationEnable = 1;
+        pc.CommandStreamerStallEnable = 1;
+    }
+#endif
          uint32_t next_offset = h264_pic_info->pSliceOffsets[s + 1];
          uint32_t next_end;
 
@@ -1013,21 +1005,6 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
          avc_bsd.InlineData.ISliceConcealmentMode = 1;
 #endif
       };
-
-#if GFX_VERx10 == 70
-      /* Ivy Bridge: Add PIPE_CONTROL synchronization between slices.
-       * This addresses motion vector corruption issues on IVB by ensuring
-       * DC flush and command streamer stall between each MFD_AVC_BSD_OBJECT.
-       * Without this, motion vectors and reference data may not be properly
-       * synchronized, causing visual artifacts and decode errors.
-       */
-      if (!last_slice) {
-         anv_batch_emit(&cmd_buffer->batch, GENX(PIPE_CONTROL), pc) {
-            pc.DCFlushEnable = 1;
-            pc.CommandStreamerStallEnable = 1;
-         };
-      }
-#endif
    }
 
    /* Wait for MFX pipeline to complete all slice processing before ending
