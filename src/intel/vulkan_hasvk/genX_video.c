@@ -183,6 +183,9 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
          vid->vid_mem[ANV_VID_MEM_H264_DEBLOCK_FILTER_ROW_STORE].mem->bo,
          vid->vid_mem[ANV_VID_MEM_H264_DEBLOCK_FILTER_ROW_STORE].offset
       };
+      buf.DeblockingFilterRowStoreScratchMOCS =
+         anv_mocs(cmd_buffer->device,
+                  buf.DeblockingFilterRowStoreScratchAddressHigh.bo, 0);
 #else
       buf.IntraRowStoreScratchBufferAddress = (struct anv_address) {
          vid->vid_mem[ANV_VID_MEM_H264_INTRA_ROW_STORE].mem->bo,
