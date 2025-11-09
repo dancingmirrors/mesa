@@ -419,6 +419,9 @@ loader_wayland_presentation_feedback(struct loader_wayland_presentation *pres,
       fd->buffer_name = strdup(lwb->name);
       fd->buffer_id = lwb->id;
       fd->flow = lwb->flow;
+   } else {
+      fd->flow.id = 0;
+      fd->flow.start_time = 0;
    }
    fd->callback_data = callback_data;
    fd->feedback = wp_presentation_feedback(pres->presentation,
