@@ -63,13 +63,14 @@ void genX(CmdEndVideoCodingKHR) (VkCommandBuffer commandBuffer,
    anv_batch_emit(&cmd_buffer->batch, GENX(MI_FLUSH_DW), flush) {
       flush.PostSyncOperation = NoWrite;
    }
-#elif GFX_VER == 75
-   anv_batch_emit(&cmd_buffer->batch, GENX(PIPE_CONTROL), pc) {
-      pc.CommandStreamerStallEnable = 1;
-      pc.StallAtPixelScoreboard = 1;
-      pc.DCFlushEnable = 1;
-      pc.VFCacheInvalidationEnable = 1;
-   }
+#elif GFX_VER <= 75
+    anv_batch_emit(&cmd_buffer->batch, GENX(PIPE_CONTROL), pc) {
+        pc.DCFlushEnable = 1;
+        pc.RenderTargetCacheFlushEnable = 1;
+        pc.VFCacheInvalidationEnable = 1;
+        pc.StateCacheInvalidationEnable = 1;
+        pc.CommandStreamerStallEnable = 1;
+    };
 #else
    anv_batch_emit(&cmd_buffer->batch, GENX(PIPE_CONTROL), pc) {
       pc.CommandStreamerStallEnable = 1;
