@@ -133,7 +133,10 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       sel.DecoderShortFormatMode = ShortFormatDriverInterface;
       sel.DecoderModeSelect = VLDMode;  // Hardcoded
 
-      sel.PreDeblockingOutputEnable = 1;
+      /* Disable pre-deblocking output to prevent write hazards.
+       * Only post-deblocking output is used for final decoded frames.
+       */
+      sel.PreDeblockingOutputEnable = 0;
       sel.PostDeblockingOutputEnable = 1;
    }
 
@@ -1005,6 +1008,24 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
          avc_bsd.InlineData.ISliceConcealmentMode = 1;
 #endif
       };
+
+      /* Synchronize MFX pipeline after each non-final slice to ensure
+       * deblocking filter and motion vector writes complete before the next
+       * slice begins processing. This prevents artifacts where motion vectors
+       * and deblocking output from one slice are not visible to subsequent
+       * slices.
+       */
+#if GFX_VER <= 75
+      if (!last_slice) {
+         anv_batch_emit(&cmd_buffer->batch, GENX(MFX_WAIT), wait) {
+            wait.MFXSyncControlFlag = 1;
+         };
+
+         if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+            fprintf(stderr, "[AVC] MFX_WAIT after slice %u (non-final)\n", s);
+         }
+      }
+#endif
    }
 
    /* Wait for MFX pipeline to complete all slice processing before ending
@@ -1017,6 +1038,11 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
    anv_batch_emit(&cmd_buffer->batch, GENX(MFX_WAIT), wait) {
       wait.MFXSyncControlFlag = 1;
    };
+
+   if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+      fprintf(stderr, "[AVC] Final MFX_WAIT after all %u slices\n",
+              h264_pic_info->sliceCount);
+   }
 #endif
 }
 
