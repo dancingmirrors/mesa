@@ -135,7 +135,7 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
 
       /* Disable pre-deblocking output to prevent write hazards.
        * Only post-deblocking output is used for final decoded frames.
-       */
+       * One or the other *must* be set for Haswell. */
       sel.PreDeblockingOutputEnable = 0;
       sel.PostDeblockingOutputEnable = 1;
    }
