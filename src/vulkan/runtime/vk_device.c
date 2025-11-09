@@ -178,6 +178,59 @@ vk_device_init(struct vk_device *device,
       device->enabled_extensions.extensions[idx] = true;
    }
 
+   /* Automatically enable required extension dependencies to satisfy Vulkan
+    * validation layers. This is necessary because some applications don't
+    * explicitly request all required dependencies.
+    */
+   for (int idx = 0; idx < VK_DEVICE_EXTENSION_COUNT; idx++) {
+      if (!device->enabled_extensions.extensions[idx])
+         continue;
+
+      const char *ext_name = vk_device_extensions[idx].extensionName;
+
+      /* VK_KHR_video_decode_queue and VK_KHR_video_encode_queue require
+       * VK_KHR_video_queue and VK_KHR_synchronization2 (or Vulkan 1.3)
+       */
+      if ((strcmp(ext_name, "VK_KHR_video_decode_queue") == 0 ||
+           strcmp(ext_name, "VK_KHR_video_encode_queue") == 0)) {
+         /* Enable VK_KHR_video_queue */
+         for (int dep_idx = 0; dep_idx < VK_DEVICE_EXTENSION_COUNT; dep_idx++) {
+            if (strcmp(vk_device_extensions[dep_idx].extensionName,
+                       "VK_KHR_video_queue") == 0 &&
+                physical_device->supported_extensions.extensions[dep_idx]) {
+               device->enabled_extensions.extensions[dep_idx] = true;
+               break;
+            }
+         }
+
+         /* Enable VK_KHR_synchronization2 if Vulkan 1.3 is not available */
+         if (physical_device->properties.apiVersion < VK_API_VERSION_1_3) {
+            for (int dep_idx = 0; dep_idx < VK_DEVICE_EXTENSION_COUNT; dep_idx++) {
+               if (strcmp(vk_device_extensions[dep_idx].extensionName,
+                          "VK_KHR_synchronization2") == 0 &&
+                   physical_device->supported_extensions.extensions[dep_idx]) {
+                  device->enabled_extensions.extensions[dep_idx] = true;
+                  break;
+               }
+            }
+         }
+      }
+
+      /* VK_KHR_video_queue requires VK_KHR_synchronization2 (or Vulkan 1.3) */
+      if (strcmp(ext_name, "VK_KHR_video_queue") == 0) {
+         if (physical_device->properties.apiVersion < VK_API_VERSION_1_3) {
+            for (int dep_idx = 0; dep_idx < VK_DEVICE_EXTENSION_COUNT; dep_idx++) {
+               if (strcmp(vk_device_extensions[dep_idx].extensionName,
+                          "VK_KHR_synchronization2") == 0 &&
+                   physical_device->supported_extensions.extensions[dep_idx]) {
+                  device->enabled_extensions.extensions[dep_idx] = true;
+                  break;
+               }
+            }
+         }
+      }
+   }
+
    VkResult result =
       vk_physical_device_check_device_features(physical_device,
                                                pCreateInfo);
