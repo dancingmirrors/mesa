@@ -34,7 +34,7 @@
 
 #include "common/intel_l3_config.h"
 #include "genxml/gen_macros.h"
-#include "genxml/genX_pack.h"
+#include "genxml/hasvk_genX_pack.h"
 #include "common/intel_guardband.h"
 #include "compiler/intel_prim.h"
 
@@ -42,6 +42,7 @@
 
 #include "ds/intel_tracepoints.h"
 
+/* *INDENT-OFF* */
 /* We reserve :
  *    - GPR 14 for secondary command buffer returns
  *    - GPR 15 for conditional rendering
@@ -84,6 +85,13 @@ is_render_queue_cmd_buffer(const struct anv_cmd_buffer *cmd_buffer)
 {
    struct anv_queue_family *queue_family = cmd_buffer->queue_family;
    return (queue_family->queueFlags & VK_QUEUE_GRAPHICS_BIT) != 0;
+}
+
+static bool
+is_video_queue_cmd_buffer(const struct anv_cmd_buffer *cmd_buffer)
+{
+   struct anv_queue_family *queue_family = cmd_buffer->queue_family;
+   return (queue_family->queueFlags & VK_QUEUE_VIDEO_DECODE_BIT_KHR) != 0;
 }
 
 void
@@ -1342,6 +1350,9 @@ genX(BeginCommandBuffer)(
    if (cmd_buffer->vk.level == VK_COMMAND_BUFFER_LEVEL_PRIMARY)
       cmd_buffer->usage_flags &= ~VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
 
+   if (is_video_queue_cmd_buffer(cmd_buffer))
+      return VK_SUCCESS;
+
    trace_intel_begin_cmd_buffer(&cmd_buffer->trace);
 
    genX(cmd_buffer_emit_state_base_address)(cmd_buffer);
@@ -1501,6 +1512,11 @@ genX(EndCommandBuffer)(
 
    if (anv_batch_has_error(&cmd_buffer->batch))
       return cmd_buffer->batch.status;
+
+   if (is_video_queue_cmd_buffer(cmd_buffer)) {
+      anv_cmd_buffer_end_batch_buffer(cmd_buffer);
+      return VK_SUCCESS;
+   }
 
    anv_measure_endcommandbuffer(cmd_buffer);
 
@@ -1961,6 +1977,9 @@ cmd_buffer_barrier(struct anv_cmd_buffer *cmd_buffer,
     */
    VkAccessFlags2 src_flags = 0;
    VkAccessFlags2 dst_flags = 0;
+
+   if (is_video_queue_cmd_buffer(cmd_buffer))
+      return;
 
    for (uint32_t i = 0; i < dep_info->memoryBarrierCount; i++) {
       src_flags |= dep_info->pMemoryBarriers[i].srcAccessMask;
@@ -5812,6 +5831,32 @@ void genX(CmdSetEvent2)(
    ANV_FROM_HANDLE(anv_cmd_buffer, cmd_buffer, commandBuffer);
    ANV_FROM_HANDLE(anv_event, event, _event);
 
+   if (is_video_queue_cmd_buffer(cmd_buffer)) {
+#if GFX_VER >= 8
+      anv_batch_emit(&cmd_buffer->batch, GENX(MI_FLUSH_DW), flush) {
+         flush.PostSyncOperation = WriteImmediateData;
+         flush.Address = (struct anv_address) {
+            cmd_buffer->device->dynamic_state_pool.block_pool.bo,
+            event->state.offset
+         };
+         flush.ImmediateData = VK_EVENT_SET;
+      }
+#else
+      anv_batch_emit(&cmd_buffer->batch, GENX(PIPE_CONTROL), pc) {
+         pc.CommandStreamerStallEnable = true;
+         pc.DestinationAddressType  = DAT_PPGTT;
+         pc.PostSyncOperation       = WriteImmediateData;
+         pc.Address = (struct anv_address) {
+            cmd_buffer->device->dynamic_state_pool.block_pool.bo,
+            event->state.offset
+         };
+         pc.ImmediateData           = VK_EVENT_SET;
+         anv_debug_dump_pc(pc);
+      }
+#endif
+      return;
+   }
+
    VkPipelineStageFlags2 src_stages =
       vk_collect_dependency_info_src_stages(pDependencyInfo);
 
@@ -5842,6 +5887,32 @@ void genX(CmdResetEvent2)(
 {
    ANV_FROM_HANDLE(anv_cmd_buffer, cmd_buffer, commandBuffer);
    ANV_FROM_HANDLE(anv_event, event, _event);
+
+   if (is_video_queue_cmd_buffer(cmd_buffer)) {
+#if GFX_VER >= 8
+      anv_batch_emit(&cmd_buffer->batch, GENX(MI_FLUSH_DW), flush) {
+         flush.PostSyncOperation = WriteImmediateData;
+         flush.Address = (struct anv_address) {
+            cmd_buffer->device->dynamic_state_pool.block_pool.bo,
+            event->state.offset
+         };
+         flush.ImmediateData = VK_EVENT_RESET;
+      }
+#else
+      anv_batch_emit(&cmd_buffer->batch, GENX(PIPE_CONTROL), pc) {
+         pc.CommandStreamerStallEnable = true;
+         pc.DestinationAddressType  = DAT_PPGTT;
+         pc.PostSyncOperation       = WriteImmediateData;
+         pc.Address = (struct anv_address) {
+            cmd_buffer->device->dynamic_state_pool.block_pool.bo,
+            event->state.offset
+         };
+         pc.ImmediateData           = VK_EVENT_RESET;
+         anv_debug_dump_pc(pc);
+      }
+#endif
+      return;
+   }
 
    cmd_buffer->state.pending_pipe_bits |= ANV_PIPE_POST_SYNC_BIT;
    genX(cmd_buffer_apply_pipe_flushes)(cmd_buffer);
@@ -5920,7 +5991,7 @@ void genX(CmdBindIndexBuffer2KHR)(
    cmd_buffer->state.gfx.index_buffer = buffer;
    cmd_buffer->state.gfx.index_type = vk_to_intel_index_type(indexType);
    cmd_buffer->state.gfx.index_offset = offset;
-   cmd_buffer->state.gfx.index_size = vk_buffer_range(&buffer->vk, offset, size);
+   cmd_buffer->state.gfx.index_size = buffer ? vk_buffer_range(&buffer->vk, offset, size) : 0;
    cmd_buffer->state.gfx.dirty |= ANV_CMD_DIRTY_INDEX_BUFFER;
 }
 
@@ -6014,3 +6085,4 @@ void genX(cmd_capture_data)(struct anv_batch *batch,
    mi_builder_init(&b, device->info, batch);
    mi_memcpy(&b, dst_addr, src_addr, size_B);
 }
+/* *INDENT-ON* */
