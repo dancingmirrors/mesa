@@ -195,6 +195,9 @@ get_device_extensions(const struct anv_physical_device *device,
    const bool has_syncobj_wait =
       (device->sync_syncobj_type.features & VK_SYNC_FEATURE_CPU_WAIT) != 0;
 
+   /* Gate H.264 video decoding behind environment variable since it's WIP */
+   const bool video_decode = debug_get_bool_option("INTEL_HASVK_VIDEO_DECODE", false);
+
    *ext = (struct vk_device_extension_table) {
       .KHR_8bit_storage = device->info.ver >= 8,
       .KHR_16bit_storage = device->info.ver >= 8
@@ -267,9 +270,9 @@ get_device_extensions(const struct anv_physical_device *device,
       .KHR_timeline_semaphore = true,
       .KHR_uniform_buffer_standard_layout = true,
       .KHR_variable_pointers = true,
-      .KHR_video_queue = true,
-      .KHR_video_decode_queue = true,
-      .KHR_video_decode_h264 = VIDEO_CODEC_H264DEC,
+      .KHR_video_queue = video_decode,
+      .KHR_video_decode_queue = video_decode,
+      .KHR_video_decode_h264 = video_decode && VIDEO_CODEC_H264DEC,
       .KHR_vulkan_memory_model = true,
       .KHR_workgroup_memory_explicit_layout = true,
       .KHR_zero_initialize_workgroup_memory = true,
@@ -1672,7 +1675,7 @@ anv_physical_device_init_queue_families(struct anv_physical_device *pdevice)
             .engine_class = INTEL_ENGINE_CLASS_RENDER,
          };
       }
-      if (v_count > 0) {
+      if (v_count > 0 && debug_get_bool_option("INTEL_HASVK_VIDEO_DECODE", false)) {
          pdevice->queue.families[family_count++] = (struct anv_queue_family) {
             .queueFlags = VK_QUEUE_VIDEO_DECODE_BIT_KHR,
             .queueCount = v_count,
@@ -2262,8 +2265,9 @@ anv_GetPhysicalDeviceQueueFamilyProperties2(VkPhysicalDevice physicalDevice,
             case VK_STRUCTURE_TYPE_QUEUE_FAMILY_VIDEO_PROPERTIES_KHR:{
                   VkQueueFamilyVideoPropertiesKHR *prop =
                      (VkQueueFamilyVideoPropertiesKHR *) ext;
-                  if (queue_family->
-                      queueFlags & VK_QUEUE_VIDEO_DECODE_BIT_KHR)
+                  /* Only expose video codec operations if enabled via environment variable */
+                  if (debug_get_bool_option("INTEL_HASVK_VIDEO_DECODE", false) &&
+                      (queue_family->queueFlags & VK_QUEUE_VIDEO_DECODE_BIT_KHR))
                      prop->videoCodecOperations =
                         VK_VIDEO_CODEC_OPERATION_DECODE_H264_BIT_KHR;
                   break;
