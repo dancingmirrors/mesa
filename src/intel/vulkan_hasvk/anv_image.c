@@ -709,21 +709,22 @@ add_video_buffers(struct anv_device *device,
          unsigned w_mb = DIV_ROUND_UP(image->vk.extent.width, ANV_MB_WIDTH);
          unsigned h_mb = DIV_ROUND_UP(image->vk.extent.height, ANV_MB_HEIGHT);
 
-         /* On Ivy Bridge (Gen7), the hardware assumes a fixed frame width of
-          * 128 MBs (2048 pixels) when indexing into the DirectMV buffer,
-          * regardless of the actual frame width. We must allocate the buffer
-          * with this assumption to prevent out-of-bounds access.
+         /* On Ivy Bridge (Gen7), the PRM specifies that the DMV buffer size
+          * is 557,056 bytes for a 1920x1088 frame (128x68 MBs). The hardware
+          * assumes a fixed frame width of 128 MBs regardless of actual frame
+          * width, but scales with height. This works out to 64 bytes per MB,
+          * or 8192 bytes per MB row (128 MBs * 64 bytes).
           * 
-          * For frames narrower than 128 MBs, this wastes memory but is required
-          * for correct hardware operation. For frames 128 MBs or wider, use
-          * actual width.
+          * Per PRM: "Scalable with frame height, but do not scale with frame
+          * width as the hardware assumes frame width (in MBs) fixed at 128"
           */
          if (device->info->ver == 7) {
-            /* Use maximum of actual width or hardware assumed width (128 MBs) */
-            w_mb = MAX2(w_mb, 128);
+            /* IVB: 128 MBs/row * h_mb rows * 64 bytes/MB = h_mb * 8192 */
+            size = h_mb * 8192;
+         } else {
+            /* Other generations: scale with both width and height */
+            size = w_mb * h_mb * 128;
          }
-
-         size = w_mb * h_mb * 128;
       }
    }
 
