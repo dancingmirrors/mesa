@@ -852,13 +852,8 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
                anv_image_address(ref_iv->image,
                                  &ref_iv->image->vid_dmv_top_surface);
 #endif
-         /* POC values may have 0x10000 (65536) offset that needs to be corrected */
          int32_t poc0 = ref_info->PicOrderCnt[0];
          int32_t poc1 = ref_info->PicOrderCnt[1];
-
-         /* Check if POC has the 0x10000 offset and correct it */
-         if (poc0 >= 65536) poc0 -= 65536;
-         if (poc1 >= 65536) poc1 -= 65536;
 
          avc_directmode.POCList[2 * idx] = poc0;
          avc_directmode.POCList[2 * idx + 1] = poc1;
@@ -908,12 +903,8 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
 #endif
 #endif
 
-      /* POC values may have 0x10000 (65536) offset that needs to be corrected */
       int32_t curr_poc0 = h264_pic_info->pStdPictureInfo->PicOrderCnt[0];
       int32_t curr_poc1 = h264_pic_info->pStdPictureInfo->PicOrderCnt[1];
-
-      if (curr_poc0 >= 65536) curr_poc0 -= 65536;
-      if (curr_poc1 >= 65536) curr_poc1 -= 65536;
 
       avc_directmode.POCList[32] = curr_poc0;
       avc_directmode.POCList[33] = curr_poc1;
