@@ -30,7 +30,8 @@
 #define STATES_PER_THREAD 1024
 #define NUM_RUNS 64
 
-static struct job {
+static struct job
+{
    pthread_t thread;
    unsigned id;
    struct anv_state_pool *pool;
@@ -39,7 +40,8 @@ static struct job {
 
 static pthread_barrier_t barrier;
 
-static void *alloc_states(void *_job)
+static void *
+alloc_states(void *_job)
 {
    struct job *job = _job;
 
@@ -53,10 +55,11 @@ static void *alloc_states(void *_job)
    return NULL;
 }
 
-static void run_test()
+static void
+run_test()
 {
    struct anv_physical_device physical_device = { };
-   struct anv_device device = {};
+   struct anv_device device = { };
    struct anv_state_pool state_pool;
 
    anv_device_set_physical(&device, &physical_device);
@@ -114,7 +117,8 @@ static void run_test()
 
 void state_pool_no_free_test(void);
 
-void state_pool_no_free_test(void)
+void
+state_pool_no_free_test(void)
 {
    for (unsigned i = 0; i < NUM_RUNS; i++)
       run_test();
