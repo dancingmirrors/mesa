@@ -959,6 +959,7 @@ struct anv_instance
 
    /* HW workarounds */
    bool no_16bit;
+   bool no_8x_msaa;
 };
 
 VkResult anv_init_wsi(struct anv_physical_device *physical_device);

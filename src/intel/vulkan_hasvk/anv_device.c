@@ -73,6 +73,7 @@ static const driOptionDescription anv_dri_options[] = {
       DRI_CONF_ANV_SAMPLE_MASK_OUT_OPENGL_BEHAVIOUR(false)
       DRI_CONF_NO_16BIT(false)
       DRI_CONF_HASVK_OVERRIDE_API_VERSION(false)
+      DRI_CONF_HASVK_DISABLE_8X_MSAA(false)
       DRI_CONF_SECTION_END
       DRI_CONF_SECTION_DEBUG DRI_CONF_ALWAYS_FLUSH_CACHE(false)
       DRI_CONF_VK_WSI_FORCE_BGRA8_UNORM_FIRST(false)
@@ -998,6 +999,9 @@ get_properties(const struct anv_physical_device *pdevice,
 
    VkSampleCountFlags sample_counts =
       isl_device_get_sample_counts(&pdevice->isl_dev);
+
+   if (pdevice->instance->no_8x_msaa)
+      sample_counts &= ~VK_SAMPLE_COUNT_8_BIT;
 
    *props = (struct vk_properties) {
 #if DETECT_OS_ANDROID
@@ -2121,6 +2125,8 @@ anv_init_dri_options(struct anv_instance *instance)
    instance->lower_depth_range_rate =
       driQueryOptionf(&instance->dri_options, "lower_depth_range_rate");
    instance->no_16bit = driQueryOptionb(&instance->dri_options, "no_16bit");
+   instance->no_8x_msaa =
+      driQueryOptionb(&instance->dri_options, "hasvk_disable_8x_msaa");
    instance->report_vk_1_3 =
       driQueryOptionb(&instance->dri_options, "hasvk_report_vk_1_3_version");
 }

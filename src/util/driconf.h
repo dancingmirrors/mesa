@@ -903,6 +903,10 @@
    DRI_CONF_OPT_B(hasvk_report_vk_1_3_version, def, \
                   "Override intel_hasvk API version")
 
+#define DRI_CONF_HASVK_DISABLE_8X_MSAA(def) \
+   DRI_CONF_OPT_B(hasvk_disable_8x_msaa, def, \
+                  "Disable 8xMSAA support")
+
 /**
  * \brief DZN specific configuration options
  */
