@@ -770,6 +770,13 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
       for (int i = 0; i < 34; i++) {
          avc_directmode.POCList[i] = 0;
       }
+
+      /* Per PRM: Arbitration Priority Control for Picture 0 DMV buffer must
+       * always be programmed, regardless if buffer is active or not.
+       * HW only reads this bit from Picture 0 to determine arbitration priority
+       * for all 34 DMV buffers.
+       */
+      avc_directmode.DirectMVBufferArbitrationPriorityControl[0] = 0; /* Highest priority */
 #endif
 
       /* bind reference frame DMV */
@@ -813,22 +820,14 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
          struct anv_address bottom_addr = anv_image_address(ref_iv->image, &ref_iv->image->vid_dmv_bottom_surface);
          
          if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
-            fprintf(stderr, "  IVB DMV[%u] debug:\n", i);
-            fprintf(stderr, "    Top DMV: bo=%p, offset=0x%llx, bo->offset=0x%llx\n",
-                    top_addr.bo, (unsigned long long)top_addr.offset,
-                    (unsigned long long)top_addr.bo->offset);
-            fprintf(stderr, "    Bottom DMV: bo=%p, offset=0x%llx, bo->offset=0x%llx\n",
-                    bottom_addr.bo, (unsigned long long)bottom_addr.offset,
-                    (unsigned long long)bottom_addr.bo->offset);
-            fprintf(stderr, "    Top absolute: 0x%llx (lower 6 bits: 0x%llx)\n",
-                    (unsigned long long)(top_addr.bo->offset + top_addr.offset),
-                    (unsigned long long)((top_addr.bo->offset + top_addr.offset) & 0x3F));
-            fprintf(stderr, "    Bottom absolute: 0x%llx (lower 6 bits: 0x%llx)\n",
-                    (unsigned long long)(bottom_addr.bo->offset + bottom_addr.offset),
-                    (unsigned long long)((bottom_addr.bo->offset + bottom_addr.offset) & 0x3F));
+            fprintf(stderr, "  IVB DMV[%u] ref_idx=%u:\n", i, idx);
+            fprintf(stderr, "    Top DMV[%u]: bo=%p, offset=0x%llx\n",
+                    top_idx, top_addr.bo, (unsigned long long)top_addr.offset);
+            fprintf(stderr, "    Bottom DMV[%u]: bo=%p, offset=0x%llx\n",
+                    bottom_idx, bottom_addr.bo, (unsigned long long)bottom_addr.offset);
          }
          
-         /* Keep standard addressing for now */
+         /* Use clean addresses - hardware will OR in lower 6 bits from separate fields */
          avc_directmode.DirectMVBufferAddress[top_idx] = top_addr;
          avc_directmode.DirectMVBufferAddress[bottom_idx] = bottom_addr;
             
@@ -888,6 +887,8 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
          dmv_write_mocs & 0x3;
       avc_directmode.DirectMVBufferWriteGraphicsDataType[0] =
          (dmv_write_mocs >> 2) & 0x1;
+      /* Per PRM: Arbitration Priority Control must be programmed for write buffer 0 */
+      avc_directmode.DirectMVBufferWriteArbitrationPriorityControl[0] = 0; /* Highest priority */
 
       avc_directmode.DirectMVBufferWriteAddress[1] = write_bottom_addr;
       avc_directmode.DirectMVBufferWriteCacheabilityControl[1] =
