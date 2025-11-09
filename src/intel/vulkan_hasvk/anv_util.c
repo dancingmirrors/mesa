@@ -46,9 +46,9 @@ __anv_perf_warn(struct anv_device *device,
    if (object) {
       __vk_log(VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT,
                VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
-               VK_LOG_OBJS(object), file, line,
-               "PERF: %s", buffer);
-   } else {
+               VK_LOG_OBJS(object), file, line, "PERF: %s", buffer);
+   }
+   else {
       __vk_log(VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT,
                VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,
                VK_LOG_NO_OBJS(device->physical->instance), file, line,

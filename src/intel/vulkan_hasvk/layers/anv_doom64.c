@@ -52,33 +52,35 @@ doom64_CmdPipelineBarrier(VkCommandBuffer commandBuffer,
                           VkPipelineStageFlags dstStageMask,
                           VkDependencyFlags dependencyFlags,
                           uint32_t memoryBarrierCount,
-                          const VkMemoryBarrier* pMemoryBarriers,
+                          const VkMemoryBarrier *pMemoryBarriers,
                           uint32_t bufferMemoryBarrierCount,
-                          const VkBufferMemoryBarrier* pBufferMemoryBarriers,
+                          const VkBufferMemoryBarrier *pBufferMemoryBarriers,
                           uint32_t imageMemoryBarrierCount,
-                          const VkImageMemoryBarrier* pImageMemoryBarriers)
+                          const VkImageMemoryBarrier *pImageMemoryBarriers)
 {
    ANV_FROM_HANDLE(anv_cmd_buffer, command_buffer, commandBuffer);
    assert(command_buffer && command_buffer->device);
 
    VkImageMemoryBarrier fixed_barrier;
-   struct set * defined_images =
+   struct set *defined_images =
       command_buffer->device->workarounds.doom64_images;
 
    if (defined_images &&
        imageMemoryBarrierCount == 1 && pImageMemoryBarriers &&
        pImageMemoryBarriers[0].oldLayout == VK_IMAGE_LAYOUT_UNDEFINED &&
-       pImageMemoryBarriers[0].newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
+       pImageMemoryBarriers[0].newLayout ==
+       VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL) {
       ANV_FROM_HANDLE(anv_image, image, pImageMemoryBarriers[0].image);
 
       if (!_mesa_set_search(defined_images, image)) {
          _mesa_set_add(defined_images, image);
       } else {
-         memcpy(&fixed_barrier, pImageMemoryBarriers, sizeof(VkImageMemoryBarrier));
+         memcpy(&fixed_barrier, pImageMemoryBarriers,
+                sizeof(VkImageMemoryBarrier));
 
          fixed_barrier.oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
-         pImageMemoryBarriers = (const VkImageMemoryBarrier*) &fixed_barrier;
+         pImageMemoryBarriers = (const VkImageMemoryBarrier *) &fixed_barrier;
       }
    }
 
@@ -91,8 +93,8 @@ doom64_CmdPipelineBarrier(VkCommandBuffer commandBuffer,
 }
 
 VKAPI_ATTR VkResult VKAPI_CALL
-doom64_CreateImage(VkDevice _device, const VkImageCreateInfo* pCreateInfo,
-                   const VkAllocationCallbacks* pAllocator, VkImage* pImage)
+doom64_CreateImage(VkDevice _device, const VkImageCreateInfo *pCreateInfo,
+                   const VkAllocationCallbacks *pAllocator, VkImage *pImage)
 {
    ANV_FROM_HANDLE(anv_device, device, _device);
    assert(device);
@@ -116,7 +118,7 @@ doom64_DestroyImage(VkDevice _device, VkImage _image,
    ANV_FROM_HANDLE(anv_image, image, _image);
    assert(device);
 
-   struct set * defined_images = device->workarounds.doom64_images;
+   struct set *defined_images = device->workarounds.doom64_images;
 
    if (image && defined_images) {
       _mesa_set_remove_key(defined_images, image);

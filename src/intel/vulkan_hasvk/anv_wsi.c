@@ -49,7 +49,8 @@ anv_init_wsi(struct anv_physical_device *physical_device)
                             &physical_device->instance->vk.alloc,
                             physical_device->master_fd,
                             &physical_device->instance->dri_options,
-                            &(struct wsi_device_options){.sw_device = false});
+                            &(struct wsi_device_options) {.sw_device =
+                            false });
    if (result != VK_SUCCESS)
       return result;
 
@@ -71,10 +72,10 @@ anv_finish_wsi(struct anv_physical_device *physical_device)
                      &physical_device->instance->vk.alloc);
 }
 
-VkResult anv_AcquireNextImage2KHR(
-   VkDevice _device,
-   const VkAcquireNextImageInfoKHR *pAcquireInfo,
-   uint32_t *pImageIndex)
+VkResult
+anv_AcquireNextImage2KHR(VkDevice _device,
+                         const VkAcquireNextImageInfoKHR *pAcquireInfo,
+                         uint32_t *pImageIndex)
 {
    VK_FROM_HANDLE(anv_device, device, _device);
 
@@ -87,9 +88,8 @@ VkResult anv_AcquireNextImage2KHR(
    return result;
 }
 
-VkResult anv_QueuePresentKHR(
-    VkQueue                                  _queue,
-    const VkPresentInfoKHR*                  pPresentInfo)
+VkResult
+anv_QueuePresentKHR(VkQueue _queue, const VkPresentInfoKHR *pPresentInfo)
 {
    ANV_FROM_HANDLE(anv_queue, queue, _queue);
    struct anv_device *device = queue->device;
