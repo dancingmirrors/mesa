@@ -208,10 +208,12 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
 #endif
       }
       ss.HalfPitchforChroma = 0;
-      ss.YOffsetforUCb = ss.YOffsetforVCr =
-         img->planes[1].primary_surface.memory_range.offset /
-         img->planes[0].primary_surface.isl.row_pitch_B;
+      /* For NV12 format on Ivy Bridge, YOffsetforUCb must be macroblock-aligned.
+       * The chroma plane starts at align(height, 32) rows from the surface base.
+       * YOffsetforVCr is 0 because V/Cr is interleaved with U/Cb in NV12. */
+      ss.YOffsetforUCb = align(img->vk.extent.height, 32);
       ss.XOffsetforUCb = 0;
+      ss.YOffsetforVCr = 0;
       ss.XOffsetforVCr = 0;
    }
 
