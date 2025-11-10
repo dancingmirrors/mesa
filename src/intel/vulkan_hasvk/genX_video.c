@@ -507,8 +507,15 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
 
       avc_img.WeightedBiPredictionIDC = pps->weighted_bipred_idc;
       avc_img.WeightedPredictionEnable = pps->flags.weighted_pred_flag;
+#if GFX_VERx10 == 70
+      /* Ivy Bridge: Force chroma QP offsets to zero as a workaround.
+       * IVB has issues with non-zero chroma QP offsets causing color corruption. */
+      avc_img.FirstChromaQPOffset = 0;
+      avc_img.SecondChromaQPOffset = 0;
+#else
       avc_img.FirstChromaQPOffset = pps->chroma_qp_index_offset;
       avc_img.SecondChromaQPOffset = pps->second_chroma_qp_index_offset;
+#endif
       avc_img.FieldPicture =
          h264_pic_info->pStdPictureInfo->flags.field_pic_flag;
       avc_img.MBAFFMode = (sps->flags.mb_adaptive_frame_field_flag
