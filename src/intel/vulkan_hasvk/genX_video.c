@@ -199,36 +199,20 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
 
    anv_batch_emit(&cmd_buffer->batch, GENX(MFX_SURFACE_STATE), ss) {
       ss.Width = img->vk.extent.width - 1;
-
-#if GFX_VERx10 == 70
-      /* IVB: Use total surface height including chroma */
-      uint32_t luma_rows = img->planes[0].primary_surface.memory_range.size /
-                           img->planes[0].primary_surface.isl.row_pitch_B;
-      uint32_t chroma_rows = img->planes[1].primary_surface.memory_range.size /
-                             img->planes[0].primary_surface.isl.row_pitch_B;
-      ss.Height = (luma_rows + chroma_rows) - 1;
-#else
       ss.Height = img->vk.extent.height - 1;
-#endif
-      ss.SurfaceFormat = PLANAR_420_8;  // assert on this?
+      ss.SurfaceFormat = PLANAR_420_8; // assert on this?
       ss.InterleaveChroma = 1;
       ss.SurfacePitch = img->planes[0].primary_surface.isl.row_pitch_B - 1;
       ss.TiledSurface =
          img->planes[0].primary_surface.isl.tiling != ISL_TILING_LINEAR;
-      if (ss.TiledSurface) {
-         /* hasvk only supports Y-tiled for video decode */
-         ss.TileWalk = TW_YMAJOR;
-#if GFX_VERx10 == 70
-         assert(img->planes[0].primary_surface.isl.row_pitch_B >= 128);
-         assert(img->planes[0].primary_surface.isl.row_pitch_B <= 262144);
-         assert((img->planes[0].primary_surface.isl.row_pitch_B % 128) == 0);
-#endif
-      }
-      ss.HalfPitchforChroma = 0;
-      ss.YOffsetforUCb = ss.YOffsetforVCr =
-         img->planes[1].primary_surface.memory_range.offset /
-         img->planes[0].primary_surface.isl.row_pitch_B;
+      ss.TileWalk = TW_YMAJOR;
+      ss.CrVCbUPixelOffsetVDirection = 0;
+
+      ss.YOffsetforUCb = align(img->vk.extent.height, 32);
       ss.XOffsetforUCb = 0;
+      /* For interleaved chroma (NV12), V/Cr is interleaved with U/Cb,
+       * so YOffsetforVCr must be 0 (relative to chroma plane start) */
+      ss.YOffsetforVCr = 0;
       ss.XOffsetforVCr = 0;
    }
 
