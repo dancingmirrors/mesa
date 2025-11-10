@@ -181,18 +181,36 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
 
    anv_batch_emit(&cmd_buffer->batch, GENX(MFX_SURFACE_STATE), ss) {
       ss.Width = img->vk.extent.width - 1;
+
+#if GFX_VERx10 == 70
+      /* IVB: Use total surface height including chroma */
+      uint32_t luma_rows = img->planes[0].primary_surface.memory_range.size /
+                           img->planes[0].primary_surface.isl.row_pitch_B;
+      uint32_t chroma_rows = img->planes[1].primary_surface.memory_range.size /
+                             img->planes[0].primary_surface.isl.row_pitch_B;
+      ss.Height = (luma_rows + chroma_rows) - 1;
+#else
       ss.Height = img->vk.extent.height - 1;
-      ss.SurfaceFormat = PLANAR_420_8; // assert on this?
+#endif
+      ss.SurfaceFormat = PLANAR_420_8;  // assert on this?
       ss.InterleaveChroma = 1;
       ss.SurfacePitch = img->planes[0].primary_surface.isl.row_pitch_B - 1;
       ss.TiledSurface =
          img->planes[0].primary_surface.isl.tiling != ISL_TILING_LINEAR;
-      ss.TileWalk = TW_YMAJOR;
-      ss.CrVCbUPixelOffsetVDirection = 0;
-
-      ss.YOffsetforUCb = align(img->vk.extent.height, 32);
+      if (ss.TiledSurface) {
+         /* hasvk only supports Y-tiled for video decode */
+         ss.TileWalk = TW_YMAJOR;
+#if GFX_VERx10 == 70
+         assert(img->planes[0].primary_surface.isl.row_pitch_B >= 128);
+         assert(img->planes[0].primary_surface.isl.row_pitch_B <= 262144);
+         assert((img->planes[0].primary_surface.isl.row_pitch_B % 128) == 0);
+#endif
+      }
+      ss.HalfPitchforChroma = 0;
+      ss.YOffsetforUCb = ss.YOffsetforVCr =
+         img->planes[1].primary_surface.memory_range.offset /
+         img->planes[0].primary_surface.isl.row_pitch_B;
       ss.XOffsetforUCb = 0;
-      ss.YOffsetforVCr = 0;
       ss.XOffsetforVCr = 0;
    }
 
@@ -485,15 +503,33 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
       else
          avc_img.ImageStructure = TopFieldPicture;
 
-      avc_img.WeightedBiPredictionIDC = pps->weighted_bipred_idc;
-      avc_img.WeightedPredictionEnable = pps->flags.weighted_pred_flag;
+      /* Per hardware requirements, weighted prediction must be disabled for
+       * I pictures. Additionally, for B pictures, weighted prediction should
+       * be disabled as well. I pictures are identified by the is_intra flag.
+       * Since we don't have direct slice type information here, we take a
+       * conservative approach and disable weighted prediction for I pictures.
+       * For potential B pictures, we rely on the PPS settings but note that
+       * proper B picture detection would require slice header parsing.
+       */
+      bool is_intra_picture = h264_pic_info->pStdPictureInfo->flags.is_intra;
+
+      if (is_intra_picture) {
+         avc_img.WeightedBiPredictionIDC = 0;
+         avc_img.WeightedPredictionEnable = 0;
+      } else {
 #if GFX_VERx10 == 70
+         /* Ivy Bridge: Disable weighted prediction for B and I pictures.
+          * Since we cannot reliably detect B pictures without slice headers,
+          * we disable weighted biprediction entirely as a conservative fix. */
+         avc_img.WeightedBiPredictionIDC = 0;
+         avc_img.WeightedPredictionEnable = 0;
+#else
+         avc_img.WeightedBiPredictionIDC = pps->weighted_bipred_idc;
+         avc_img.WeightedPredictionEnable = pps->flags.weighted_pred_flag;
+#endif
+      }
       avc_img.FirstChromaQPOffset = 0;
       avc_img.SecondChromaQPOffset = 0;
-#else
-      avc_img.FirstChromaQPOffset = pps->chroma_qp_index_offset;
-      avc_img.SecondChromaQPOffset = pps->second_chroma_qp_index_offset;
-#endif
       avc_img.FieldPicture =
          h264_pic_info->pStdPictureInfo->flags.field_pic_flag;
       avc_img.MBAFFMode = (sps->flags.mb_adaptive_frame_field_flag
