@@ -812,7 +812,7 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
          if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
             fprintf(stderr,
                     "  Ref[%u] slot=%d, idx=%d, POC=[%d, %d] (raw: [%d, %d]), top_field=%u, bottom_field=%u, long_term=%u\n",
-                    i, slot_idx, idx, poc0, poc1,
+                    i, idx, idx, poc0, poc1,
                     ref_info->PicOrderCnt[0], ref_info->PicOrderCnt[1],
                     ref_info->flags.top_field_flag,
                     ref_info->flags.bottom_field_flag,
