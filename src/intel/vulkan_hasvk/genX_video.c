@@ -107,21 +107,6 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
                                      h264_pic_info->pStdPictureInfo->
                                      pic_parameter_set_id);
 
-   /* Create mapping from DPB slot index to reference picture array index.
-    * This is needed because hardware reference picture arrays are indexed
-    * sequentially (0, 1, 2...) but DPB slot indices can be non-sequential.
-    */
-   uint8_t dpb_slots[ANV_VIDEO_H264_MAX_DPB_SLOTS] = { 0, };
-
-   for (unsigned i = 0; i < frame_info->referenceSlotCount; i++) {
-      int idx = frame_info->pReferenceSlots[i].slotIndex;
-      if (idx < 0)
-         continue;
-
-      assert(idx < ANV_VIDEO_H264_MAX_DPB_SLOTS);
-      dpb_slots[idx] = i;
-   }
-
    anv_batch_emit(&cmd_buffer->batch, GENX(MI_FLUSH_DW), flush) {
       flush.DWordLength = 2;
       flush.VideoPipelineCacheInvalidate = 1;
@@ -685,12 +670,10 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
                                  VIDEO_DECODE_H264_DPB_SLOT_INFO_KHR);
          const StdVideoDecodeH264ReferenceInfo *ref_info =
             dpb_slot->pStdReferenceInfo;
-         int slot_idx = frame_info->pReferenceSlots[i].slotIndex;
+         int idx = frame_info->pReferenceSlots[i].slotIndex;
 
-         if (slot_idx < 0)
+         if (idx < 0)
             continue;
-
-         int idx = dpb_slots[slot_idx];
 
          avc_dpb.NonExistingFrame[idx] = ref_info->flags.is_non_existing;
          avc_dpb.LongTermFrame[idx] =
@@ -706,8 +689,8 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
 
          if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
             fprintf(stderr,
-                    "  DPB[%u] slot=%d->idx=%d, FrameNum=%u, UsedForRef=%u, LongTerm=%u, NonExisting=%u\n",
-                    i, slot_idx, idx, ref_info->FrameNum,
+                    "  DPB[%u] idx=%d, FrameNum=%u, UsedForRef=%u, LongTerm=%u, NonExisting=%u\n",
+                    i, idx, ref_info->FrameNum,
                     avc_dpb.UsedforReference[idx], avc_dpb.LongTermFrame[idx],
                     avc_dpb.NonExistingFrame[idx]);
          }
@@ -716,14 +699,7 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
 
 #if GFX_VERx10 >= 75
    anv_batch_emit(&cmd_buffer->batch, GENX(MFD_AVC_PICID_STATE), picid) {
-      unsigned i = 0;
-      picid.PictureIDRemappingDisable = false;
-
-      for (i = 0; i < frame_info->referenceSlotCount; i++)
-         picid.PictureID[i] = frame_info->pReferenceSlots[i].slotIndex;
-
-      for (; i < ANV_VIDEO_H264_MAX_NUM_REF_FRAME; i++)
-         picid.PictureID[i] = 0xffff;
+      picid.PictureIDRemappingDisable = true;
    }
 #endif
 
@@ -761,12 +737,10 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
 #pragma GCC diagnostic pop
 #endif
       for (unsigned i = 0; i < frame_info->referenceSlotCount; i++) {
-         int slot_idx = frame_info->pReferenceSlots[i].slotIndex;
+         int idx = frame_info->pReferenceSlots[i].slotIndex;
 
-         if (slot_idx < 0)
+         if (idx < 0)
             continue;
-
-         int idx = dpb_slots[slot_idx];
 
          const struct VkVideoDecodeH264DpbSlotInfoKHR *dpb_slot =
             vk_find_struct_const(frame_info->pReferenceSlots[i].pNext,
