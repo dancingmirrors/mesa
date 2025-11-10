@@ -197,17 +197,16 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
    }
 
    anv_batch_emit(&cmd_buffer->batch, GENX(MFX_PIPE_BUF_ADDR_STATE), buf) {
-      bool use_pre_deblock = false;
-      if (use_pre_deblock) {
-         buf.PreDeblockingDestinationAddress = anv_image_address(img,
-                                                                 &img->planes[0].primary_surface.memory_range);
-      } else {
-         buf.PostDeblockingDestinationAddress = anv_image_address(img,
-                                                                  &img->planes[0].primary_surface.memory_range);
-      }
+      struct anv_address dest_addr = anv_image_address(img,
+                                                        &img->planes[0].
+                                                        primary_surface.
+                                                        memory_range);
+      buf.PreDeblockingDestinationAddress = dest_addr;
+      buf.PostDeblockingDestinationAddress = dest_addr;
 #if GFX_VERx10 >= 75
       buf.PreDeblockingDestinationMOCS =
-         anv_mocs(cmd_buffer->device, NULL, 0);
+         anv_mocs(cmd_buffer->device, buf.PreDeblockingDestinationAddress.bo,
+                  0);
       buf.PostDeblockingDestinationMOCS =
          anv_mocs(cmd_buffer->device, buf.PostDeblockingDestinationAddress.bo,
                   0);
@@ -243,9 +242,6 @@ vid_mem[ANV_VID_MEM_H264_INTRA_ROW_STORE].mem->bo,
          (struct anv_address) { vid->
 vid_mem[ANV_VID_MEM_H264_DEBLOCK_FILTER_ROW_STORE].mem->bo,
 vid->vid_mem[ANV_VID_MEM_H264_DEBLOCK_FILTER_ROW_STORE].offset };
-      buf.DeblockingFilterRowStoreScratchMOCS =
-         anv_mocs(cmd_buffer->device,
-                  buf.DeblockingFilterRowStoreScratchAddressHigh.bo, 0);
 #else
       buf.IntraRowStoreScratchBufferAddress =
          (struct anv_address) { vid->
@@ -283,6 +279,14 @@ vid->vid_mem[ANV_VID_MEM_H264_DEBLOCK_FILTER_ROW_STORE].offset };
 vid_mem[ANV_VID_MEM_H264_DEBLOCK_FILTER_ROW_STORE].mem->bo,
 vid->vid_mem[ANV_VID_MEM_H264_DEBLOCK_FILTER_ROW_STORE].offset };
 #endif
+#endif
+#if GFX_VERx10 == 75
+      buf.DeblockingFilterRowStoreScratchMOCS =
+         anv_mocs(cmd_buffer->device,
+                  vid->vid_mem[ANV_VID_MEM_H264_DEBLOCK_FILTER_ROW_STORE].
+                  mem->bo, 0);
+      buf.MBStatusBufferMOCS = anv_mocs(cmd_buffer->device, NULL, 0);
+      buf.MBILDBStreamOutBufferMOCS = anv_mocs(cmd_buffer->device, NULL, 0);
 #endif
 
 #if GFX_VERx10 == 80
