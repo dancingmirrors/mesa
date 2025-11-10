@@ -59,7 +59,10 @@ void genX(CmdEndVideoCodingKHR) (VkCommandBuffer commandBuffer,
     * coding session. This prevents VK_DEVICE_LOST when the application
     * tries to destroy video sessions or parameters that are still in use.
     */
-#if GFX_VER >= 8
+#if GFX_VER > 8
+   UNREACHABLE("Unsupported hardware.");
+#endif
+#if GFX_VER == 8
    anv_batch_emit(&cmd_buffer->batch, GENX(MI_FLUSH_DW), flush) {
       flush.PostSyncOperation = NoWrite;
    }
@@ -70,12 +73,10 @@ void genX(CmdEndVideoCodingKHR) (VkCommandBuffer commandBuffer,
         pc.VFCacheInvalidationEnable = 1;
         pc.StateCacheInvalidationEnable = 1;
         pc.CommandStreamerStallEnable = 1;
+        pc.StallAtPixelScoreboard = 1;
     };
 #else
-   anv_batch_emit(&cmd_buffer->batch, GENX(PIPE_CONTROL), pc) {
-      pc.CommandStreamerStallEnable = 1;
-      pc.StallAtPixelScoreboard = 1;
-   }
+    UNREACHABLE("Unsupported hardware.");
 #endif
 
 #if GFX_VER <= 75
@@ -135,7 +136,7 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
 
       /* Disable pre-deblocking output to prevent write hazards.
        * Only post-deblocking output is used for final decoded frames.
-       */
+       * One or the other *must* be set for Haswell. */
       sel.PreDeblockingOutputEnable = 0;
       sel.PostDeblockingOutputEnable = 1;
    }
@@ -927,6 +928,15 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
       flush.DWordLength = 2;
       flush.VideoPipelineCacheInvalidate = 1;
    };
+
+   anv_batch_emit(&cmd_buffer->batch, GENX(PIPE_CONTROL), pc) {
+      pc.DCFlushEnable = 1;
+      pc.RenderTargetCacheFlushEnable = 1;
+      pc.VFCacheInvalidationEnable = 1;
+      pc.StateCacheInvalidationEnable = 1;
+      pc.CommandStreamerStallEnable = 1;
+      pc.StallAtPixelScoreboard = 1;
+   };
 #endif
 
    for (unsigned s = 0; s < h264_pic_info->sliceCount; s++) {
@@ -942,6 +952,7 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
         pc.VFCacheInvalidationEnable = 1;
         pc.StateCacheInvalidationEnable = 1;
         pc.CommandStreamerStallEnable = 1;
+        pc.StallAtPixelScoreboard = 1;
     }
 #endif
          uint32_t next_offset = h264_pic_info->pSliceOffsets[s + 1];
