@@ -207,8 +207,7 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       }
 #if GFX_VERx10 >= 75
       buf.PreDeblockingDestinationMOCS =
-         anv_mocs(cmd_buffer->device, buf.PreDeblockingDestinationAddress.bo,
-                  0);
+         anv_mocs(cmd_buffer->device, NULL, 0);
       buf.PostDeblockingDestinationMOCS =
          anv_mocs(cmd_buffer->device, buf.PostDeblockingDestinationAddress.bo,
                   0);
@@ -244,6 +243,9 @@ vid_mem[ANV_VID_MEM_H264_INTRA_ROW_STORE].mem->bo,
          (struct anv_address) { vid->
 vid_mem[ANV_VID_MEM_H264_DEBLOCK_FILTER_ROW_STORE].mem->bo,
 vid->vid_mem[ANV_VID_MEM_H264_DEBLOCK_FILTER_ROW_STORE].offset };
+      buf.DeblockingFilterRowStoreScratchMOCS =
+         anv_mocs(cmd_buffer->device,
+                  buf.DeblockingFilterRowStoreScratchAddressHigh.bo, 0);
 #else
       buf.IntraRowStoreScratchBufferAddress =
          (struct anv_address) { vid->
