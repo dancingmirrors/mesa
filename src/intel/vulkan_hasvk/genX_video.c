@@ -850,7 +850,7 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
       uint32_t this_end;
 
       if (!last_slice) {
-#if GFX_VER <= 75
+#if GFX_VERx10 == 70
     anv_batch_emit(&cmd_buffer->batch, GENX(PIPE_CONTROL), pc) {
         pc.DCFlushEnable = 1;
         pc.RenderTargetCacheFlushEnable = 1;
