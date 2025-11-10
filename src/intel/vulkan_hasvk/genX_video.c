@@ -505,15 +505,8 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
       else
          avc_img.ImageStructure = TopFieldPicture;
 
-#if GFX_VERx10 == 70
-      /* Ivy Bridge: Disable weighted prediction entirely as a workaround.
-       * IVB has issues with weighted prediction in hardware. */
-      avc_img.WeightedBiPredictionIDC = 0;
-      avc_img.WeightedPredictionEnable = 0;
-#else
       avc_img.WeightedBiPredictionIDC = pps->weighted_bipred_idc;
       avc_img.WeightedPredictionEnable = pps->flags.weighted_pred_flag;
-#endif
       avc_img.FirstChromaQPOffset = pps->chroma_qp_index_offset;
       avc_img.SecondChromaQPOffset = pps->second_chroma_qp_index_offset;
       avc_img.FieldPicture =
@@ -707,6 +700,15 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
 
    anv_batch_emit(&cmd_buffer->batch, GENX(MFX_AVC_DIRECTMODE_STATE),
                   avc_directmode) {
+#if GFX_VERx10 == 70
+      /* Ivy Bridge quirk: Initialize all POC entries to zero first.
+       * This prevents issues with uninitialized POC values causing
+       * solid gray/rainbow blocks with noise. */
+      for (int i = 0; i < 34; i++) {
+         avc_directmode.POCList[i] = 0;
+      }
+#endif
+
       /* bind reference frame DMV */
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
