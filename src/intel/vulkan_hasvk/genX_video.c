@@ -828,7 +828,7 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
 
    uint32_t buffer_offset = frame_info->srcBufferOffset & 4095;
 
-#if GFX_VER <= 75
+#if GFX_VERx10 == 70
    anv_batch_emit(&cmd_buffer->batch, GENX(MI_FLUSH_DW), flush) {
       flush.DWordLength = 2;
       flush.VideoPipelineCacheInvalidate = 1;
