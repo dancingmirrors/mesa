@@ -161,17 +161,7 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
          total_surface_size / img->planes[0].primary_surface.isl.row_pitch_B;
 
       /* Calculate the actual Height value that will be set in MFX_SURFACE_STATE */
-      uint32_t mfx_height_value;
-#if GFX_VERx10 == 70
-      /* IVB uses actual surface layout: luma_rows + chroma_rows */
-      uint32_t mfx_luma_rows = img->planes[0].primary_surface.memory_range.size /
-                               img->planes[0].primary_surface.isl.row_pitch_B;
-      uint32_t mfx_chroma_rows = img->planes[1].primary_surface.memory_range.size /
-                                 img->planes[0].primary_surface.isl.row_pitch_B;
-      mfx_height_value = (mfx_luma_rows + mfx_chroma_rows) - 1;
-#else
-      mfx_height_value = img->vk.extent.height - 1;
-#endif
+      uint32_t mfx_height_value = img->vk.extent.height - 1;
 
       fprintf(stderr, "H264 Decode Surface Configuration:\n");
       fprintf(stderr, "  Logical dimensions: %ux%u\n",
@@ -196,32 +186,13 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
               isl.tiling ==
               ISL_TILING_X ? "X-tiled" : img->planes[0].primary_surface.isl.
               tiling == ISL_TILING_Y0 ? "Y0-tiled" : "Other");
-#if GFX_VERx10 == 70
-      uint32_t chroma_end_row =
-         yoffset +
-         (img->planes[1].primary_surface.memory_range.size /
-          img->planes[0].primary_surface.isl.row_pitch_B);
-      if (chroma_end_row > total_height_rows) {
-         fprintf(stderr,
-                 "ERROR: Chroma extends to row %u but surface height is only %u rows!\n",
-                 chroma_end_row, total_height_rows);
-      }
-#endif
    }
 
    anv_batch_emit(&cmd_buffer->batch, GENX(MFX_SURFACE_STATE), ss) {
       ss.Width = img->vk.extent.width - 1;
-
-#if GFX_VERx10 == 70
-      /* IVB: Use total surface height including chroma */
-      uint32_t luma_rows = img->planes[0].primary_surface.memory_range.size /
-                           img->planes[0].primary_surface.isl.row_pitch_B;
-      uint32_t chroma_rows = img->planes[1].primary_surface.memory_range.size /
-                             img->planes[0].primary_surface.isl.row_pitch_B;
-      ss.Height = (luma_rows + chroma_rows) - 1;
-#else
+      /* Use logical frame height, not physical surface height.
+       * The YOffsetforUCb/VCr fields handle the chroma plane location. */
       ss.Height = img->vk.extent.height - 1;
-#endif
       ss.SurfaceFormat = PLANAR_420_8;  // assert on this?
       ss.InterleaveChroma = 1;
       ss.SurfacePitch = img->planes[0].primary_surface.isl.row_pitch_B - 1;
