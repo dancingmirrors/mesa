@@ -107,6 +107,21 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
                                      h264_pic_info->pStdPictureInfo->
                                      pic_parameter_set_id);
 
+   /* Create mapping from DPB slot index to reference picture array index.
+    * This is needed because hardware reference picture arrays are indexed
+    * sequentially (0, 1, 2...) but DPB slot indices can be non-sequential.
+    */
+   uint8_t dpb_slots[ANV_VIDEO_H264_MAX_DPB_SLOTS] = { 0, };
+
+   for (unsigned i = 0; i < frame_info->referenceSlotCount; i++) {
+      int idx = frame_info->pReferenceSlots[i].slotIndex;
+      if (idx < 0)
+         continue;
+
+      assert(idx < ANV_VIDEO_H264_MAX_DPB_SLOTS);
+      dpb_slots[idx] = i;
+   }
+
    anv_batch_emit(&cmd_buffer->batch, GENX(MI_FLUSH_DW), flush) {
       flush.DWordLength = 2;
       flush.VideoPipelineCacheInvalidate = 1;
@@ -146,7 +161,17 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
          total_surface_size / img->planes[0].primary_surface.isl.row_pitch_B;
 
       /* Calculate the actual Height value that will be set in MFX_SURFACE_STATE */
-      uint32_t mfx_height_value = img->vk.extent.height - 1;
+      uint32_t mfx_height_value;
+#if GFX_VERx10 == 70
+      /* IVB uses actual surface layout: luma_rows + chroma_rows */
+      uint32_t mfx_luma_rows = img->planes[0].primary_surface.memory_range.size /
+                               img->planes[0].primary_surface.isl.row_pitch_B;
+      uint32_t mfx_chroma_rows = img->planes[1].primary_surface.memory_range.size /
+                                 img->planes[0].primary_surface.isl.row_pitch_B;
+      mfx_height_value = (mfx_luma_rows + mfx_chroma_rows) - 1;
+#else
+      mfx_height_value = img->vk.extent.height - 1;
+#endif
 
       fprintf(stderr, "H264 Decode Surface Configuration:\n");
       fprintf(stderr, "  Logical dimensions: %ux%u\n",
@@ -171,13 +196,32 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
               isl.tiling ==
               ISL_TILING_X ? "X-tiled" : img->planes[0].primary_surface.isl.
               tiling == ISL_TILING_Y0 ? "Y0-tiled" : "Other");
+#if GFX_VERx10 == 70
+      uint32_t chroma_end_row =
+         yoffset +
+         (img->planes[1].primary_surface.memory_range.size /
+          img->planes[0].primary_surface.isl.row_pitch_B);
+      if (chroma_end_row > total_height_rows) {
+         fprintf(stderr,
+                 "ERROR: Chroma extends to row %u but surface height is only %u rows!\n",
+                 chroma_end_row, total_height_rows);
+      }
+#endif
    }
 
    anv_batch_emit(&cmd_buffer->batch, GENX(MFX_SURFACE_STATE), ss) {
       ss.Width = img->vk.extent.width - 1;
-      /* Use logical frame height, not physical surface height.
-       * The YOffsetforUCb/VCr fields handle the chroma plane location. */
+
+#if GFX_VERx10 == 70
+      /* IVB: Use total surface height including chroma */
+      uint32_t luma_rows = img->planes[0].primary_surface.memory_range.size /
+                           img->planes[0].primary_surface.isl.row_pitch_B;
+      uint32_t chroma_rows = img->planes[1].primary_surface.memory_range.size /
+                             img->planes[0].primary_surface.isl.row_pitch_B;
+      ss.Height = (luma_rows + chroma_rows) - 1;
+#else
       ss.Height = img->vk.extent.height - 1;
+#endif
       ss.SurfaceFormat = PLANAR_420_8;  // assert on this?
       ss.InterleaveChroma = 1;
       ss.SurfacePitch = img->planes[0].primary_surface.isl.row_pitch_B - 1;
@@ -193,12 +237,10 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
 #endif
       }
       ss.HalfPitchforChroma = 0;
-      /* For NV12 format on Ivy Bridge, YOffsetforUCb must be macroblock-aligned.
-       * The chroma plane starts at align(height, 32) rows from the surface base.
-       * YOffsetforVCr is 0 because V/Cr is interleaved with U/Cb in NV12. */
-      ss.YOffsetforUCb = align(img->vk.extent.height, 32);
+      ss.YOffsetforUCb = ss.YOffsetforVCr =
+         img->planes[1].primary_surface.memory_range.offset /
+         img->planes[0].primary_surface.isl.row_pitch_B;
       ss.XOffsetforUCb = 0;
-      ss.YOffsetforVCr = 0;
       ss.XOffsetforVCr = 0;
    }
 
@@ -670,10 +712,12 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
                                  VIDEO_DECODE_H264_DPB_SLOT_INFO_KHR);
          const StdVideoDecodeH264ReferenceInfo *ref_info =
             dpb_slot->pStdReferenceInfo;
-         int idx = frame_info->pReferenceSlots[i].slotIndex;
+         int slot_idx = frame_info->pReferenceSlots[i].slotIndex;
 
-         if (idx < 0)
+         if (slot_idx < 0)
             continue;
+
+         int idx = dpb_slots[slot_idx];
 
          avc_dpb.NonExistingFrame[idx] = ref_info->flags.is_non_existing;
          avc_dpb.LongTermFrame[idx] =
@@ -689,8 +733,8 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
 
          if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
             fprintf(stderr,
-                    "  DPB[%u] idx=%d, FrameNum=%u, UsedForRef=%u, LongTerm=%u, NonExisting=%u\n",
-                    i, idx, ref_info->FrameNum,
+                    "  DPB[%u] slot=%d->idx=%d, FrameNum=%u, UsedForRef=%u, LongTerm=%u, NonExisting=%u\n",
+                    i, slot_idx, idx, ref_info->FrameNum,
                     avc_dpb.UsedforReference[idx], avc_dpb.LongTermFrame[idx],
                     avc_dpb.NonExistingFrame[idx]);
          }
@@ -699,7 +743,14 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
 
 #if GFX_VERx10 >= 75
    anv_batch_emit(&cmd_buffer->batch, GENX(MFD_AVC_PICID_STATE), picid) {
-      picid.PictureIDRemappingDisable = true;
+      unsigned i = 0;
+      picid.PictureIDRemappingDisable = false;
+
+      for (i = 0; i < frame_info->referenceSlotCount; i++)
+         picid.PictureID[i] = frame_info->pReferenceSlots[i].slotIndex;
+
+      for (; i < ANV_VIDEO_H264_MAX_NUM_REF_FRAME; i++)
+         picid.PictureID[i] = 0xffff;
    }
 #endif
 
@@ -737,10 +788,12 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
 #pragma GCC diagnostic pop
 #endif
       for (unsigned i = 0; i < frame_info->referenceSlotCount; i++) {
-         int idx = frame_info->pReferenceSlots[i].slotIndex;
+         int slot_idx = frame_info->pReferenceSlots[i].slotIndex;
 
-         if (idx < 0)
+         if (slot_idx < 0)
             continue;
+
+         int idx = dpb_slots[slot_idx];
 
          const struct VkVideoDecodeH264DpbSlotInfoKHR *dpb_slot =
             vk_find_struct_const(frame_info->pReferenceSlots[i].pNext,
@@ -812,7 +865,7 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
          if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
             fprintf(stderr,
                     "  Ref[%u] slot=%d, idx=%d, POC=[%d, %d] (raw: [%d, %d]), top_field=%u, bottom_field=%u, long_term=%u\n",
-                    i, idx, idx, poc0, poc1,
+                    i, slot_idx, idx, poc0, poc1,
                     ref_info->PicOrderCnt[0], ref_info->PicOrderCnt[1],
                     ref_info->flags.top_field_flag,
                     ref_info->flags.bottom_field_flag,
@@ -875,10 +928,10 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
       flush.VideoPipelineCacheInvalidate = 1;
    };
 
-   /* Ensure all state setup commands are synchronized before starting slice decode.
-    * This is critical for single-slice videos where no PIPE_CONTROL would otherwise
-    * be executed before the first slice, potentially causing artifacts if state
-    * cache and data cache are not properly flushed.
+   /* Ensure proper synchronization before slice decode.
+    * This PIPE_CONTROL ensures state and data caches are flushed,
+    * which is especially important for single-slice videos that
+    * don't get PIPE_CONTROL between slices.
     */
    anv_batch_emit(&cmd_buffer->batch, GENX(PIPE_CONTROL), pc) {
       pc.DCFlushEnable = 1;
