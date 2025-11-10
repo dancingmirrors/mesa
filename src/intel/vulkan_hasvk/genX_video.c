@@ -324,6 +324,7 @@ vid->vid_mem[ANV_VID_MEM_H264_DEBLOCK_FILTER_ROW_STORE].offset };
          const struct anv_image_view *ref_iv =
             anv_image_view_from_handle(frame_info->pReferenceSlots[i].
                                        pPictureResource->imageViewBinding);
+         int idx = frame_info->pReferenceSlots[i].slotIndex;
 
 #if GFX_VERx10 == 70
          /* IVB: Debug what anv_image_address is returning */
@@ -343,9 +344,9 @@ vid->vid_mem[ANV_VID_MEM_H264_DEBLOCK_FILTER_ROW_STORE].offset };
          }
 
          /* For now, use the standard approach to see the bo->offset values */
-         buf.ReferencePictureAddress[i] = ref_addr;
+         buf.ReferencePictureAddress[idx] = ref_addr;
 #else
-         buf.ReferencePictureAddress[i] = anv_image_address(ref_iv->image,
+         buf.ReferencePictureAddress[idx] = anv_image_address(ref_iv->image,
                                                            &ref_iv->image->
                                                            planes[0].
                                                            primary_surface.
@@ -355,9 +356,9 @@ vid->vid_mem[ANV_VID_MEM_H264_DEBLOCK_FILTER_ROW_STORE].offset };
          if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
             fprintf(stderr,
                     "  Ref[%u]: slot_idx=%d, addr=%llx (bo=%p), dimensions=%ux%u, pitch=%u, tiling=%s\n",
-                    i, frame_info->pReferenceSlots[i].slotIndex,
-                    (unsigned long long)buf.ReferencePictureAddress[i].offset,
-                    buf.ReferencePictureAddress[i].bo,
+                    i, idx,
+                    (unsigned long long)buf.ReferencePictureAddress[idx].offset,
+                    buf.ReferencePictureAddress[idx].bo,
                     ref_iv->image->vk.extent.width,
                     ref_iv->image->vk.extent.height,
                     ref_iv->image->planes[0].primary_surface.isl.row_pitch_B,
@@ -371,12 +372,12 @@ vid->vid_mem[ANV_VID_MEM_H264_DEBLOCK_FILTER_ROW_STORE].offset };
 
 #if GFX_VERx10 == 70
          /* IVB: Ensure reference picture addresses are properly aligned */
-         assert((buf.ReferencePictureAddress[i].offset & 0xFFF) == 0);
-         assert(buf.ReferencePictureAddress[i].bo != NULL);
+         assert((buf.ReferencePictureAddress[idx].offset & 0xFFF) == 0);
+         assert(buf.ReferencePictureAddress[idx].bo != NULL);
          if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
             fprintf(stderr, "  IVB Ref[%u]: addr=%llx, bo=%p\n", i,
-                    (unsigned long long)buf.ReferencePictureAddress[i].offset,
-                    buf.ReferencePictureAddress[i].bo);
+                    (unsigned long long)buf.ReferencePictureAddress[idx].offset,
+                    buf.ReferencePictureAddress[idx].bo);
          }
 #endif
 
@@ -384,8 +385,8 @@ vid->vid_mem[ANV_VID_MEM_H264_DEBLOCK_FILTER_ROW_STORE].offset };
          uint32_t ref_mocs =
             anv_mocs(cmd_buffer->device,
                      ref_iv->image->bindings[0].address.bo, 0);
-         buf.ReferencePictureCacheabilityControl[i] = ref_mocs & 0x3;
-         buf.ReferencePictureGraphicsDataType[i] = (ref_mocs >> 2) & 0x1;
+         buf.ReferencePictureCacheabilityControl[idx] = ref_mocs & 0x3;
+         buf.ReferencePictureGraphicsDataType[idx] = (ref_mocs >> 2) & 0x1;
 #elif GFX_VERx10 == 80
          if (i == 0)
             ref_bo = ref_iv->image->bindings[0].address.bo;
