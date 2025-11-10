@@ -149,17 +149,7 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
          total_surface_size / img->planes[0].primary_surface.isl.row_pitch_B;
 
       /* Calculate the actual Height value that will be set in MFX_SURFACE_STATE */
-      uint32_t mfx_height_value;
-#if GFX_VERx10 == 70
-      /* IVB uses actual surface layout: luma_rows + chroma_rows */
-      uint32_t mfx_luma_rows = img->planes[0].primary_surface.memory_range.size /
-                               img->planes[0].primary_surface.isl.row_pitch_B;
-      uint32_t mfx_chroma_rows = img->planes[1].primary_surface.memory_range.size /
-                                 img->planes[0].primary_surface.isl.row_pitch_B;
-      mfx_height_value = (mfx_luma_rows + mfx_chroma_rows) - 1;
-#else
-      mfx_height_value = img->vk.extent.height - 1;
-#endif
+      uint32_t mfx_height_value = img->vk.extent.height - 1;
 
       fprintf(stderr, "H264 Decode Surface Configuration:\n");
       fprintf(stderr, "  Logical dimensions: %ux%u\n",
@@ -515,8 +505,15 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
       else
          avc_img.ImageStructure = TopFieldPicture;
 
+#if GFX_VERx10 == 70
+      /* Ivy Bridge: Disable weighted prediction entirely as a workaround.
+       * IVB has issues with weighted prediction in hardware. */
+      avc_img.WeightedBiPredictionIDC = 0;
+      avc_img.WeightedPredictionEnable = 0;
+#else
       avc_img.WeightedBiPredictionIDC = pps->weighted_bipred_idc;
       avc_img.WeightedPredictionEnable = pps->flags.weighted_pred_flag;
+#endif
       avc_img.FirstChromaQPOffset = pps->chroma_qp_index_offset;
       avc_img.SecondChromaQPOffset = pps->second_chroma_qp_index_offset;
       avc_img.FieldPicture =
