@@ -779,8 +779,21 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
                anv_image_address(ref_iv->image,
                                  &ref_iv->image->vid_dmv_top_surface);
 #endif
-         avc_directmode.POCList[2 * idx] = ref_info->PicOrderCnt[0];
-         avc_directmode.POCList[2 * idx + 1] = ref_info->PicOrderCnt[1];
+         /* POC correction: FFmpeg may encode POC with 65536 offset.
+          * Correct to sequential values (0, 2, 4, 6...) for hardware. */
+         int32_t poc0 = ref_info->PicOrderCnt[0];
+         int32_t poc1 = ref_info->PicOrderCnt[1];
+         if (poc0 >= 65536) poc0 -= 65536;
+         if (poc1 >= 65536) poc1 -= 65536;
+
+         avc_directmode.POCList[2 * idx] = poc0;
+         avc_directmode.POCList[2 * idx + 1] = poc1;
+
+         if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+            fprintf(stderr, "  Ref[%u] POC: raw=[%d, %d], corrected=[%d, %d]\n",
+                    i, ref_info->PicOrderCnt[0], ref_info->PicOrderCnt[1],
+                    poc0, poc1);
+         }
       }
 
 #if GFX_VERx10 == 70
@@ -815,8 +828,22 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
 #endif
 #endif
 
-      avc_directmode.POCList[32] = h264_pic_info->pStdPictureInfo->PicOrderCnt[0];
-      avc_directmode.POCList[33] = h264_pic_info->pStdPictureInfo->PicOrderCnt[1];
+      /* POC correction for current frame: FFmpeg may encode POC with 65536 offset.
+       * Correct to sequential values (0, 2, 4, 6...) for hardware. */
+      int32_t curr_poc0 = h264_pic_info->pStdPictureInfo->PicOrderCnt[0];
+      int32_t curr_poc1 = h264_pic_info->pStdPictureInfo->PicOrderCnt[1];
+      if (curr_poc0 >= 65536) curr_poc0 -= 65536;
+      if (curr_poc1 >= 65536) curr_poc1 -= 65536;
+
+      avc_directmode.POCList[32] = curr_poc0;
+      avc_directmode.POCList[33] = curr_poc1;
+
+      if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+         fprintf(stderr, "  Current frame POC: raw=[%d, %d], corrected=[%d, %d]\n",
+                 h264_pic_info->pStdPictureInfo->PicOrderCnt[0],
+                 h264_pic_info->pStdPictureInfo->PicOrderCnt[1],
+                 curr_poc0, curr_poc1);
+      }
    }
 
 #define HEADER_OFFSET 3
