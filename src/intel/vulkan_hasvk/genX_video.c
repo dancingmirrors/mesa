@@ -217,12 +217,14 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
    }
 
    anv_batch_emit(&cmd_buffer->batch, GENX(MFX_PIPE_BUF_ADDR_STATE), buf) {
-      struct anv_address dest_addr = anv_image_address(img,
-                                                        &img->planes[0].
-                                                        primary_surface.
-                                                        memory_range);
-      buf.PreDeblockingDestinationAddress = dest_addr;
-      buf.PostDeblockingDestinationAddress = dest_addr;
+      bool use_pre_deblock = false;
+      if (use_pre_deblock) {
+         buf.PreDeblockingDestinationAddress = anv_image_address(img,
+                                                                 &img->planes[0].primary_surface.memory_range);
+      } else {
+         buf.PostDeblockingDestinationAddress = anv_image_address(img,
+                                                                  &img->planes[0].primary_surface.memory_range);
+      }
 #if GFX_VERx10 >= 75
       buf.PreDeblockingDestinationMOCS =
          anv_mocs(cmd_buffer->device, buf.PreDeblockingDestinationAddress.bo,
