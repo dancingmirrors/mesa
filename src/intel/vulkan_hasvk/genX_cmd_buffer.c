@@ -5017,10 +5017,6 @@ cmd_buffer_emit_depth_stencil(struct anv_cmd_buffer *cmd_buffer)
       const struct anv_address depth_address =
          anv_image_address(image, &depth_surface->memory_range);
 
-      anv_reloc_list_add_bo(cmd_buffer->batch.relocs,
-                            cmd_buffer->batch.alloc,
-                            anv_bo_unwrap(depth_address.bo));
-
       info.depth_surf = &depth_surface->isl;
       info.depth_address = anv_address_physical(depth_address);
       info.mocs =
@@ -5034,10 +5030,6 @@ cmd_buffer_emit_depth_stencil(struct anv_cmd_buffer *cmd_buffer)
             &image->planes[depth_plane].aux_surface;
          const struct anv_address hiz_address =
             anv_image_address(image, &hiz_surface->memory_range);
-
-         anv_reloc_list_add_bo(cmd_buffer->batch.relocs,
-                               cmd_buffer->batch.alloc,
-                               anv_bo_unwrap(hiz_address.bo));
 
          info.hiz_surf = &hiz_surface->isl;
          info.hiz_address = anv_address_physical(hiz_address);
@@ -5057,10 +5049,6 @@ cmd_buffer_emit_depth_stencil(struct anv_cmd_buffer *cmd_buffer)
       const struct anv_address stencil_address =
          anv_image_address(image, &stencil_surface->memory_range);
 
-      anv_reloc_list_add_bo(cmd_buffer->batch.relocs,
-                            cmd_buffer->batch.alloc,
-                            anv_bo_unwrap(stencil_address.bo));
-
       info.stencil_surf = &stencil_surface->isl;
 
       info.stencil_aux_usage = image->planes[stencil_plane].aux_usage;
@@ -5070,6 +5058,48 @@ cmd_buffer_emit_depth_stencil(struct anv_cmd_buffer *cmd_buffer)
    }
 
    isl_emit_depth_stencil_hiz_s(&device->isl_dev, dw, &info);
+
+   /* Add relocations for addresses written by ISL */
+   if (gfx->depth_att.iview != NULL) {
+      const struct anv_image_view *iview = gfx->depth_att.iview;
+      const struct anv_image *image = iview->image;
+      const uint32_t depth_plane =
+         anv_image_aspect_to_plane(image, VK_IMAGE_ASPECT_DEPTH_BIT);
+      const struct anv_surface *depth_surface =
+         &image->planes[depth_plane].primary_surface;
+      const struct anv_address depth_address =
+         anv_image_address(image, &depth_surface->memory_range);
+
+      anv_reloc_list_add(cmd_buffer->batch.relocs, cmd_buffer->batch.alloc,
+                         (dw - cmd_buffer->batch.start) + device->isl_dev.ds.depth_offset / 4,
+                         depth_address.bo, depth_address.offset, NULL);
+
+      if (info.hiz_usage != ISL_AUX_USAGE_NONE) {
+         const struct anv_surface *hiz_surface =
+            &image->planes[depth_plane].aux_surface;
+         const struct anv_address hiz_address =
+            anv_image_address(image, &hiz_surface->memory_range);
+
+         anv_reloc_list_add(cmd_buffer->batch.relocs, cmd_buffer->batch.alloc,
+                            (dw - cmd_buffer->batch.start) + device->isl_dev.ds.hiz_offset / 4,
+                            hiz_address.bo, hiz_address.offset, NULL);
+      }
+   }
+
+   if (gfx->stencil_att.iview != NULL) {
+      const struct anv_image_view *iview = gfx->stencil_att.iview;
+      const struct anv_image *image = iview->image;
+      const uint32_t stencil_plane =
+         anv_image_aspect_to_plane(image, VK_IMAGE_ASPECT_STENCIL_BIT);
+      const struct anv_surface *stencil_surface =
+         &image->planes[stencil_plane].primary_surface;
+      const struct anv_address stencil_address =
+         anv_image_address(image, &stencil_surface->memory_range);
+
+      anv_reloc_list_add(cmd_buffer->batch.relocs, cmd_buffer->batch.alloc,
+                         (dw - cmd_buffer->batch.start) + device->isl_dev.ds.stencil_offset / 4,
+                         stencil_address.bo, stencil_address.offset, NULL);
+   }
 
    cmd_buffer->state.hiz_enabled = isl_aux_usage_has_hiz(info.hiz_usage);
 }
