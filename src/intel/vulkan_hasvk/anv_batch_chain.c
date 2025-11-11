@@ -1955,8 +1955,8 @@ setup_execbuf_for_cmd_buffers(struct anv_execbuf *execbuf,
       .DR1 = 0,
       .DR4 = 0,
       .flags =
-         I915_EXEC_HANDLE_LUT | queue->
-         exec_flags | (no_reloc ? I915_EXEC_NO_RELOC : 0),
+         I915_EXEC_HANDLE_LUT | queue->exec_flags | (no_reloc ?
+                                                     I915_EXEC_NO_RELOC : 0),
       .rsvd1 = device->context_id,
       .rsvd2 = 0,
    };
@@ -2030,8 +2030,8 @@ setup_utrace_execbuf(struct anv_execbuf *execbuf, struct anv_queue *queue,
       .batch_start_offset = 0,
       .batch_len = flush->batch.next - flush->batch.start,
       .flags =
-         I915_EXEC_HANDLE_LUT | I915_EXEC_FENCE_ARRAY | queue->
-         exec_flags | (execbuf->has_relocs ? 0 : I915_EXEC_NO_RELOC),
+         I915_EXEC_HANDLE_LUT | I915_EXEC_FENCE_ARRAY | queue->exec_flags |
+         (execbuf->has_relocs ? 0 : I915_EXEC_NO_RELOC),
       .rsvd1 = device->context_id,
       .rsvd2 = 0,
       .num_cliprects = execbuf->syncobj_count,
@@ -2180,7 +2180,8 @@ anv_queue_exec_locked(struct anv_queue *queue,
    if (result != VK_SUCCESS)
       goto error;
 
-   const bool has_perf_query = perf_query_pool != NULL && cmd_buffer_count > 0;
+   const bool has_perf_query = perf_query_pool != NULL
+      && cmd_buffer_count > 0;
 
    if (INTEL_DEBUG(DEBUG_SUBMIT)) {
       fprintf(stderr, "Batch offset=0x%x len=0x%x on queue 0\n",
@@ -2257,8 +2258,7 @@ anv_queue_exec_locked(struct anv_queue *queue,
                                                     device->fd,
                                                     device->perf_fd,
                                                     -1, /* this parameter, exec_queue is not used in i915 */
-                                                    query_info->
-                                                    oa_metrics_set_id,
+                                                    query_info->oa_metrics_set_id,
                                                     NULL);
          if (ret < 0) {
             result = vk_device_set_lost(&device->vk,
@@ -2367,18 +2367,18 @@ anv_queue_submit_locked(struct anv_queue *queue,
              */
             VkResult result = anv_queue_exec_locked(queue,
                                                     start ==
-                                                    0 ? submit->
-                                                    wait_count : 0,
+                                                    0 ? submit->wait_count :
+                                                    0,
                                                     start ==
                                                     0 ? submit->waits : NULL,
                                                     next - start,
                                                     &cmd_buffers[start],
                                                     next ==
-                                                    end ? submit->
-                                                    signal_count : 0,
+                                                    end ? submit->signal_count
+                                                    : 0,
                                                     next ==
-                                                    end ? submit->
-                                                    signals : NULL,
+                                                    end ? submit->signals :
+                                                    NULL,
                                                     perf_query_pool,
                                                     submit->perf_pass_index);
             if (result != VK_SUCCESS)
