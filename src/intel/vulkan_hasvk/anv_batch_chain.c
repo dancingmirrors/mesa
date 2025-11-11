@@ -296,6 +296,11 @@ anv_batch_emit_dwords(struct anv_batch *batch, int num_dwords)
    batch->next += num_dwords * 4;
    assert(batch->next <= batch->end);
 
+   /* Zero-initialize the memory to avoid valgrind warnings about
+    * uninitialized bytes when pack functions don't write all bits.
+    */
+   memset(p, 0, num_dwords * 4);
+
    return p;
 }
 
