@@ -298,6 +298,12 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
    if (!sps->flags.frame_mbs_only_flag)
       pic_height *= 2;
 
+   if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+      fprintf(stderr, "  Frame: %ux%u MBs (width_minus1=%u, height=%u)\n",
+              sps->pic_width_in_mbs_minus1 + 1, pic_height,
+              sps->pic_width_in_mbs_minus1, pic_height - 1);
+   }
+
    anv_batch_emit(&cmd_buffer->batch, GENX(MFX_AVC_IMG_STATE), avc_img) {
       avc_img.FrameWidth = sps->pic_width_in_mbs_minus1;
       avc_img.FrameHeight = pic_height - 1;
