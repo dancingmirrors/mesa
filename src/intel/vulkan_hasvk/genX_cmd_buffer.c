@@ -5019,7 +5019,7 @@ cmd_buffer_emit_depth_stencil(struct anv_cmd_buffer *cmd_buffer)
 
       anv_reloc_list_add_bo(cmd_buffer->batch.relocs,
                             cmd_buffer->batch.alloc,
-                            depth_address.bo);
+                            anv_bo_unwrap(depth_address.bo));
 
       info.depth_surf = &depth_surface->isl;
       info.depth_address = anv_address_physical(depth_address);
@@ -5037,7 +5037,7 @@ cmd_buffer_emit_depth_stencil(struct anv_cmd_buffer *cmd_buffer)
 
          anv_reloc_list_add_bo(cmd_buffer->batch.relocs,
                                cmd_buffer->batch.alloc,
-                               hiz_address.bo);
+                               anv_bo_unwrap(hiz_address.bo));
 
          info.hiz_surf = &hiz_surface->isl;
          info.hiz_address = anv_address_physical(hiz_address);
@@ -5059,7 +5059,7 @@ cmd_buffer_emit_depth_stencil(struct anv_cmd_buffer *cmd_buffer)
 
       anv_reloc_list_add_bo(cmd_buffer->batch.relocs,
                             cmd_buffer->batch.alloc,
-                            stencil_address.bo);
+                            anv_bo_unwrap(stencil_address.bo));
 
       info.stencil_surf = &stencil_surface->isl;
 

@@ -1446,7 +1446,7 @@ _anv_combine_address(struct anv_batch *batch, void *location,
       return address.offset + delta;
 
    if (batch)
-      anv_reloc_list_add_bo(batch->relocs, batch->alloc, address.bo);
+      anv_reloc_list_add_bo(batch->relocs, batch->alloc, anv_bo_unwrap(address.bo));
 
    return anv_address_physical(anv_address_add(address, delta));
 }
