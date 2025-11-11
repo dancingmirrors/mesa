@@ -70,6 +70,7 @@ void genX(CmdEndVideoCodingKHR) (VkCommandBuffer commandBuffer,
       pc.StateCacheInvalidationEnable = 1;
       pc.CommandStreamerStallEnable = 1;
       pc.StallAtPixelScoreboard = 1;
+
    };
 #else
    UNREACHABLE("Unsupported hardware.");
@@ -154,6 +155,10 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       ss.TiledSurface =
          img->planes[0].primary_surface.isl.tiling != ISL_TILING_LINEAR;
       ss.TileWalk = TW_YMAJOR;
+
+#if GFX_VERx10 == 70
+      ss.XOffsetforVCr = 0;
+#endif
 
       ss.YOffsetforUCb = align(img->vk.extent.height, 32);
       ss.YOffsetforVCr = align(img->vk.extent.height, 32);
