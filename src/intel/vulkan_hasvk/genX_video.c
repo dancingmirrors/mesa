@@ -55,6 +55,32 @@ void genX(CmdEndVideoCodingKHR) (VkCommandBuffer commandBuffer,
 {
    ANV_FROM_HANDLE(anv_cmd_buffer, cmd_buffer, commandBuffer);
 
+#if GFX_VER > 8
+   UNREACHABLE("Unsupported hardware.");
+#endif
+#if GFX_VER == 8
+   anv_batch_emit(&cmd_buffer->batch, GENX(MI_FLUSH_DW), flush) {
+      flush.PostSyncOperation = NoWrite;
+   }
+#elif GFX_VER <= 75
+   anv_batch_emit(&cmd_buffer->batch, GENX(PIPE_CONTROL), pc) {
+      pc.DCFlushEnable = 1;
+      pc.RenderTargetCacheFlushEnable = 1;
+      pc.VFCacheInvalidationEnable = 1;
+      pc.StateCacheInvalidationEnable = 1;
+      pc.CommandStreamerStallEnable = 1;
+      pc.StallAtPixelScoreboard = 1;
+   };
+#else
+   UNREACHABLE("Unsupported hardware.");
+#endif
+
+#if GFX_VER <= 75
+   anv_batch_emit(&cmd_buffer->batch, GENX(MFX_WAIT), wait) {
+      wait.MFXSyncControlFlag = 1;
+   }
+#endif
+
    cmd_buffer->video.vid = NULL;
    cmd_buffer->video.params = NULL;
 }
