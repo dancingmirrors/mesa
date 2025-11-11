@@ -169,7 +169,9 @@ isl_genX(emit_depth_stencil_hiz_s)(const struct isl_device *dev, void *batch,
 #if GFX_VER >= 7
       db.DepthWriteEnable = true;
 #endif
+#if GFX_VERx10 != 70
       assert(info->depth_address % info->depth_surf->alignment_B == 0);
+#endif
       db.SurfaceBaseAddress = info->depth_address;
 
 #if GFX_VERx10 >= 125
@@ -271,7 +273,9 @@ isl_genX(emit_depth_stencil_hiz_s)(const struct isl_device *dev, void *batch,
 #elif GFX_VERx10 >= 75
       sb.StencilBufferEnable = true;
 #endif
+#if GFX_VERx10 != 70
       assert(info->stencil_address % info->stencil_surf->alignment_B == 0);
+#endif
       sb.SurfaceBaseAddress = info->stencil_address;
       sb.SurfacePitch = info->stencil_surf->row_pitch_B - 1;
 #if GFX_VER >= 8
