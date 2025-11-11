@@ -104,7 +104,20 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
                                      h264_pic_info->pStdPictureInfo->
                                      pic_parameter_set_id);
 
+   /* Create mapping from DPB slot index to reference picture array index.
+    * This is needed because hardware reference picture arrays are indexed
+    * sequentially (0, 1, 2...) but DPB slot indices can be non-sequential.
+    */
+   uint8_t dpb_slots[ANV_VIDEO_H264_MAX_DPB_SLOTS] = { 0, };
 
+   for (unsigned i = 0; i < frame_info->referenceSlotCount; i++) {
+      int idx = frame_info->pReferenceSlots[i].slotIndex;
+      if (idx < 0)
+         continue;
+
+      assert(idx < ANV_VIDEO_H264_MAX_DPB_SLOTS);
+      dpb_slots[idx] = i;
+   }
 
    anv_batch_emit(&cmd_buffer->batch, GENX(MI_FLUSH_DW), flush) {
       flush.DWordLength = 2;
@@ -338,9 +351,10 @@ vid->vid_mem[ANV_VID_MEM_H264_DEBLOCK_FILTER_ROW_STORE].offset };
                     (unsigned long long)(ref_addr.bo->offset + ref_addr.offset));
          }
 
-         buf.ReferencePictureAddress[idx] = ref_addr;
+         /* For now, use the standard approach to see the bo->offset values */
+         buf.ReferencePictureAddress[i] = ref_addr;
 #else
-         buf.ReferencePictureAddress[idx] = anv_image_address(ref_iv->image,
+         buf.ReferencePictureAddress[i] = anv_image_address(ref_iv->image,
                                                            &ref_iv->image->
                                                            planes[0].
                                                            primary_surface.
@@ -351,8 +365,8 @@ vid->vid_mem[ANV_VID_MEM_H264_DEBLOCK_FILTER_ROW_STORE].offset };
             fprintf(stderr,
                     "  Ref[%u]: slot_idx=%d, addr=%llx (bo=%p), dimensions=%ux%u, pitch=%u, tiling=%s\n",
                     i, idx,
-                    (unsigned long long)buf.ReferencePictureAddress[idx].offset,
-                    buf.ReferencePictureAddress[idx].bo,
+                    (unsigned long long)buf.ReferencePictureAddress[i].offset,
+                    buf.ReferencePictureAddress[i].bo,
                     ref_iv->image->vk.extent.width,
                     ref_iv->image->vk.extent.height,
                     ref_iv->image->planes[0].primary_surface.isl.row_pitch_B,
@@ -365,12 +379,13 @@ vid->vid_mem[ANV_VID_MEM_H264_DEBLOCK_FILTER_ROW_STORE].offset };
          }
 
 #if GFX_VERx10 == 70
-         assert((buf.ReferencePictureAddress[idx].offset & 0xFFF) == 0);
-         assert(buf.ReferencePictureAddress[idx].bo != NULL);
+         /* IVB: Ensure reference picture addresses are properly aligned */
+         assert((buf.ReferencePictureAddress[i].offset & 0xFFF) == 0);
+         assert(buf.ReferencePictureAddress[i].bo != NULL);
          if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
             fprintf(stderr, "  IVB Ref[%u]: addr=%llx, bo=%p\n", i,
-                    (unsigned long long)buf.ReferencePictureAddress[idx].offset,
-                    buf.ReferencePictureAddress[idx].bo);
+                    (unsigned long long)buf.ReferencePictureAddress[i].offset,
+                    buf.ReferencePictureAddress[i].bo);
          }
 #endif
 
@@ -378,8 +393,8 @@ vid->vid_mem[ANV_VID_MEM_H264_DEBLOCK_FILTER_ROW_STORE].offset };
          uint32_t ref_mocs =
             anv_mocs(cmd_buffer->device,
                      ref_iv->image->bindings[0].address.bo, 0);
-         buf.ReferencePictureCacheabilityControl[idx] = ref_mocs & 0x3;
-         buf.ReferencePictureGraphicsDataType[idx] = (ref_mocs >> 2) & 0x1;
+         buf.ReferencePictureCacheabilityControl[i] = ref_mocs & 0x3;
+         buf.ReferencePictureGraphicsDataType[i] = (ref_mocs >> 2) & 0x1;
 #elif GFX_VERx10 == 80
          if (i == 0)
             ref_bo = ref_iv->image->bindings[0].address.bo;
@@ -675,7 +690,12 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
                                  VIDEO_DECODE_H264_DPB_SLOT_INFO_KHR);
          const StdVideoDecodeH264ReferenceInfo *ref_info =
             dpb_slot->pStdReferenceInfo;
-         int idx = frame_info->pReferenceSlots[i].slotIndex;
+         int slot_idx = frame_info->pReferenceSlots[i].slotIndex;
+
+         if (slot_idx < 0)
+            continue;
+
+         int idx = dpb_slots[slot_idx];
 
          avc_dpb.NonExistingFrame[idx] = ref_info->flags.is_non_existing;
          avc_dpb.LongTermFrame[idx] =
@@ -737,7 +757,12 @@ vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
 #pragma GCC diagnostic pop
 #endif
       for (unsigned i = 0; i < frame_info->referenceSlotCount; i++) {
-         int idx = frame_info->pReferenceSlots[i].slotIndex;
+         int slot_idx = frame_info->pReferenceSlots[i].slotIndex;
+
+         if (slot_idx < 0)
+            continue;
+
+         int idx = dpb_slots[slot_idx];
 
          const struct VkVideoDecodeH264DpbSlotInfoKHR *dpb_slot =
             vk_find_struct_const(frame_info->pReferenceSlots[i].pNext,
