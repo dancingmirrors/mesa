@@ -1002,11 +1002,48 @@ vid->vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
          avc_bsd.InlineData.EntropyErrorHandling = 1;
          avc_bsd.InlineData.MPRErrorHandling = 1;
          avc_bsd.InlineData.BSDPrematureCompleteErrorHandling = 1;
+         avc_bsd.InlineData.MBErrorConcealmentPSliceWeightPredictionDisable = 0;
+         avc_bsd.InlineData.MBErrorConcealmentPSliceMotionVectorsOverrideDisable = 0;
+         avc_bsd.InlineData.MBErrorConcealmentPSliceReferenceIndexOverrideDisable = 0;
+         avc_bsd.InlineData.MBErrorConcealmentBSpatialWeightPredictionDisable = 0;
+         avc_bsd.InlineData.MBErrorConcealmentBSpatialMotionVectorsOverrideDisable = 0;
+         avc_bsd.InlineData.MBErrorConcealmentBSpatialReferenceIndexOverrideDisable = 0;
+         avc_bsd.InlineData.MBErrorConcealmentBSpatialPredictionMode = 0;
+         avc_bsd.InlineData.MBErrorConcealmentBTemporalWeightPredictionDisable = 0;
+         avc_bsd.InlineData.MBErrorConcealmentBTemporalMotionVectorsOverrideEnable = 1;
+         avc_bsd.InlineData.MBErrorConcealmentBTemporalReferenceIndexOverrideEnable = 1;
+         avc_bsd.InlineData.MBErrorConcealmentBTemporalPredictionMode = 0;
+         avc_bsd.InlineData.ConcealmentPictureID = 0;
+         avc_bsd.InlineData.InitCurrentMBNumber = 0;
+         avc_bsd.InlineData.ConcealmentMethod = 0;
 #endif
-#if GFX_VERx10 >= 75
+#if GFX_VERx10 == 75
+         avc_bsd.InlineData.MBHeaderErrorHandling = 1;
+         avc_bsd.InlineData.EntropyErrorHandling = 1;
+         avc_bsd.InlineData.MPRErrorHandling = 1;
+         avc_bsd.InlineData.BSDPrematureCompleteErrorHandling = 1;
+         avc_bsd.InlineData.MBErrorConcealmentPSliceWeightPredictionDisable = 0;
+         avc_bsd.InlineData.MBErrorConcealmentPSliceMotionVectorsOverrideDisable = 0;
+         avc_bsd.InlineData.MBErrorConcealmentBSpatialWeightPredictionDisable = 0;
+         avc_bsd.InlineData.MBErrorConcealmentBSpatialMotionVectorsOverrideDisable = 0;
+         avc_bsd.InlineData.MBErrorConcealmentBSpatialPredictionMode = 0;
+         avc_bsd.InlineData.MBErrorConcealmentBTemporalWeightPredictionDisable = 0;
+         avc_bsd.InlineData.MBErrorConcealmentBTemporalMotionVectorsOverrideEnable = 1;
+         avc_bsd.InlineData.MBErrorConcealmentBTemporalPredictionMode = 0;
+         avc_bsd.InlineData.IntraPredMode4x48x8LumaErrorControl = 1;
+         avc_bsd.InlineData.InitCurrentMBNumber = 0;
+         avc_bsd.InlineData.ConcealmentMethod = 0;
          avc_bsd.InlineData.IntraPredictionErrorControl = 1;
          avc_bsd.InlineData.Intra8x84x4PredictionErrorConcealmentControl = 1;
+         avc_bsd.InlineData.BSliceTemporalInterConcealmentMode = 0;
+         avc_bsd.InlineData.BSliceSpatialInterConcealmentMode = 0;
+         avc_bsd.InlineData.BSliceInterDirectTypeConcealmentMode = 0;
+         avc_bsd.InlineData.BSliceConcealmentMode = 0;
+         avc_bsd.InlineData.PSliceInterConcealmentMode = 0;
+         avc_bsd.InlineData.PSliceConcealmentMode = 0;
+         avc_bsd.InlineData.ConcealmentReferencePictureFieldBit = 0;
          avc_bsd.InlineData.ISliceConcealmentMode = 1;
+         avc_bsd.InlineData.ConcealmentPictureID = 0;
 #endif
       };
 
