@@ -245,7 +245,6 @@ vid->vid_mem[ANV_VID_MEM_H264_DEBLOCK_FILTER_ROW_STORE].mem->bo,
             anv_image_view_from_handle(frame_info->
                                        pReferenceSlots[i].pPictureResource->
                                        imageViewBinding);
-         int idx = frame_info->pReferenceSlots[i].slotIndex;
 
          buf.ReferencePictureAddress[i] = anv_image_address(ref_iv->image,
                                                             &ref_iv->
@@ -518,7 +517,6 @@ vid->vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
 
    anv_batch_emit(&cmd_buffer->batch, GENX(MFX_AVC_DIRECTMODE_STATE),
                   avc_directmode) {
-      /* bind reference frame DMV */
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-but-set-variable"
@@ -635,7 +633,6 @@ vid->vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
             next_end = frame_info->srcBufferRange;
          anv_batch_emit(&cmd_buffer->batch, GENX(MFD_AVC_SLICEADDR), sliceaddr) {
             sliceaddr.IndirectBSDDataLength = next_end - next_offset - HEADER_OFFSET;
-            /* start decoding after the 3-byte header. */
             sliceaddr.IndirectBSDDataStartAddress = buffer_offset + next_offset + HEADER_OFFSET;
          };
          this_end = next_offset;
@@ -643,7 +640,6 @@ vid->vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
          this_end = frame_info->srcBufferRange;
       anv_batch_emit(&cmd_buffer->batch, GENX(MFD_AVC_BSD_OBJECT), avc_bsd) {
          avc_bsd.IndirectBSDDataLength = this_end - current_offset - HEADER_OFFSET;
-         /* start decoding after the 3-byte header. */
          avc_bsd.IndirectBSDDataStartAddress = buffer_offset + current_offset + HEADER_OFFSET;
          avc_bsd.InlineData.LastSlice = last_slice;
          avc_bsd.InlineData.FixPrevMBSkipped = 1;
