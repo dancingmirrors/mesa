@@ -980,6 +980,10 @@ get_properties(const struct anv_physical_device *pdevice,
 {
    const struct intel_device_info *devinfo = &pdevice->info;
 
+   uint64_t page_size;
+   if (!os_get_page_size(&page_size))
+      page_size = 4096;         /* fallback */
+
    const uint32_t max_ssbos =
       pdevice->has_a64_buffer_access ? UINT16_MAX : 64;
    const uint32_t max_textures = 128;
@@ -1104,7 +1108,7 @@ get_properties(const struct anv_physical_device *pdevice,
       .maxViewportDimensions = {(1 << 14), (1 << 14)},
       .viewportBoundsRange = {INT16_MIN, INT16_MAX},
       .viewportSubPixelBits = 13,       /* We take a float? */
-      .minMemoryMapAlignment = 4096,    /* A page */
+      .minMemoryMapAlignment = page_size,
       /* The dataport requires texel alignment so we need to assume a worst
        * case of R32G32B32A32 which is 16 bytes.
        */
@@ -1197,7 +1201,7 @@ get_properties(const struct anv_physical_device *pdevice,
    /* VK_EXT_external_memory_host */
    {
       /* Userptr needs page aligned memory. */
-      props->minImportedHostPointerAlignment = 4096;
+      props->minImportedHostPointerAlignment = page_size;
    }
 
    /* VK_EXT_line_rasterization */
