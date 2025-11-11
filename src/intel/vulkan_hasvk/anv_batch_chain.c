@@ -188,7 +188,6 @@ anv_reloc_list_add_bo(struct anv_reloc_list *list,
                       struct anv_bo *target_bo)
 {
    assert(!target_bo->is_wrapper);
-   assert(anv_bo_is_pinned(target_bo));
 
    uint32_t idx = target_bo->gem_handle;
    VkResult result = anv_reloc_list_grow_deps(list, alloc,
