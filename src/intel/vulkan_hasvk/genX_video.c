@@ -134,21 +134,16 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       ss.Width = img->vk.extent.width - 1;
 
       ss.Height = img->vk.extent.height - 1;
-      ss.SurfaceFormat = PLANAR_420_8;  // assert on this?
+      ss.SurfaceFormat = PLANAR_420_8;
+#if GFX_VERx10 >= 75
       ss.InterleaveChroma = 1;
+#endif
       ss.SurfacePitch = img->planes[0].primary_surface.isl.row_pitch_B - 1;
       ss.TiledSurface =
          img->planes[0].primary_surface.isl.tiling != ISL_TILING_LINEAR;
       ss.TileWalk = TW_YMAJOR;
-
-#if GFX_VERx10 == 70
-      ss.XOffsetforVCr = 0;
-      ss.YOffsetforUCb = align(img->vk.extent.height, 16);
-      ss.YOffsetforVCr = align(img->vk.extent.height, 16);
-#else
       ss.YOffsetforUCb = align(img->vk.extent.height, 32);
       ss.YOffsetforVCr = align(img->vk.extent.height, 32);
-#endif
    }
 
    anv_batch_emit(&cmd_buffer->batch, GENX(MFX_PIPE_BUF_ADDR_STATE), buf) {
