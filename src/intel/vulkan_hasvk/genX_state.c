@@ -229,15 +229,12 @@ genX(emit_l3_config) (struct anv_batch * batch,
 
 #if GFX_VERx10 == 75
    if (device->physical->cmd_parser_version >= 4) {
-      /* Enable L3 atomics on HSW if we have a DC partition, otherwise keep
-       * them disabled to avoid crashing the system hard.
-       */
       anv_batch_write_reg(batch, GENX(SCRATCH1), s1) {
-         s1.L3AtomicDisable = !has_dc;
+         s1.L3AtomicDisable = true;
       }
       anv_batch_write_reg(batch, GENX(CHICKEN3), c3) {
          c3.L3AtomicDisableMask = true;
-         c3.L3AtomicDisable = !has_dc;
+         c3.L3AtomicDisable = true;
       }
    }
 #endif /* GFX_VERx10 == 75 */
