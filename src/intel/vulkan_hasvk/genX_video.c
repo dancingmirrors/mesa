@@ -304,10 +304,27 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
    if (!sps->flags.frame_mbs_only_flag)
       pic_height *= 2;
 
+#if GFX_VERx10 == 70
+   /* Ivy Bridge PRM: FrameHeightInMbs = (2 - frame_mbs_only_flag) * PicHeightInMapUnits
+    * PicHeightInMbs = FrameHeightInMbs / (1 + field_pic_flag)
+    * For Ivy Bridge, we need to account for field_pic_flag in the height calculation.
+    */
+   uint32_t frame_height_in_mbs = pic_height;
+   uint32_t pic_width_in_mbs = sps->pic_width_in_mbs_minus1 + 1;
+   if (h264_pic_info->pStdPictureInfo->flags.field_pic_flag) {
+      frame_height_in_mbs = pic_height / 2;
+   }
+#endif
+
    anv_batch_emit(&cmd_buffer->batch, GENX(MFX_AVC_IMG_STATE), avc_img) {
       avc_img.FrameWidth = sps->pic_width_in_mbs_minus1;
+#if GFX_VERx10 == 70
+      avc_img.FrameHeight = frame_height_in_mbs - 1;
+      avc_img.FrameSize = pic_width_in_mbs * frame_height_in_mbs;
+#else
       avc_img.FrameHeight = pic_height - 1;
       avc_img.FrameSize = (sps->pic_width_in_mbs_minus1 + 1) * pic_height;
+#endif
 
       if (!h264_pic_info->pStdPictureInfo->flags.field_pic_flag)
          avc_img.ImageStructure = FramePicture;
