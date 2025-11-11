@@ -877,12 +877,6 @@ get_properties_1_2(const struct anv_physical_device *pdevice,
     * Maintenance4 extension in Vulkan 1.2.
     */
    p->maxBufferSize = pdevice->isl_dev.max_buffer_size;
-
-   if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
-      fprintf(stderr,
-              "hasvk: Setting maxBufferSize=%llu in get_properties_1_2() for gen%u\n",
-              (unsigned long long) p->maxBufferSize, pdevice->info.ver);
-   }
 }
 
 static void
@@ -967,12 +961,6 @@ get_properties_1_3(const struct anv_physical_device *pdevice,
    p->uniformTexelBufferOffsetSingleTexelAlignment = true;
 
    p->maxBufferSize = pdevice->isl_dev.max_buffer_size;
-
-   if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
-      fprintf(stderr,
-              "hasvk: Setting maxBufferSize=%llu in get_properties_1_3() for gen%u\n",
-              (unsigned long long) p->maxBufferSize, pdevice->info.ver);
-   }
 }
 
 static void
@@ -1329,68 +1317,24 @@ anv_GetPhysicalDeviceProperties2(VkPhysicalDevice physicalDevice,
 {
    ANV_FROM_HANDLE(anv_physical_device, pdevice, physicalDevice);
 
-   if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
-      fprintf(stderr,
-              "hasvk: Custom anv_GetPhysicalDeviceProperties2 called\n");
-      fprintf(stderr,
-              "hasvk: pdevice->vk.properties.maxBufferSize=%llu before common call\n",
-              (unsigned long long) pdevice->vk.properties.maxBufferSize);
-   }
-
-   /* First, call the common implementation to fill in all standard properties */
-   vk_common_GetPhysicalDeviceProperties2(physicalDevice, pProperties);
-
-   if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
-      fprintf(stderr,
-              "hasvk: pdevice->vk.properties.maxBufferSize=%llu after common call\n",
-              (unsigned long long) pdevice->vk.properties.maxBufferSize);
-   }
-
    /* Explicitly handle VkPhysicalDeviceMaintenance4Properties and VkPhysicalDeviceVulkan13Properties
     * There appears to be an issue with the property generation/copying for maxBufferSize,
     * so we manually fill it here to ensure it's properly exposed.
     * Note: Maintenance4 was promoted to Vulkan 1.3, so maxBufferSize appears in both structures.
     */
-   bool found_maintenance4 = false;
-   bool found_vulkan13 = false;
+   vk_common_GetPhysicalDeviceProperties2(physicalDevice, pProperties);
    vk_foreach_struct(ext, pProperties->pNext) {
-      if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
-         fprintf(stderr, "hasvk: Checking pNext structure with sType=0x%x\n",
-                 ext->sType);
-      }
-
       if (ext->sType ==
           VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_4_PROPERTIES) {
          VkPhysicalDeviceMaintenance4Properties *props =
             (VkPhysicalDeviceMaintenance4Properties *) ext;
          props->maxBufferSize = pdevice->vk.properties.maxBufferSize;
-         found_maintenance4 = true;
-
-         if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
-            fprintf(stderr,
-                    "hasvk: Explicitly filling Maintenance4Properties.maxBufferSize=%llu\n",
-                    (unsigned long long) props->maxBufferSize);
-         }
       }
       else if (ext->sType ==
                VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_PROPERTIES) {
          VkPhysicalDeviceVulkan13Properties *props =
             (VkPhysicalDeviceVulkan13Properties *) ext;
          props->maxBufferSize = pdevice->vk.properties.maxBufferSize;
-         found_vulkan13 = true;
-
-         if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
-            fprintf(stderr,
-                    "hasvk: Explicitly filling Vulkan13Properties.maxBufferSize=%llu\n",
-                    (unsigned long long) props->maxBufferSize);
-         }
-      }
-   }
-
-   if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
-      if (!found_maintenance4 && !found_vulkan13) {
-         fprintf(stderr,
-                 "hasvk: Neither Maintenance4Properties nor Vulkan13Properties found in pNext chain\n");
       }
    }
 }
@@ -1807,13 +1751,6 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
    }
    else {
       device->vk.properties.maxBufferSize = 1ull << 27; /* 128MB for Gen6 */
-   }
-
-   if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
-      fprintf(stderr,
-              "hasvk: Early maxBufferSize set to %llu for gen%u (before ISL init)\n",
-              (unsigned long long) device->vk.properties.maxBufferSize,
-              devinfo.ver);
    }
 
    /* Explicitly set our custom GetPhysicalDeviceProperties2 implementation
