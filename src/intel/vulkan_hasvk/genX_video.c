@@ -104,6 +104,17 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
                                      h264_pic_info->
                                      pStdPictureInfo->pic_parameter_set_id);
 
+   uint8_t dpb_slots[ANV_VIDEO_H264_MAX_DPB_SLOTS] = { 0, };
+
+   for (unsigned i = 0; i < frame_info->referenceSlotCount; i++) {
+      int idx = frame_info->pReferenceSlots[i].slotIndex;
+      if (idx < 0)
+         continue;
+
+      assert(idx < ANV_VIDEO_H264_MAX_DPB_SLOTS);
+      dpb_slots[idx] = i;
+   }
+
    anv_batch_emit(&cmd_buffer->batch, GENX(MI_FLUSH_DW), flush) {
       flush.DWordLength = 2;
       flush.VideoPipelineCacheInvalidate = 1;
@@ -126,7 +137,17 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
 
    anv_batch_emit(&cmd_buffer->batch, GENX(MFX_SURFACE_STATE), ss) {
       ss.Width = img->vk.extent.width - 1;
+
+#if GFX_VERx10 == 70
+      uint32_t luma_rows = img->planes[0].primary_surface.memory_range.size /
+         img->planes[0].primary_surface.isl.row_pitch_B;
+      uint32_t chroma_rows =
+         img->planes[1].primary_surface.memory_range.size /
+         img->planes[0].primary_surface.isl.row_pitch_B;
+      ss.Height = (luma_rows + chroma_rows) - 1;
+#else
       ss.Height = img->vk.extent.height - 1;
+#endif
       ss.SurfaceFormat = PLANAR_420_8;  // assert on this?
       ss.InterleaveChroma = 1;
       ss.SurfacePitch = img->planes[0].primary_surface.isl.row_pitch_B - 1;
@@ -182,6 +203,15 @@ vid->vid_mem[ANV_VID_MEM_H264_INTRA_ROW_STORE].mem->bo,
       buf.IntraRowStoreScratchBufferMOCS =
          anv_mocs(cmd_buffer->device,
                   vid->vid_mem[ANV_VID_MEM_H264_INTRA_ROW_STORE].mem->bo, 0);
+#elif GFX_VERx10 == 70
+      uint32_t intra_mocs = anv_mocs(cmd_buffer->device,
+                                     vid->
+                                     vid_mem
+                                     [ANV_VID_MEM_H264_INTRA_ROW_STORE].mem->
+                                     bo, 0);
+      buf.IntraRowStoreScratchBufferCacheabilityControl = intra_mocs & 0x3;
+      buf.IntraRowStoreScratchBufferGraphicsDataType =
+         (intra_mocs >> 2) & 0x1;
 #endif
 #if GFX_VERx10 == 70
       buf.DeblockingFilterRowStoreScratchBufferAddress =
@@ -456,7 +486,7 @@ vid->vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
          if (slot_idx < 0)
             continue;
 
-         int idx = slot_idx;
+         int idx = dpb_slots[slot_idx];
 
          avc_dpb.NonExistingFrame[idx] = ref_info->flags.is_non_existing;
          avc_dpb.LongTermFrame[idx] =
@@ -489,7 +519,7 @@ vid->vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
          if (slot_idx < 0)
             continue;
 
-         int idx = slot_idx;
+         int idx = dpb_slots[slot_idx];
 
          const struct VkVideoDecodeH264DpbSlotInfoKHR *dpb_slot =
             vk_find_struct_const(frame_info->pReferenceSlots[i].pNext,
