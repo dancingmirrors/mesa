@@ -196,7 +196,8 @@ get_device_extensions(const struct anv_physical_device *device,
       (device->sync_syncobj_type.features & VK_SYNC_FEATURE_CPU_WAIT) != 0;
 
    /* Gate H.264 video decoding behind environment variable since it's WIP */
-   const bool video_decode = debug_get_bool_option("INTEL_HASVK_VIDEO_DECODE", false);
+   const bool video_decode =
+      debug_get_bool_option("INTEL_HASVK_VIDEO_DECODE", false);
 
    *ext = (struct vk_device_extension_table) {
       .KHR_8bit_storage = device->info.ver >= 8,
@@ -867,8 +868,8 @@ get_properties_1_2(const struct anv_physical_device *pdevice,
 
    p->framebufferIntegerColorSampleCounts =
       pdevice->info.ver ==
-      7 ? VK_SAMPLE_COUNT_1_BIT : isl_device_get_sample_counts(&pdevice->
-                                                               isl_dev);
+      7 ? VK_SAMPLE_COUNT_1_BIT :
+      isl_device_get_sample_counts(&pdevice->isl_dev);
 
    /* Set maxBufferSize for VkPhysicalDeviceMaintenance4Properties.
     * This is also set in get_properties_1_3() for Vulkan 1.3, but we set it
@@ -1008,8 +1009,8 @@ get_properties(const struct anv_physical_device *pdevice,
       .apiVersion = ANV_API_VERSION,
 #else
       .apiVersion = (pdevice->use_softpin
-                     || pdevice->instance->
-                     report_vk_1_3) ? ANV_API_VERSION_1_3 :
+                     || pdevice->
+                     instance->report_vk_1_3) ? ANV_API_VERSION_1_3 :
          ANV_API_VERSION_1_2,
 #endif /* DETECT_OS_ANDROID */
       .driverVersion = vk_get_driver_version(),
@@ -1027,8 +1028,8 @@ get_properties(const struct anv_physical_device *pdevice,
       .maxImageArrayLayers = (1 << 11),
       .maxTexelBufferElements = 128 * 1024 * 1024,
       .maxUniformBufferRange =
-         pdevice->compiler->
-         indirect_ubos_use_sampler ? (1u << 27) : (1u << 30),
+         pdevice->
+         compiler->indirect_ubos_use_sampler ? (1u << 27) : (1u << 30),
       .maxStorageBufferRange =
          MIN2(pdevice->isl_dev.max_buffer_size, UINT32_MAX),
       .maxPushConstantsSize = MAX_PUSH_CONSTANTS_SIZE,
@@ -1259,8 +1260,8 @@ get_properties(const struct anv_physical_device *pdevice,
    /* VK_EXT_sample_locations */
    {
       props->sampleLocationSampleCounts =
-         ~VK_SAMPLE_COUNT_1_BIT & isl_device_get_sample_counts(&pdevice->
-                                                               isl_dev);
+         ~VK_SAMPLE_COUNT_1_BIT &
+         isl_device_get_sample_counts(&pdevice->isl_dev);
 
       /* See also anv_GetPhysicalDeviceMultisamplePropertiesEXT */
       props->maxSampleLocationGridSize.width = 1;
@@ -1679,7 +1680,8 @@ anv_physical_device_init_queue_families(struct anv_physical_device *pdevice)
             .engine_class = INTEL_ENGINE_CLASS_RENDER,
          };
       }
-      if (v_count > 0 && debug_get_bool_option("INTEL_HASVK_VIDEO_DECODE", false)) {
+      if (v_count > 0
+          && debug_get_bool_option("INTEL_HASVK_VIDEO_DECODE", false)) {
          pdevice->queue.families[family_count++] = (struct anv_queue_family) {
             .queueFlags = VK_QUEUE_VIDEO_DECODE_BIT_KHR,
             .queueCount = v_count,
@@ -1968,8 +1970,8 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
    /* Check if we can read the GPU timestamp register from the CPU */
    uint64_t u64_ignore;
    device->has_reg_timestamp = intel_gem_read_render_timestamp(fd,
-                                                               device->info.
-                                                               kmd_type,
+                                                               device->
+                                                               info.kmd_type,
                                                                &u64_ignore);
 
    device->always_flush_cache = INTEL_DEBUG(DEBUG_STALL) ||
@@ -2270,8 +2272,9 @@ anv_GetPhysicalDeviceQueueFamilyProperties2(VkPhysicalDevice physicalDevice,
                   VkQueueFamilyVideoPropertiesKHR *prop =
                      (VkQueueFamilyVideoPropertiesKHR *) ext;
                   /* Only expose video codec operations if enabled via environment variable */
-                  if (debug_get_bool_option("INTEL_HASVK_VIDEO_DECODE", false) &&
-                      (queue_family->queueFlags & VK_QUEUE_VIDEO_DECODE_BIT_KHR))
+                  if (debug_get_bool_option("INTEL_HASVK_VIDEO_DECODE", false)
+                      && (queue_family->
+                          queueFlags & VK_QUEUE_VIDEO_DECODE_BIT_KHR))
                      prop->videoCodecOperations =
                         VK_VIDEO_CODEC_OPERATION_DECODE_H264_BIT_KHR;
                   break;
@@ -2372,8 +2375,7 @@ anv_GetPhysicalDeviceMemoryProperties2(VkPhysicalDevice physicalDevice,
                                        *pMemoryProperties)
 {
    anv_GetPhysicalDeviceMemoryProperties(physicalDevice,
-                                         &pMemoryProperties->
-                                         memoryProperties);
+                                         &pMemoryProperties->memoryProperties);
 
    vk_foreach_struct(ext, pMemoryProperties->pNext) {
       switch (ext->sType) {
@@ -2398,8 +2400,7 @@ anv_GetInstanceProcAddr(VkInstance _instance, const char *pName)
 /* With version 1+ of the loader interface the ICD should expose
  * vk_icdGetInstanceProcAddr to work around certain LD_PRELOAD issues seen in apps.
  */
-PUBLIC
-   VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL
+PUBLIC VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL
 vk_icdGetInstanceProcAddr(VkInstance instance, const char *pName)
 {
    return anv_GetInstanceProcAddr(instance, pName);
@@ -2580,8 +2581,8 @@ anv_device_setup_context(struct anv_device *device,
          assert(queueCreateInfo->queueFamilyIndex <
                 physical_device->queue.family_count);
          struct anv_queue_family *queue_family =
-            &physical_device->queue.families[queueCreateInfo->
-                                             queueFamilyIndex];
+            &physical_device->queue.
+            families[queueCreateInfo->queueFamilyIndex];
 
          for (uint32_t j = 0; j < queueCreateInfo->queueCount; j++)
             engine_classes[engine_count++] = queue_family->engine_class;
@@ -2590,8 +2591,8 @@ anv_device_setup_context(struct anv_device *device,
                                             physical_device->engine_info,
                                             engine_count, engine_classes,
                                             0 /* vm_id */ ,
-                                            (uint32_t *) & device->
-                                            context_id))
+                                            (uint32_t *) &
+                                            device->context_id))
          result =
             vk_errorf(device, VK_ERROR_INITIALIZATION_FAILED,
                       "kernel context creation failed");
@@ -3366,9 +3367,9 @@ anv_AllocateMemory(VkDevice _device,
 
       result = anv_device_import_bo_from_host_ptr(device,
                                                   host_ptr_info->pHostPointer,
-                                                  pAllocateInfo->
-                                                  allocationSize, alloc_flags,
-                                                  client_address, &mem->bo);
+                                                  pAllocateInfo->allocationSize,
+                                                  alloc_flags, client_address,
+                                                  &mem->bo);
       if (result != VK_SUCCESS)
          goto fail;
 
@@ -4054,8 +4055,8 @@ anv_GetPhysicalDeviceMultisamplePropertiesEXT(VkPhysicalDevice physicalDevice,
           VK_STRUCTURE_TYPE_MULTISAMPLE_PROPERTIES_EXT);
 
    VkSampleCountFlags sample_counts =
-      ~VK_SAMPLE_COUNT_1_BIT & isl_device_get_sample_counts(&physical_device->
-                                                            isl_dev);
+      ~VK_SAMPLE_COUNT_1_BIT &
+      isl_device_get_sample_counts(&physical_device->isl_dev);
 
    VkExtent2D grid_size;
    if (samples & sample_counts) {
