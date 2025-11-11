@@ -5071,7 +5071,7 @@ cmd_buffer_emit_depth_stencil(struct anv_cmd_buffer *cmd_buffer)
          anv_image_address(image, &depth_surface->memory_range);
 
       anv_reloc_list_add(cmd_buffer->batch.relocs, cmd_buffer->batch.alloc,
-                         (dw - cmd_buffer->batch.start) + device->isl_dev.ds.depth_offset / 4,
+                         ((char *)dw - (char *)cmd_buffer->batch.start) + device->isl_dev.ds.depth_offset,
                          depth_address.bo, depth_address.offset, NULL);
 
       if (info.hiz_usage != ISL_AUX_USAGE_NONE) {
@@ -5081,7 +5081,7 @@ cmd_buffer_emit_depth_stencil(struct anv_cmd_buffer *cmd_buffer)
             anv_image_address(image, &hiz_surface->memory_range);
 
          anv_reloc_list_add(cmd_buffer->batch.relocs, cmd_buffer->batch.alloc,
-                            (dw - cmd_buffer->batch.start) + device->isl_dev.ds.hiz_offset / 4,
+                            ((char *)dw - (char *)cmd_buffer->batch.start) + device->isl_dev.ds.hiz_offset,
                             hiz_address.bo, hiz_address.offset, NULL);
       }
    }
@@ -5097,7 +5097,7 @@ cmd_buffer_emit_depth_stencil(struct anv_cmd_buffer *cmd_buffer)
          anv_image_address(image, &stencil_surface->memory_range);
 
       anv_reloc_list_add(cmd_buffer->batch.relocs, cmd_buffer->batch.alloc,
-                         (dw - cmd_buffer->batch.start) + device->isl_dev.ds.stencil_offset / 4,
+                         ((char *)dw - (char *)cmd_buffer->batch.start) + device->isl_dev.ds.stencil_offset,
                          stencil_address.bo, stencil_address.offset, NULL);
    }
 
