@@ -505,6 +505,12 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
 
    anv_batch_emit(&cmd_buffer->batch, GENX(MFX_AVC_DIRECTMODE_STATE),
                   avc_directmode) {
+#if GFX_VERx10 == 70
+      for (int i = 0; i < 34; i++) {
+         avc_directmode.POCList[i] = 0;
+      }
+      avc_directmode.DirectMVBufferArbitrationPriorityControl[0] = 0;
+#endif
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-but-set-variable"
