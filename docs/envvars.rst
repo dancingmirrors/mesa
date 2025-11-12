@@ -1040,10 +1040,11 @@ Hasvk driver environment variables
 
 .. envvar:: HASVK_USERSPACE_RELOCS
 
-   If defined to ``1`` or ``true``, this forces ANV to always do
-   kernel relocations in command buffers. This should only have an
-   effect on hardware that doesn't support soft-pinning (Ivybridge,
-   Haswell, Cherryview).
+   If defined to ``1`` or ``true`` (default), this enables userspace
+   relocations in command buffers. If set to ``0`` or ``false``, forces
+   the kernel to do relocations. This should only have an effect on
+   hardware that doesn't support soft-pinning (Ivy Bridge, Haswell,
+   Cherryview).
 
 DRI environment variables
 -------------------------
