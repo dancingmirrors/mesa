@@ -196,6 +196,8 @@ extern uint64_t intel_debug_flag_for_shader_stage(mesa_shader_stage stage);
 
 extern void process_intel_debug_variable(void);
 
+extern void intel_debug_print_active_flags(void);
+
 #ifdef __cplusplus
 }
 #endif
