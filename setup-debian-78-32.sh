@@ -15,7 +15,7 @@ patent obligations that apply in your jurisdiction, particularly if you
 plan to redistribute binaries.
 
 To proceed, set:
-AGREE_CODEC_PATENTS=1 ./build-mesa-32.sh
+AGREE_CODEC_PATENTS=1 ./setup-debian-78-32.sh
 EOF
   exit 1
 fi
