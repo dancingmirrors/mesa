@@ -309,8 +309,8 @@ process_intel_debug_variable(void)
              process_intel_debug_variable_once);
 }
 
-void
-intel_debug_print_active_flags(void)
+static void
+intel_debug_print_active_flags_once(void)
 {
    bool first = true;
    
@@ -348,4 +348,13 @@ intel_debug_print_active_flags(void)
    }
    
    fprintf(stderr, "\n");
+}
+
+void
+intel_debug_print_active_flags(void)
+{
+   static once_flag print_debug_flags_flag = ONCE_FLAG_INIT;
+
+   call_once(&print_debug_flags_flag,
+             intel_debug_print_active_flags_once);
 }
