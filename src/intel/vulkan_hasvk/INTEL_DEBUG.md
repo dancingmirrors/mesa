@@ -9,6 +9,15 @@ INTEL_DEBUG=bat,perf vkcube
 INTEL_DEBUG=fs,vs vkcube
 ```
 
+**New Feature**: The driver now prints active INTEL_DEBUG flags to stderr on startup, so you can verify which flags are in effect:
+```bash
+$ INTEL_DEBUG=cs,nohiz vkcube
+INTEL_DEBUG flags active: cs, nohiz
+# ... application output ...
+```
+
+If no INTEL_DEBUG flags are set, nothing is printed.
+
 ## Shader Compilation & Dumping (✅ NOW WORKING)
 
 These options dump shader information during compilation:
