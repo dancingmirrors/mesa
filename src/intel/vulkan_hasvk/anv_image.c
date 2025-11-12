@@ -566,6 +566,9 @@ add_aux_surface_if_supported(struct anv_device *device,
       /* Allow the user to control HiZ enabling. Disable by default on gfx7
        * because resolves are not currently implemented pre-BDW.
        */
+      if (INTEL_DEBUG(DEBUG_NO_HIZ))
+         return VK_SUCCESS;
+
       if (!(image->vk.usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)) {
          /* It will never be used as an attachment, HiZ is pointless. */
          return VK_SUCCESS;
@@ -595,6 +598,9 @@ add_aux_surface_if_supported(struct anv_device *device,
    }
    else if ((aspect & VK_IMAGE_ASPECT_ANY_COLOR_BIT_ANV)
             && image->vk.samples == 1) {
+      if (INTEL_DEBUG(DEBUG_NO_CCS))
+         return VK_SUCCESS;
+
       if (image->n_planes != 1) {
          /* Multiplanar images seem to hit a sampler bug with CCS and R16G16
           * format. (Putting the clear state a page/4096bytes further fixes
