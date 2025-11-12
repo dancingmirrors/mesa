@@ -2632,7 +2632,7 @@ anv_CreateDevice(VkPhysicalDevice physicalDevice,
    if (result != VK_SUCCESS)
       goto fail_alloc;
 
-   if (INTEL_DEBUG(DEBUG_BATCH)) {
+   if (INTEL_DEBUG(DEBUG_BATCH) || INTEL_DEBUG(DEBUG_BATCH_STATS)) {
       for (unsigned i = 0; i < physical_device->queue.family_count; i++) {
          struct intel_batch_decode_ctx *decoder = &device->decoder[i];
 
@@ -2646,6 +2646,7 @@ anv_CreateDevice(VkPhysicalDevice physicalDevice,
                                          &physical_device->info,
                                          stderr, decode_flags, NULL,
                                          decode_get_bo, NULL, device);
+         intel_batch_stats_reset(decoder);
 
          decoder->engine = physical_device->queue.families[i].engine_class;
          decoder->dynamic_base = DYNAMIC_STATE_POOL_MIN_ADDRESS;
@@ -2989,9 +2990,12 @@ anv_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
 
    intel_gem_destroy_context(device->fd, device->context_id);
 
-   if (INTEL_DEBUG(DEBUG_BATCH)) {
-      for (unsigned i = 0; i < pdevice->queue.family_count; i++)
+   if (INTEL_DEBUG(DEBUG_BATCH) || INTEL_DEBUG(DEBUG_BATCH_STATS)) {
+      for (unsigned i = 0; i < pdevice->queue.family_count; i++) {
+         if (INTEL_DEBUG(DEBUG_BATCH_STATS))
+            intel_batch_print_stats(&device->decoder[i]);
          intel_batch_decode_ctx_finish(&device->decoder[i]);
+      }
    }
 
    close(device->fd);
