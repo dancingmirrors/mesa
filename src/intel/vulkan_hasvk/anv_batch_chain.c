@@ -2229,6 +2229,35 @@ anv_queue_exec_locked(struct anv_queue *queue,
       }
    }
 
+   if (INTEL_DEBUG(DEBUG_BATCH_STATS)) {
+      if (cmd_buffer_count) {
+         if (has_perf_query) {
+            struct anv_bo *pass_batch_bo = perf_query_pool->bo;
+            uint64_t pass_batch_offset =
+               khr_perf_query_preamble_offset(perf_query_pool,
+                                              perf_query_pass);
+
+            intel_batch_stats(queue->decoder,
+                              pass_batch_bo->map + pass_batch_offset, 64,
+                              pass_batch_bo->offset + pass_batch_offset,
+                              false);
+         }
+
+         for (uint32_t i = 0; i < cmd_buffer_count; i++) {
+            struct anv_batch_bo **bo =
+               u_vector_tail(&cmd_buffers[i]->seen_bbos);
+            intel_batch_stats(queue->decoder, (*bo)->bo->map,
+                              (*bo)->bo->size, (*bo)->bo->offset, false);
+         }
+      }
+      else {
+         intel_batch_stats(queue->decoder,
+                           device->trivial_batch_bo->map,
+                           device->trivial_batch_bo->size,
+                           device->trivial_batch_bo->offset, false);
+      }
+   }
+
    if (execbuf.syncobj_values) {
       execbuf.timeline_fences.fence_count = execbuf.syncobj_count;
       execbuf.timeline_fences.handles_ptr = (uintptr_t) execbuf.syncobjs;
