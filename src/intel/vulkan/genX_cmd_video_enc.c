@@ -1134,21 +1134,81 @@ anv_h264_encode_video(struct anv_cmd_buffer *cmd, const VkVideoEncodeInfoKHR *en
          }
       }
 
-      if (pps->flags.weighted_pred_flag && slice_type == STD_VIDEO_H265_SLICE_TYPE_P) {
-         /* TODO. */
-         assert(0);
-         anv_batch_emit(&cmd->batch, GENX(MFX_AVC_WEIGHTOFFSET_STATE), w) {
-         }
-      }
-
-      if (pps->flags.weighted_pred_flag && slice_type == STD_VIDEO_H265_SLICE_TYPE_B) {
-         /* TODO. */
-         assert(0);
-         anv_batch_emit(&cmd->batch, GENX(MFX_AVC_WEIGHTOFFSET_STATE), w) {
-         }
-      }
-
       const StdVideoEncodeH264WeightTable*      weight_table =  slice_header->pWeightTable;
+
+      /* Emit MFX_AVC_WEIGHTOFFSET_STATE for explicit weighted prediction.
+       * Per Intel PRM, for AVC encoder, weights and offsets must be sent
+       * to the PAK as if in explicit mode, regardless of the actual weight
+       * calculation type (default, implicit, or explicit).
+       */
+      if (pps->flags.weighted_pred_flag && slice_type == STD_VIDEO_H264_SLICE_TYPE_P && weight_table) {
+         anv_batch_emit(&cmd->batch, GENX(MFX_AVC_WEIGHTOFFSET_STATE), w) {
+            w.WeightandOffsetSelect = 0; /* L0 table */
+
+            /* Pack weights and offsets for L0 reference list.
+             * Format: For each of 32 reference pictures, provide weights/offsets
+             * for Y, Cb, Cr components. Each dword contains weight in lower 8 bits
+             * and offset in next 8 bits.
+             */
+            for (unsigned i = 0; i < STD_VIDEO_H264_MAX_NUM_LIST_REF; i++) {
+               /* Y component (luma) */
+               w.WeightOffset[i * 3 + 0] =
+                  ((weight_table->luma_offset_l0[i] & 0xff) << 8) |
+                  (weight_table->luma_weight_l0[i] & 0xff);
+
+               /* Cb component (chroma) */
+               w.WeightOffset[i * 3 + 1] =
+                  ((weight_table->chroma_offset_l0[i][0] & 0xff) << 8) |
+                  (weight_table->chroma_weight_l0[i][0] & 0xff);
+
+               /* Cr component (chroma) */
+               w.WeightOffset[i * 3 + 2] =
+                  ((weight_table->chroma_offset_l0[i][1] & 0xff) << 8) |
+                  (weight_table->chroma_weight_l0[i][1] & 0xff);
+            }
+         }
+      }
+
+      if ((pps->flags.weighted_pred_flag || pps->weighted_bipred_idc == STD_VIDEO_H264_WEIGHTED_BIPRED_IDC_EXPLICIT) &&
+          slice_type == STD_VIDEO_H264_SLICE_TYPE_B && weight_table) {
+         /* L0 table for B slices */
+         anv_batch_emit(&cmd->batch, GENX(MFX_AVC_WEIGHTOFFSET_STATE), w) {
+            w.WeightandOffsetSelect = 0; /* L0 table */
+
+            for (unsigned i = 0; i < STD_VIDEO_H264_MAX_NUM_LIST_REF; i++) {
+               w.WeightOffset[i * 3 + 0] =
+                  ((weight_table->luma_offset_l0[i] & 0xff) << 8) |
+                  (weight_table->luma_weight_l0[i] & 0xff);
+
+               w.WeightOffset[i * 3 + 1] =
+                  ((weight_table->chroma_offset_l0[i][0] & 0xff) << 8) |
+                  (weight_table->chroma_weight_l0[i][0] & 0xff);
+
+               w.WeightOffset[i * 3 + 2] =
+                  ((weight_table->chroma_offset_l0[i][1] & 0xff) << 8) |
+                  (weight_table->chroma_weight_l0[i][1] & 0xff);
+            }
+         }
+
+         /* L1 table for B slices */
+         anv_batch_emit(&cmd->batch, GENX(MFX_AVC_WEIGHTOFFSET_STATE), w) {
+            w.WeightandOffsetSelect = 1; /* L1 table */
+
+            for (unsigned i = 0; i < STD_VIDEO_H264_MAX_NUM_LIST_REF; i++) {
+               w.WeightOffset[i * 3 + 0] =
+                  ((weight_table->luma_offset_l1[i] & 0xff) << 8) |
+                  (weight_table->luma_weight_l1[i] & 0xff);
+
+               w.WeightOffset[i * 3 + 1] =
+                  ((weight_table->chroma_offset_l1[i][0] & 0xff) << 8) |
+                  (weight_table->chroma_weight_l1[i][0] & 0xff);
+
+               w.WeightOffset[i * 3 + 2] =
+                  ((weight_table->chroma_offset_l1[i][1] & 0xff) << 8) |
+                  (weight_table->chroma_weight_l1[i][1] & 0xff);
+            }
+         }
+      }
 
       unsigned w_in_mb = align(src_img->vk.extent.width, ANV_MB_WIDTH) / ANV_MB_WIDTH;
       unsigned h_in_mb = align(src_img->vk.extent.height, ANV_MB_HEIGHT) / ANV_MB_HEIGHT;
