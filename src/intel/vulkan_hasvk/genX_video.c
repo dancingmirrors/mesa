@@ -215,10 +215,26 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       ss.SurfaceFormat = PLANAR_420_8;
       ss.SurfacePitch = img->planes[0].primary_surface.isl.row_pitch_B - 1;
       ss.TileWalk = TW_YMAJOR;
-      ss.YOffsetforUCb = align(img->vk.extent.height, 32);
+      
+      /* Calculate chroma plane Y offset from ISL surface layout.
+       * For NV12 format, planes[1] contains the interleaved U/V chroma plane.
+       * The Y offset must be in units of rows, calculated from the plane's
+       * memory offset divided by the luma plane's row pitch.
+       */
+      if (img->n_planes > 1) {
+         ss.YOffsetforUCb =
+            img->planes[1].primary_surface.memory_range.offset /
+            img->planes[0].primary_surface.isl.row_pitch_B;
 #if GFX_VERx10 >= 75
-      ss.YOffsetforVCr = align(img->vk.extent.height, 32);
+         ss.YOffsetforVCr = ss.YOffsetforUCb;
 #endif
+      } else {
+         /* Fallback for single-plane layout (shouldn't normally happen for NV12) */
+         ss.YOffsetforUCb = align(img->vk.extent.height, 32);
+#if GFX_VERx10 >= 75
+         ss.YOffsetforVCr = align(img->vk.extent.height, 32);
+#endif
+      }
 #if GFX_VERx10 == 70
       ss.XOffsetforVCr = 0;
 #endif
