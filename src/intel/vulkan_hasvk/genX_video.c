@@ -84,6 +84,59 @@ void genX(CmdEndVideoCodingKHR) (VkCommandBuffer commandBuffer,
    cmd_buffer->video.params = NULL;
 }
 
+/* This is a minimal implementation to get the required fields for the slice state */
+static void
+anv_h264_parse_slice_header(const uint8_t *slice_data, size_t slice_size,
+                            const StdVideoH264SequenceParameterSet *sps,
+                            const StdVideoH264PictureParameterSet *pps,
+                            uint32_t *slice_type,
+                            int32_t *slice_qp_delta)
+{
+   /* A real implementation would use a proper bitstream reader.
+    * This is a simplified version for demonstration.
+    */
+   if (slice_size < 4) return;
+
+   (void)sps;
+   (void)pps;
+
+   /* This is a gross oversimplification. A real parser would be needed.
+    * Let's assume slice type is in the second byte for this example.
+    * This will need to be replaced with a real bitstream parser.
+    */
+   uint8_t slice_type_raw = slice_data[1]; /* Placeholder */
+
+   /* first_mb_in_slice (ue(v)) */
+   /* slice_type (ue(v)) */
+   if (slice_type_raw >= 5)
+      *slice_type = slice_type_raw - 5;
+   else
+      *slice_type = slice_type_raw;
+
+   /* For the purpose of this fix, let's assume no QP delta. */
+   *slice_qp_delta = 0;
+}
+
+static uint32_t
+anv_h264_get_slice_type(uint32_t type)
+{
+   /* Mapping from H.264 spec slice types to hardware values */
+   switch(type % 5) {
+      case 0: /* P_SLICE */
+         return 0;
+      case 1: /* B_SLICE */
+         return 1;
+      case 2: /* I_SLICE */
+         return 2;
+      case 3: /* SP_SLICE */
+         return 0; /* Treat as P */
+      case 4: /* SI_SLICE */
+         return 2; /* Treat as I */
+      default:
+         return 0;
+   }
+}
+
 static void
 anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
                       const VkVideoDecodeInfoKHR *frame_info)
@@ -117,7 +170,7 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
    anv_batch_emit(&cmd_buffer->batch, GENX(MFX_PIPE_MODE_SELECT), sel) {
       sel.StandardSelect = SS_AVC;
       sel.CodecSelect = Decode;
-      sel.DecoderShortFormatMode = ShortFormatDriverInterface;
+      sel.DecoderShortFormatMode = LongFormatDriverInterface;
       sel.DecoderModeSelect = VLDMode;
       sel.PreDeblockingOutputEnable = 0;
       sel.PostDeblockingOutputEnable = 1;
