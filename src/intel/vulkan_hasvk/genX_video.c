@@ -248,6 +248,7 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
          anv_mocs(cmd_buffer->device,
                   vid->vid_mem[ANV_VID_MEM_H264_INTRA_ROW_STORE].mem->bo, 0);
 #elif GFX_VERx10 == 70
+      /* IVB: MOCS value 5 == Cacheability=1 (uncached) + GFDT=1 (stronger ordering) */
       buf.PostDeblockingDestinationCacheabilityControl = 1;
       buf.PostDeblockingDestinationGraphicsDataType = 1;
 
@@ -661,125 +662,59 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
          h264_pic_info->pStdPictureInfo->PicOrderCnt[1];
    }
 
-#define HEADER_OFFSET 3
-
    uint32_t buffer_offset = frame_info->srcBufferOffset & 4095;
-#define HEADER_OFFSET 3
-
-#if GFX_VER <= 75
-   anv_batch_emit(&cmd_buffer->batch, GENX(MI_FLUSH_DW), flush) {
-      flush.DWordLength = 2;
-      flush.VideoPipelineCacheInvalidate = 1;
-   };
-#endif
 
    for (unsigned s = 0; s < h264_pic_info->sliceCount; s++) {
       bool last_slice = s == (h264_pic_info->sliceCount - 1);
       uint32_t current_offset = h264_pic_info->pSliceOffsets[s];
-      uint32_t this_end;
-      if (!last_slice) {
-#if GFX_VER == 7
-         anv_batch_emit(&cmd_buffer->batch, GENX(PIPE_CONTROL), pc) {
-            pc.DepthStallEnable = true;
-         }
-         anv_batch_emit(&cmd_buffer->batch, GENX(MFX_WAIT), wait) {
-            wait.MFXSyncControlFlag = 1;
-         }
-#endif
-         uint32_t next_offset = h264_pic_info->pSliceOffsets[s + 1];
-         uint32_t next_end = h264_pic_info->pSliceOffsets[s + 2];
-         if (s == h264_pic_info->sliceCount - 2)
-            next_end = frame_info->srcBufferRange;
-         anv_batch_emit(&cmd_buffer->batch, GENX(MFD_AVC_SLICEADDR),
-                        sliceaddr) {
-            sliceaddr.IndirectBSDDataLength =
-               next_end - next_offset - HEADER_OFFSET;
-            sliceaddr.IndirectBSDDataStartAddress =
-               buffer_offset + next_offset + HEADER_OFFSET;
-         };
-         this_end = next_offset;
-      }
+
+      uint32_t slice_data_size;
+      if (last_slice)
+          slice_data_size = frame_info->srcBufferRange - current_offset;
       else
-         this_end = frame_info->srcBufferRange;
-      anv_batch_emit(&cmd_buffer->batch, GENX(MFD_AVC_BSD_OBJECT), avc_bsd) {
-         avc_bsd.IndirectBSDDataLength =
-            this_end - current_offset - HEADER_OFFSET;
-         avc_bsd.IndirectBSDDataStartAddress =
-            buffer_offset + current_offset + HEADER_OFFSET;
-         avc_bsd.InlineData.LastSlice = last_slice;
-         avc_bsd.InlineData.FixPrevMBSkipped = 1;
+          slice_data_size = h264_pic_info->pSliceOffsets[s+1] - current_offset;
+
+      const uint8_t *slice_data_ptr = (const uint8_t *)src_buffer->address.bo->map + src_buffer->address.offset + frame_info->srcBufferOffset + current_offset;
+
+      uint32_t slice_type = 0;
+      int32_t slice_qp_delta = 0;
+      anv_h264_parse_slice_header(slice_data_ptr, slice_data_size, sps, pps,
+                                  &slice_type, &slice_qp_delta);
+
+      anv_batch_emit(&cmd_buffer->batch, GENX(MFX_AVC_SLICE_STATE), slice) {
+         slice.SliceType = anv_h264_get_slice_type(slice_type);
 #if GFX_VERx10 == 70
-         avc_bsd.InlineData.MBHeaderErrorHandling = 1;
-         avc_bsd.InlineData.EntropyErrorHandling = 1;
-         avc_bsd.InlineData.MPRErrorHandling = 1;
-         avc_bsd.InlineData.BSDPrematureCompleteErrorHandling = 1;
-         avc_bsd.InlineData.MBErrorConcealmentPSliceWeightPredictionDisable =
-            0;
-         avc_bsd.
-            InlineData.MBErrorConcealmentPSliceMotionVectorsOverrideDisable =
-            0;
-         avc_bsd.
-            InlineData.MBErrorConcealmentPSliceReferenceIndexOverrideDisable =
-            0;
-         avc_bsd.
-            InlineData.MBErrorConcealmentBSpatialWeightPredictionDisable = 0;
-         avc_bsd.
-            InlineData.MBErrorConcealmentBSpatialMotionVectorsOverrideDisable
-            = 0;
-         avc_bsd.
-            InlineData.MBErrorConcealmentBSpatialReferenceIndexOverrideDisable
-            = 0;
-         avc_bsd.InlineData.MBErrorConcealmentBSpatialPredictionMode = 0;
-         avc_bsd.
-            InlineData.MBErrorConcealmentBTemporalWeightPredictionDisable = 0;
-         avc_bsd.
-            InlineData.MBErrorConcealmentBTemporalMotionVectorsOverrideEnable
-            = 1;
-         avc_bsd.
-            InlineData.MBErrorConcealmentBTemporalReferenceIndexOverrideEnable
-            = 1;
-         avc_bsd.InlineData.MBErrorConcealmentBTemporalPredictionMode = 0;
-         avc_bsd.InlineData.ConcealmentPictureID = 0;
-         avc_bsd.InlineData.InitCurrentMBNumber = 0;
-         avc_bsd.InlineData.ConcealmentMethod = 0;
+         slice.Log2WeightDenomLuma = 0;
+         slice.Log2WeightDenomChroma = 0;
+         slice.CabacInitIdc0 = 0;
+#else /* GFX_VERx10 >= 75 */
+         slice.Log2WeightDenominatorLuma = 0;
+         slice.Log2WeightDenominatorChroma = 0;
+         slice.CABACInitIDC = 0;
+#endif
+         slice.NumberofReferencePicturesinInterpredictionList0 = pps->num_ref_idx_l0_default_active_minus1 + 1;
+         if (slice.SliceType == 1 /* B Slice */)
+            slice.NumberofReferencePicturesinInterpredictionList1 = pps->num_ref_idx_l1_default_active_minus1 + 1;
+         slice.SliceQuantizationParameter = pps->pic_init_qp_minus26 + 26 + slice_qp_delta;
+#if GFX_VERx10 == 70
+         slice.SliceHorizontalPosition = 0;
+#elif GFX_VER == 8
+         slice.SliceHorizontalPosition = 0;
+         slice.SliceVerticalPosition = 0;
+         slice.IsLastSlice = last_slice;
+#else
+         slice.SliceHorizontalPosition = 0;
+         slice.SliceVerticalPosition = 0;
 #endif
 #if GFX_VERx10 == 75
-         avc_bsd.InlineData.MBHeaderErrorHandling = 1;
-         avc_bsd.InlineData.EntropyErrorHandling = 1;
-         avc_bsd.InlineData.MPRErrorHandling = 1;
-         avc_bsd.InlineData.BSDPrematureCompleteErrorHandling = 1;
-         avc_bsd.InlineData.MBErrorConcealmentPSliceWeightPredictionDisable =
-            0;
-         avc_bsd.
-            InlineData.MBErrorConcealmentPSliceMotionVectorsOverrideDisable =
-            0;
-         avc_bsd.
-            InlineData.MBErrorConcealmentBSpatialWeightPredictionDisable = 0;
-         avc_bsd.
-            InlineData.MBErrorConcealmentBSpatialMotionVectorsOverrideDisable
-            = 0;
-         avc_bsd.InlineData.MBErrorConcealmentBSpatialPredictionMode = 0;
-         avc_bsd.
-            InlineData.MBErrorConcealmentBTemporalWeightPredictionDisable = 0;
-         avc_bsd.
-            InlineData.MBErrorConcealmentBTemporalMotionVectorsOverrideEnable
-            = 1;
-         avc_bsd.InlineData.MBErrorConcealmentBTemporalPredictionMode = 0;
-         avc_bsd.InlineData.IntraPredMode4x48x8LumaErrorControl = 1;
-         avc_bsd.InlineData.InitCurrentMBNumber = 0;
-         avc_bsd.InlineData.ConcealmentMethod = 0;
-         avc_bsd.InlineData.IntraPredictionErrorControl = 1;
-         avc_bsd.InlineData.Intra8x84x4PredictionErrorConcealmentControl = 1;
-         avc_bsd.InlineData.BSliceTemporalInterConcealmentMode = 0;
-         avc_bsd.InlineData.BSliceSpatialInterConcealmentMode = 0;
-         avc_bsd.InlineData.BSliceInterDirectTypeConcealmentMode = 0;
-         avc_bsd.InlineData.BSliceConcealmentMode = 0;
-         avc_bsd.InlineData.PSliceInterConcealmentMode = 0;
-         avc_bsd.InlineData.PSliceConcealmentMode = 0;
-         avc_bsd.InlineData.ConcealmentReferencePictureFieldBit = 0;
-         avc_bsd.InlineData.ISliceConcealmentMode = 1;
-         avc_bsd.InlineData.ConcealmentPictureID = 0;
+         slice.LastSliceInGroup = last_slice;
+         slice.LastSliceInFrame = last_slice;
 #endif
+      }
+
+      anv_batch_emit(&cmd_buffer->batch, GENX(MFD_AVC_BSD_OBJECT), avc_bsd) {
+         avc_bsd.IndirectBSDDataLength = slice_data_size;
+         avc_bsd.IndirectBSDDataStartAddress = buffer_offset + current_offset;
       };
    }
 }
