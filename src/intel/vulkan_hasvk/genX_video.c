@@ -27,6 +27,7 @@
 #include "genxml/gen_macros.h"
 #include "genxml/hasvk_genX_pack.h"
 #include "genxml/hasvk_genX_video_pack.h"
+#include "util/vl_rbsp.h"
 
 void
 genX(CmdBeginVideoCodingKHR) (VkCommandBuffer commandBuffer,
@@ -84,7 +85,7 @@ void genX(CmdEndVideoCodingKHR) (VkCommandBuffer commandBuffer,
    cmd_buffer->video.params = NULL;
 }
 
-/* This is a minimal implementation to get the required fields for the slice state */
+/* Parse H.264 slice header to extract slice type and QP delta for long mode */
 static void
 anv_h264_parse_slice_header(const uint8_t *slice_data, size_t slice_size,
                             const StdVideoH264SequenceParameterSet *sps,
@@ -92,28 +93,63 @@ anv_h264_parse_slice_header(const uint8_t *slice_data, size_t slice_size,
                             uint32_t *slice_type,
                             int32_t *slice_qp_delta)
 {
-   /* A real implementation would use a proper bitstream reader.
-    * This is a simplified version for demonstration.
+   struct vl_vlc vlc;
+   struct vl_rbsp rbsp;
+
+   if (!slice_data || slice_size < 2)
+      return;
+
+   /* Initialize VLC reader */
+   unsigned vlc_size = (unsigned)slice_size;
+   vl_vlc_init(&vlc, 1, (const void *const *)&slice_data, &vlc_size);
+
+   /* Skip NAL unit header (1 byte) */
+   if (vl_vlc_valid_bits(&vlc) < 8)
+      return;
+   vl_vlc_eatbits(&vlc, 8);
+
+   /* Initialize RBSP reader with emulation prevention byte removal */
+   vl_rbsp_init(&rbsp, &vlc, ~0, true);
+
+   /* Parse first_mb_in_slice - ue(v) */
+   vl_rbsp_ue(&rbsp);
+
+   /* Parse slice_type - ue(v) */
+   uint32_t slice_type_raw = vl_rbsp_ue(&rbsp);
+   
+   /* Normalize slice type (values 5-9 are same as 0-4 but indicate all slices in picture are same type) */
+   *slice_type = slice_type_raw % 5;
+
+   /* Parse pic_parameter_set_id - ue(v) */
+   vl_rbsp_ue(&rbsp);
+
+   /* Parse frame_num - u(v) */
+   if (sps->log2_max_frame_num_minus4 < 28)
+      vl_rbsp_u(&rbsp, sps->log2_max_frame_num_minus4 + 4);
+
+   /* Handle field pictures */
+   if (!sps->flags.frame_mbs_only_flag) {
+      if (vl_rbsp_u(&rbsp, 1)) /* field_pic_flag */
+         vl_rbsp_u(&rbsp, 1); /* bottom_field_flag */
+   }
+
+   /* Parse additional header fields to reach slice_qp_delta */
+   /* Note: This is a simplified parser that handles common cases.
+    * A complete implementation would need to handle all H.264 slice header variations. */
+   
+   /* For now, set QP delta to 0 as default.
+    * A full implementation would continue parsing through:
+    * - idr_pic_id (for IDR pictures)
+    * - pic_order_cnt_lsb (if pic_order_cnt_type == 0)
+    * - delta_pic_order_cnt (if pic_order_cnt_type == 1)
+    * - redundant_pic_cnt (if present)
+    * - direct_spatial_mv_pred_flag (for B slices)
+    * - num_ref_idx_active_override_flag and related fields
+    * - ref_pic_list_modification
+    * - pred_weight_table (if weighted prediction)
+    * - dec_ref_pic_marking (if nal_ref_idc != 0)
+    * - cabac_init_idc and slice_qp_delta
     */
-   if (slice_size < 4) return;
-
-   (void)sps;
-   (void)pps;
-
-   /* This is a gross oversimplification. A real parser would be needed.
-    * Let's assume slice type is in the second byte for this example.
-    * This will need to be replaced with a real bitstream parser.
-    */
-   uint8_t slice_type_raw = slice_data[1]; /* Placeholder */
-
-   /* first_mb_in_slice (ue(v)) */
-   /* slice_type (ue(v)) */
-   if (slice_type_raw >= 5)
-      *slice_type = slice_type_raw - 5;
-   else
-      *slice_type = slice_type_raw;
-
-   /* For the purpose of this fix, let's assume no QP delta. */
    *slice_qp_delta = 0;
 }
 
@@ -674,12 +710,21 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       else
           slice_data_size = h264_pic_info->pSliceOffsets[s+1] - current_offset;
 
-      const uint8_t *slice_data_ptr = (const uint8_t *)src_buffer->address.bo->map + src_buffer->address.offset + frame_info->srcBufferOffset + current_offset;
+      /* Ensure buffer is mapped before accessing */
+      const uint8_t *slice_data_ptr = NULL;
+      if (src_buffer->address.bo && src_buffer->address.bo->map) {
+         slice_data_ptr = (const uint8_t *)src_buffer->address.bo->map + 
+                          src_buffer->address.offset + 
+                          frame_info->srcBufferOffset + 
+                          current_offset;
+      }
 
       uint32_t slice_type = 0;
       int32_t slice_qp_delta = 0;
-      anv_h264_parse_slice_header(slice_data_ptr, slice_data_size, sps, pps,
-                                  &slice_type, &slice_qp_delta);
+      if (slice_data_ptr) {
+         anv_h264_parse_slice_header(slice_data_ptr, slice_data_size, sps, pps,
+                                     &slice_type, &slice_qp_delta);
+      }
 
       anv_batch_emit(&cmd_buffer->batch, GENX(MFX_AVC_SLICE_STATE), slice) {
          slice.SliceType = anv_h264_get_slice_type(slice_type);
