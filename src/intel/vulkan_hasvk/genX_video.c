@@ -219,22 +219,31 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
 #if GFX_VERx10 == 80
       struct anv_bo *ref_bo = NULL;
 #endif
-      for (unsigned i = 0; i < frame_info->referenceSlotCount; i++) {
+      struct anv_address ref0_addr = { 0 };
+      if (frame_info->referenceSlotCount > 0) {
+          const struct anv_image_view *ref_iv =
+             anv_image_view_from_handle(frame_info->pReferenceSlots[0].
+                                        pPictureResource->imageViewBinding);
+          ref0_addr = anv_image_address(ref_iv->image, &ref_iv->image->planes[0].primary_surface.memory_range);
+#if GFX_VERx10 == 80
+          ref_bo = ref_iv->image->bindings[0].address.bo;
+#endif
+      }
+
+      unsigned i = 0;
+      for (i = 0; i < frame_info->referenceSlotCount; i++) {
          const struct anv_image_view *ref_iv =
             anv_image_view_from_handle(frame_info->pReferenceSlots[i].
                                        pPictureResource->imageViewBinding);
-
          buf.ReferencePictureAddress[i] = anv_image_address(ref_iv->image,
                                                             &ref_iv->image->
                                                             planes[0].
                                                             primary_surface.
                                                             memory_range);
-
-#if GFX_VERx10 == 80
-         if (i == 0)
-            ref_bo = ref_iv->image->bindings[0].address.bo;
-#endif
       }
+
+      for (; i < ANV_VIDEO_H264_MAX_DPB_SLOTS; i++)
+         buf.ReferencePictureAddress[i] = ref0_addr;
 #if GFX_VERx10 == 80
       buf.ReferencePictureMOCS = anv_mocs(cmd_buffer->device, ref_bo, 0);
 #endif
