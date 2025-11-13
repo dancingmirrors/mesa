@@ -215,6 +215,7 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       ss.SurfaceFormat = PLANAR_420_8;
       ss.InterleaveChroma = 1;
       ss.SurfacePitch = img->planes[0].primary_surface.isl.row_pitch_B - 1;
+      ss.TiledSurface = img->planes[0].primary_surface.isl.tiling != ISL_TILING_LINEAR;
       ss.TileWalk = TW_YMAJOR;
       
       /* Calculate chroma plane Y offset from ISL surface layout.
