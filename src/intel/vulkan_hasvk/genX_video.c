@@ -100,7 +100,8 @@ anv_h264_parse_slice_header(const uint8_t *slice_data, size_t slice_size,
       return;
 
    /* Initialize VLC reader */
-   vl_vlc_init(&vlc, 1, (const void *const *)&slice_data, &slice_size);
+   unsigned vlc_size = (unsigned)slice_size;
+   vl_vlc_init(&vlc, 1, (const void *const *)&slice_data, &vlc_size);
 
    /* Skip NAL unit header (1 byte) */
    if (vl_vlc_valid_bits(&vlc) < 8)
