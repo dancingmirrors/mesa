@@ -1,7 +1,4 @@
 #!/bin/sh
-# Safe wrapper to configure a 32-bit Mesa build using your meson cross file.
-# Requires AGREE_CODEC_PATENTS=1 to proceed (warns about patent-encumbered codecs).
-# Adjust variables below if you want different paths or meson args.
 
 set -eu
 set -o pipefail
@@ -28,10 +25,14 @@ LIBDIR="lib32"
 INCLUDEDIR="include32"
 MESON_ARGS="-Dgallium-drivers=crocus -Dvulkan-drivers=intel_hasvk -Dvideo-codecs=all"
 
-# Prepend the typical Debian i386 pkgconfig dir so pkg-config finds target .pc
+export CFLAGS="-m32 ${CFLAGS:-}"
+export CXXFLAGS="-m32 ${CXXFLAGS:-}"
+export LDFLAGS="-m32 ${LDFLAGS:-}"
+
 export PKG_CONFIG_PATH="/usr/lib/i386-linux-gnu/pkgconfig:/usr/local/${LIBDIR}/pkgconfig:${PKG_CONFIG_PATH:-}"
 
-# Basic checks
+#export PKG_CONFIG_LIBDIR="/usr/lib/i386-linux-gnu/pkgconfig:/usr/local/${LIBDIR}/pkgconfig"
+
 command -v meson >/dev/null 2>&1 || { echo "meson not found; install meson and retry." >&2; exit 2; }
 command -v ninja >/dev/null 2>&1 || { echo "ninja not found; install ninja and retry." >&2; exit 2; }
 
@@ -50,7 +51,12 @@ Using:
   libdir    : $LIBDIR
   includedir: $INCLUDEDIR
 
-PKG_CONFIG_PATH: $PKG_CONFIG_PATH
+Environment:
+  PKG_CONFIG_PATH: $PKG_CONFIG_PATH
+  PKG_CONFIG_LIBDIR: ${PKG_CONFIG_LIBDIR:-"(unset)"}
+  CFLAGS: $CFLAGS
+  CXXFLAGS: $CXXFLAGS
+  LDFLAGS: $LDFLAGS
 
 Meson command about to run:
   meson setup --cross-file=$CROSS_FILE --prefix $PREFIX --libdir $LIBDIR --includedir $INCLUDEDIR --wipe $BUILD_DIR $MESON_ARGS
