@@ -201,6 +201,7 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       /* One or the other *must* be set on HSW. */
       sel.PreDeblockingOutputEnable = 0;
       sel.PostDeblockingOutputEnable = 1;
+      sel.StreamOutEnable = 0;
    }
 
    const struct anv_image_view *iv =
@@ -720,6 +721,17 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       if (slice_data_ptr) {
          anv_h264_parse_slice_header(slice_data_ptr, slice_data_size, sps, pps,
                                      &slice_type, &slice_qp_delta);
+         
+         if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+            const uint8_t *nal_start = slice_data_ptr;
+            fprintf(stderr, "BSD Object[%d]: offset=%u, size=%u, NAL: %02x %02x %02x %02x %02x\n",
+                    s, buffer_offset + current_offset, slice_data_size,
+                    nal_start[0], nal_start[1], nal_start[2], nal_start[3], nal_start[4]);
+            
+            /* Check NAL unit type */
+            uint8_t nal_unit_type = nal_start[0] & 0x1f;
+            fprintf(stderr, "  NAL unit type: %d\n", nal_unit_type);
+         }
       }
 
       anv_batch_emit(&cmd_buffer->batch, GENX(MFX_AVC_SLICE_STATE), slice) {
