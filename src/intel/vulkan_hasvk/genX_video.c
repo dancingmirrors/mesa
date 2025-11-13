@@ -70,17 +70,16 @@ void genX(CmdEndVideoCodingKHR) (VkCommandBuffer commandBuffer,
       pc.StateCacheInvalidationEnable = 1;
       pc.CommandStreamerStallEnable = 1;
       pc.StallAtPixelScoreboard = 1;
+      pc.DepthStallEnable = true;
    };
 #else
    UNREACHABLE("Unsupported hardware.");
 #endif
-
 #if GFX_VER <= 75
    anv_batch_emit(&cmd_buffer->batch, GENX(MFX_WAIT), wait) {
       wait.MFXSyncControlFlag = 1;
    }
 #endif
-
    cmd_buffer->video.vid = NULL;
    cmd_buffer->video.params = NULL;
 }
@@ -601,9 +600,14 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       uint32_t current_offset = h264_pic_info->pSliceOffsets[s];
       uint32_t this_end;
       if (!last_slice) {
+#if GFX_VER == 7
+         anv_batch_emit(&cmd_buffer->batch, GENX(PIPE_CONTROL), pc) {
+            pc.DepthStallEnable = true;
+         }
          anv_batch_emit(&cmd_buffer->batch, GENX(MFX_WAIT), wait) {
             wait.MFXSyncControlFlag = 1;
-         };
+         }
+#endif
          uint32_t next_offset = h264_pic_info->pSliceOffsets[s + 1];
          uint32_t next_end = h264_pic_info->pSliceOffsets[s + 2];
          if (s == h264_pic_info->sliceCount - 2)
@@ -690,21 +694,7 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
          avc_bsd.InlineData.ConcealmentPictureID = 0;
 #endif
       };
-
-#if GFX_VER <= 75
-      if (!last_slice) {
-         anv_batch_emit(&cmd_buffer->batch, GENX(MFX_WAIT), wait) {
-            wait.MFXSyncControlFlag = 1;
-         };
-      }
-#endif
    }
-
-#if GFX_VER <= 75
-   anv_batch_emit(&cmd_buffer->batch, GENX(MFX_WAIT), wait) {
-      wait.MFXSyncControlFlag = 1;
-   };
-#endif
 }
 
 void
