@@ -33,6 +33,8 @@ export PKG_CONFIG_PATH="/usr/lib/i386-linux-gnu/pkgconfig:/usr/local/${LIBDIR}/p
 
 #export PKG_CONFIG_LIBDIR="/usr/lib/i386-linux-gnu/pkgconfig:/usr/local/${LIBDIR}/pkgconfig"
 
+export PATH=/usr/local/bin32:/usr/bin32:$PATH
+
 command -v meson >/dev/null 2>&1 || { echo "meson not found; install meson and retry." >&2; exit 2; }
 command -v ninja >/dev/null 2>&1 || { echo "ninja not found; install ninja and retry." >&2; exit 2; }
 
