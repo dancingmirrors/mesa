@@ -56,9 +56,6 @@ void genX(CmdEndVideoCodingKHR) (VkCommandBuffer commandBuffer,
 {
    ANV_FROM_HANDLE(anv_cmd_buffer, cmd_buffer, commandBuffer);
 
-#if GFX_VER > 8
-   UNREACHABLE("Unsupported hardware.");
-#endif
 #if GFX_VER == 8
    anv_batch_emit(&cmd_buffer->batch, GENX(MI_FLUSH_DW), flush) {
       flush.PostSyncOperation = NoWrite;
@@ -73,13 +70,6 @@ void genX(CmdEndVideoCodingKHR) (VkCommandBuffer commandBuffer,
       pc.StallAtPixelScoreboard = 1;
       pc.DepthStallEnable = true;
    };
-#else
-   UNREACHABLE("Unsupported hardware.");
-#endif
-#if GFX_VER <= 75
-   anv_batch_emit(&cmd_buffer->batch, GENX(MFX_WAIT), wait) {
-      wait.MFXSyncControlFlag = 1;
-   }
 #endif
    cmd_buffer->video.vid = NULL;
    cmd_buffer->video.params = NULL;
@@ -116,8 +106,9 @@ anv_h264_parse_slice_header(const uint8_t *slice_data, size_t slice_size,
 
    /* Parse slice_type - ue(v) */
    uint32_t slice_type_raw = vl_rbsp_ue(&rbsp);
-   
-   /* Normalize slice type (values 5-9 are same as 0-4 but indicate all slices in picture are same type) */
+
+   /* Normalize slice type (values 5-9 are the same as 0-4 but indicate all
+    * slices in the picture are the same type */
    *slice_type = slice_type_raw % 5;
 
    /* Parse pic_parameter_set_id - ue(v) */
@@ -133,11 +124,11 @@ anv_h264_parse_slice_header(const uint8_t *slice_data, size_t slice_size,
          vl_rbsp_u(&rbsp, 1); /* bottom_field_flag */
    }
 
-   /* Parse additional header fields to reach slice_qp_delta */
-   /* Note: This is a simplified parser that handles common cases.
-    * A complete implementation would need to handle all H.264 slice header variations. */
-   
-   /* For now, set QP delta to 0 as default.
+   /* Parse additional header fields to reach slice_qp_delta.
+    * Note: This is a simplified parser that handles common cases.
+    * A complete implementation would need to handle all H.264 slice header
+    * variations.
+    * For now, set QP delta to 0 as the default.
     * A full implementation would continue parsing through:
     * - idr_pic_id (for IDR pictures)
     * - pic_order_cnt_lsb (if pic_order_cnt_type == 0)
@@ -146,10 +137,9 @@ anv_h264_parse_slice_header(const uint8_t *slice_data, size_t slice_size,
     * - direct_spatial_mv_pred_flag (for B slices)
     * - num_ref_idx_active_override_flag and related fields
     * - ref_pic_list_modification
-    * - pred_weight_table (if weighted prediction)
+    * - pred_weight_table (if using weighted prediction)
     * - dec_ref_pic_marking (if nal_ref_idc != 0)
-    * - cabac_init_idc and slice_qp_delta
-    */
+    * - cabac_init_idc and slice_qp_delta */
    *slice_qp_delta = 0;
 }
 
@@ -208,12 +198,9 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       sel.CodecSelect = Decode;
       sel.DecoderShortFormatMode = LongFormatDriverInterface;
       sel.DecoderModeSelect = VLDMode;
+      /* One or the other *must* be set on HSW. */
       sel.PreDeblockingOutputEnable = 0;
       sel.PostDeblockingOutputEnable = 1;
-#if GFX_VERx10 == 70
-      sel.StreamOutEnable = false;
-      sel.ExtendedStreamOutEnable = false;
-#endif
    }
 
    const struct anv_image_view *iv =
@@ -227,18 +214,13 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       ss.Height = img->vk.extent.height - 1;
       ss.SurfaceFormat = PLANAR_420_8;
       ss.SurfacePitch = img->planes[0].primary_surface.isl.row_pitch_B - 1;
-#if GFX_VERx10 == 70
-      ss.InterleaveChroma = true;
-      ss.TiledSurface = true;
-#else
-      ss.InterleaveChroma = true;
-      ss.TiledSurface =
-         (img->planes[0].primary_surface.isl.tiling != ISL_TILING_LINEAR);
-#endif
       ss.TileWalk = TW_YMAJOR;
       ss.YOffsetforUCb = align(img->vk.extent.height, 32);
 #if GFX_VERx10 >= 75
       ss.YOffsetforVCr = align(img->vk.extent.height, 32);
+#endif
+#if GFX_VERx10 == 70
+      ss.XOffsetforVCr = 0;
 #endif
    }
 
@@ -246,7 +228,8 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       struct anv_address dest_addr = anv_image_address(img,
                                                        &img->planes
                                                        [0].
-                                                       primary_surface.memory_range);
+                                                       primary_surface.
+                                                       memory_range);
       buf.PreDeblockingDestinationAddress = dest_addr;
       buf.PostDeblockingDestinationAddress = dest_addr;
 #if GFX_VERx10 >= 75
@@ -284,7 +267,6 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
          anv_mocs(cmd_buffer->device,
                   vid->vid_mem[ANV_VID_MEM_H264_INTRA_ROW_STORE].mem->bo, 0);
 #elif GFX_VERx10 == 70
-      /* IVB: MOCS value 5 == Cacheability=1 (uncached) + GFDT=1 (stronger ordering) */
       buf.PostDeblockingDestinationCacheabilityControl = 1;
       buf.PostDeblockingDestinationGraphicsDataType = 1;
 
@@ -317,7 +299,6 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       buf.MBStatusBufferMOCS = anv_mocs(cmd_buffer->device, NULL, 0);
       buf.MBILDBStreamOutBufferMOCS = anv_mocs(cmd_buffer->device, NULL, 0);
 #endif
-
 #if GFX_VERx10 == 80
       struct anv_bo *ref_bo = NULL;
 #endif
@@ -389,12 +370,10 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
                   vid->vid_mem[ANV_VID_MEM_H264_BSD_MPC_ROW_SCRATCH].mem->bo,
                   0);
 #endif
-
       bsp.MPRRowStoreScratchBufferAddress = (struct anv_address) {
          vid->vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].mem->bo,
          vid->vid_mem[ANV_VID_MEM_H264_MPR_ROW_SCRATCH].offset
       };
-
 #if GFX_VERx10 == 75
       bsp.MPRRowStoreScratchBufferMOCS =
          anv_mocs(cmd_buffer->device,
@@ -652,7 +631,6 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
                                        &ref_iv->image->
                                        vid_dmv_top_surface).bo;
          }
-
 #if GFX_VERx10 == 70
          avc_directmode.DirectMVBufferAddress[idx * 2] =
             anv_image_address(ref_iv->image,
@@ -661,7 +639,6 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
             anv_image_address(ref_iv->image,
                               &ref_iv->image->vid_dmv_top_surface);
 #endif
-
 #if GFX_VERx10 == 75
          if (idx == 0)
             avc_directmode.DirectMVBuffer0Address =
@@ -677,13 +654,13 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       }
 
 #if GFX_VERx10 == 70
-      avc_directmode.DirectMVBufferWriteAddress[0] = anv_image_address(img,
-                                                                       &img->vid_dmv_top_surface);
+      avc_directmode.DirectMVBufferWriteAddress[0] =
+         anv_image_address(img, &img->vid_dmv_top_surface);
       avc_directmode.DirectMVBufferWriteAddress[1] =
          anv_image_address(img, &img->vid_dmv_top_surface);
 #else
-      avc_directmode.DirectMVBufferWriteAddress = anv_image_address(img,
-                                                                    &img->vid_dmv_top_surface);
+      avc_directmode.DirectMVBufferWriteAddress =
+         anv_image_address(img, &img->vid_dmv_top_surface);
 #if GFX_VERx10 == 75
       avc_directmode.DirectMVBufferMOCS =
          anv_mocs(cmd_buffer->device, dmv_bo, 0);
@@ -692,6 +669,7 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
                   avc_directmode.DirectMVBufferWriteAddress.bo, 0);
 #endif
 #endif
+
       avc_directmode.POCList[32] =
          h264_pic_info->pStdPictureInfo->PicOrderCnt[0];
       avc_directmode.POCList[33] =
@@ -713,9 +691,9 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       /* Ensure buffer is mapped before accessing */
       const uint8_t *slice_data_ptr = NULL;
       if (src_buffer->address.bo && src_buffer->address.bo->map) {
-         slice_data_ptr = (const uint8_t *)src_buffer->address.bo->map + 
-                          src_buffer->address.offset + 
-                          frame_info->srcBufferOffset + 
+         slice_data_ptr = (const uint8_t *)src_buffer->address.bo->map +
+                          src_buffer->address.offset +
+                          frame_info->srcBufferOffset +
                           current_offset;
       }
 
@@ -731,10 +709,13 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
          slice.Log2WeightDenominatorLuma = 0;
          slice.Log2WeightDenominatorChroma = 0;
          slice.CABACInitIDC = 0;
-         slice.NumberofReferencePicturesinInterpredictionList0 = pps->num_ref_idx_l0_default_active_minus1 + 1;
+         slice.NumberofReferencePicturesinInterpredictionList0 =
+            pps->num_ref_idx_l0_default_active_minus1 + 1;
          if (slice.SliceType == 1 /* B Slice */)
-            slice.NumberofReferencePicturesinInterpredictionList1 = pps->num_ref_idx_l1_default_active_minus1 + 1;
-         slice.SliceQuantizationParameter = pps->pic_init_qp_minus26 + 26 + slice_qp_delta;
+            slice.NumberofReferencePicturesinInterpredictionList1 =
+               pps->num_ref_idx_l1_default_active_minus1 + 1;
+         slice.SliceQuantizationParameter = pps->pic_init_qp_minus26 + 26
+                                            + slice_qp_delta;
          slice.SliceHorizontalPosition = 0;
 #if GFX_VERx10 >= 75
          slice.SliceVerticalPosition = 0;
