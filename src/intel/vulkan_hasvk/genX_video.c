@@ -719,4 +719,3 @@ genX(CmdDecodeVideoKHR) (VkCommandBuffer commandBuffer,
       assert(0);
    }
 }
-
