@@ -193,6 +193,17 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       dpb_slots[idx] = i;
    }
 
+#if GFX_VER == 8
+   anv_batch_emit(&cmd_buffer->batch, GENX(MI_FLUSH_DW), flush) {
+      flush.DWordLength = 2;
+      flush.VideoPipelineCacheInvalidate = 1;
+   }
+#elif GFX_VERx10 <= 75
+   anv_batch_emit(&cmd_buffer->batch, GENX(PIPE_CONTROL), pc) {
+      pc.CommandStreamerStallEnable = 1;
+   }
+#endif
+
    anv_batch_emit(&cmd_buffer->batch, GENX(MFX_PIPE_MODE_SELECT), sel) {
       sel.StandardSelect = SS_AVC;
       sel.CodecSelect = Decode;
@@ -696,6 +707,14 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
    }
 
    uint32_t buffer_offset = frame_info->srcBufferOffset & 4095;
+
+   if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+      fprintf(stderr, "H.264 Decode: %u slices, src_buffer=%p, bo=%p, mapped=%s\n",
+              h264_pic_info->sliceCount, 
+              (void*)src_buffer,
+              src_buffer->address.bo,
+              (src_buffer->address.bo && src_buffer->address.bo->map) ? "yes" : "no");
+   }
 
    for (unsigned s = 0; s < h264_pic_info->sliceCount; s++) {
       bool last_slice = s == (h264_pic_info->sliceCount - 1);
