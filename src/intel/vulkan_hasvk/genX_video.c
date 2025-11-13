@@ -683,32 +683,17 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
 
       anv_batch_emit(&cmd_buffer->batch, GENX(MFX_AVC_SLICE_STATE), slice) {
          slice.SliceType = anv_h264_get_slice_type(slice_type);
-#if GFX_VERx10 == 70
-         slice.Log2WeightDenomLuma = 0;
-         slice.Log2WeightDenomChroma = 0;
-         slice.CabacInitIdc0 = 0;
-#else /* GFX_VERx10 >= 75 */
          slice.Log2WeightDenominatorLuma = 0;
          slice.Log2WeightDenominatorChroma = 0;
          slice.CABACInitIDC = 0;
-#endif
          slice.NumberofReferencePicturesinInterpredictionList0 = pps->num_ref_idx_l0_default_active_minus1 + 1;
          if (slice.SliceType == 1 /* B Slice */)
             slice.NumberofReferencePicturesinInterpredictionList1 = pps->num_ref_idx_l1_default_active_minus1 + 1;
          slice.SliceQuantizationParameter = pps->pic_init_qp_minus26 + 26 + slice_qp_delta;
-#if GFX_VERx10 == 70
          slice.SliceHorizontalPosition = 0;
-#elif GFX_VER == 8
-         slice.SliceHorizontalPosition = 0;
+#if GFX_VERx10 >= 75
          slice.SliceVerticalPosition = 0;
-         slice.IsLastSlice = last_slice;
-#else
-         slice.SliceHorizontalPosition = 0;
-         slice.SliceVerticalPosition = 0;
-#endif
-#if GFX_VERx10 == 75
-         slice.LastSliceInGroup = last_slice;
-         slice.LastSliceInFrame = last_slice;
+         slice.LastSliceGroup = last_slice;
 #endif
       }
 
