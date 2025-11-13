@@ -60,7 +60,7 @@ void genX(CmdEndVideoCodingKHR) (VkCommandBuffer commandBuffer,
    anv_batch_emit(&cmd_buffer->batch, GENX(MI_FLUSH_DW), flush) {
       flush.PostSyncOperation = NoWrite;
    }
-#elif GFX_VER <= 75
+#elif GFX_VERx10 <= 75
    anv_batch_emit(&cmd_buffer->batch, GENX(PIPE_CONTROL), pc) {
       pc.DCFlushEnable = 1;
       pc.RenderTargetCacheFlushEnable = 1;
