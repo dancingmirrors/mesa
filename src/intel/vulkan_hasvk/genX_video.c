@@ -24,9 +24,11 @@
 #include "anv_private.h"
 
 #include <inttypes.h>
+#include <stdlib.h>
 #include "genxml/gen_macros.h"
 #include "genxml/hasvk_genX_pack.h"
 #include "genxml/hasvk_genX_video_pack.h"
+#include "util/os_misc.h"
 
 void
 genX(CmdBeginVideoCodingKHR) (VkCommandBuffer commandBuffer,
@@ -556,8 +558,38 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
                anv_image_address(ref_iv->image,
                                  &ref_iv->image->vid_dmv_top_surface);
 #endif
+#if GFX_VERx10 == 70
+         /* POC values may have 0x10000 (65536) offset that needs to be corrected */
+         int32_t poc0 = ref_info->PicOrderCnt[0];
+         int32_t poc1 = ref_info->PicOrderCnt[1];
+
+         /* Check if correction is enabled via environment variable (default: disabled) */
+         const char *enable_correction = os_get_option("INTEL_HASVK_IVB_POC_CORRECTION");
+         bool apply_correction = enable_correction && atoi(enable_correction) == 1;
+
+         /* Apply correction if enabled and POC has the 0x10000 offset */
+         if (apply_correction) {
+            if (poc0 >= 65536) poc0 -= 65536;
+            if (poc1 >= 65536) poc1 -= 65536;
+         }
+
+         avc_directmode.POCList[2 * idx] = poc0;
+         avc_directmode.POCList[2 * idx + 1] = poc1;
+
+         if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+            fprintf(stderr,
+                    "  Ref[%u] slot=%d, idx=%d, POC=[%d, %d] (raw: [%d, %d]), correction=%s, top_field=%u, bottom_field=%u, long_term=%u\n",
+                    i, slot_idx, idx, poc0, poc1,
+                    ref_info->PicOrderCnt[0], ref_info->PicOrderCnt[1],
+                    apply_correction ? "enabled" : "disabled",
+                    ref_info->flags.top_field_flag,
+                    ref_info->flags.bottom_field_flag,
+                    ref_info->flags.used_for_long_term_reference);
+         }
+#else
          avc_directmode.POCList[2 * idx] = ref_info->PicOrderCnt[0];
          avc_directmode.POCList[2 * idx + 1] = ref_info->PicOrderCnt[1];
+#endif
       }
 
 #if GFX_VERx10 == 70
@@ -578,10 +610,38 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
                   avc_directmode.DirectMVBufferWriteAddress.bo, 0);
 #endif
 #endif
+#if GFX_VERx10 == 70
+      /* POC values may have 0x10000 (65536) offset that needs to be corrected */
+      int32_t curr_poc0 = h264_pic_info->pStdPictureInfo->PicOrderCnt[0];
+      int32_t curr_poc1 = h264_pic_info->pStdPictureInfo->PicOrderCnt[1];
+
+      /* Check if correction is enabled via environment variable (default: disabled) */
+      const char *enable_correction = os_get_option("INTEL_HASVK_IVB_POC_CORRECTION");
+      bool apply_correction = enable_correction && atoi(enable_correction) == 1;
+
+      /* Apply correction if enabled and POC has the 0x10000 offset */
+      if (apply_correction) {
+         if (curr_poc0 >= 65536) curr_poc0 -= 65536;
+         if (curr_poc1 >= 65536) curr_poc1 -= 65536;
+      }
+
+      avc_directmode.POCList[32] = curr_poc0;
+      avc_directmode.POCList[33] = curr_poc1;
+
+      if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+         fprintf(stderr,
+                 "  Current picture POC=[%d, %d] (raw: [%d, %d]), correction=%s\n",
+                 curr_poc0, curr_poc1,
+                 h264_pic_info->pStdPictureInfo->PicOrderCnt[0],
+                 h264_pic_info->pStdPictureInfo->PicOrderCnt[1],
+                 apply_correction ? "enabled" : "disabled");
+      }
+#else
       avc_directmode.POCList[32] =
          h264_pic_info->pStdPictureInfo->PicOrderCnt[0];
       avc_directmode.POCList[33] =
          h264_pic_info->pStdPictureInfo->PicOrderCnt[1];
+#endif
    }
 
 #define HEADER_OFFSET 3
