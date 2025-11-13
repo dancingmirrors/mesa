@@ -726,31 +726,18 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       else
           slice_data_size = h264_pic_info->pSliceOffsets[s+1] - current_offset;
 
-      /* Ensure buffer is mapped before accessing */
-      const uint8_t *slice_data_ptr = NULL;
-      if (src_buffer->address.bo && src_buffer->address.bo->map) {
-         slice_data_ptr = (const uint8_t *)src_buffer->address.bo->map +
-                          src_buffer->address.offset +
-                          frame_info->srcBufferOffset +
-                          current_offset;
-      }
-
-      uint32_t slice_type = 0;
+      /* Use picture-level information instead of parsing unmapped buffers.
+       * In long format mode, we need to provide slice parameters, but the
+       * source buffer may not be CPU-accessible. Use picture information
+       * to derive slice type: intra pictures use I slices, others use P slices.
+       */
+      uint32_t slice_type = h264_pic_info->pStdPictureInfo->flags.is_intra ? 2 : 0;
       int32_t slice_qp_delta = 0;
-      if (slice_data_ptr) {
-         anv_h264_parse_slice_header(slice_data_ptr, slice_data_size, sps, pps,
-                                     &slice_type, &slice_qp_delta);
-         
-         if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
-            const uint8_t *nal_start = slice_data_ptr;
-            fprintf(stderr, "BSD Object[%d]: offset=%u, size=%u, NAL: %02x %02x %02x %02x %02x\n",
-                    s, buffer_offset + current_offset, slice_data_size,
-                    nal_start[0], nal_start[1], nal_start[2], nal_start[3], nal_start[4]);
-            
-            /* Check NAL unit type */
-            uint8_t nal_unit_type = nal_start[0] & 0x1f;
-            fprintf(stderr, "  NAL unit type: %d\n", nal_unit_type);
-         }
+
+      if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+         fprintf(stderr, "Slice[%d]: offset=%u, size=%u, type=%s (from picture flags)\n",
+                 s, buffer_offset + current_offset, slice_data_size,
+                 h264_pic_info->pStdPictureInfo->flags.is_intra ? "I" : "P");
       }
 
       anv_batch_emit(&cmd_buffer->batch, GENX(MFX_AVC_SLICE_STATE), slice) {
