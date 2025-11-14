@@ -716,6 +716,12 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
               (src_buffer->address.bo && src_buffer->address.bo->map) ? "yes" : "no");
    }
 
+   /* H.264 NAL units have a 3-byte start code prefix (0x000001) or 4-byte (0x00000001)
+    * followed by a 1-byte NAL header. The hardware expects to start decoding after
+    * the NAL header, so we skip the first 3 bytes of each slice.
+    */
+#define HEADER_OFFSET 3
+
    for (unsigned s = 0; s < h264_pic_info->sliceCount; s++) {
       bool last_slice = s == (h264_pic_info->sliceCount - 1);
       uint32_t current_offset = h264_pic_info->pSliceOffsets[s];
@@ -760,10 +766,12 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       }
 
       anv_batch_emit(&cmd_buffer->batch, GENX(MFD_AVC_BSD_OBJECT), avc_bsd) {
-         avc_bsd.IndirectBSDDataLength = slice_data_size;
-         avc_bsd.IndirectBSDDataStartAddress = buffer_offset + current_offset;
+         avc_bsd.IndirectBSDDataLength = slice_data_size - HEADER_OFFSET;
+         /* Start decoding after the 3-byte NAL header */
+         avc_bsd.IndirectBSDDataStartAddress = buffer_offset + current_offset + HEADER_OFFSET;
       };
    }
+#undef HEADER_OFFSET
 }
 
 void
