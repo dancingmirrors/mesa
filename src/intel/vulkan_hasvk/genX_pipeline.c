@@ -28,7 +28,7 @@
 #include "genxml/genX_rt_pack.h"
 
 #include "common/intel_compute_slm.h"
-#include "common/intel_genX_state_elk.h"
+#include "common/intel_genX_state_brw.h"
 #include "common/intel_l3_config.h"
 #include "common/intel_sample_positions.h"
 #include "nir/nir_xfb_info.h"
@@ -94,7 +94,7 @@ static void
 emit_vertex_input(struct anv_graphics_pipeline *pipeline,
                   const struct vk_vertex_input_state *vi)
 {
-   const struct elk_vs_prog_data *vs_prog_data = get_vs_prog_data(pipeline);
+   const struct brw_vs_prog_data *vs_prog_data = get_vs_prog_data(pipeline);
 
    /* Pull inputs_read out of the VS prog data */
    const uint64_t inputs_read = vs_prog_data->inputs_read;
@@ -319,9 +319,9 @@ emit_urb_setup(struct anv_graphics_pipeline *pipeline)
 {
    unsigned entry_size[4];
    for (int i = MESA_SHADER_VERTEX; i <= MESA_SHADER_GEOMETRY; i++) {
-      const struct elk_vue_prog_data *prog_data =
+      const struct brw_vue_prog_data *prog_data =
          !anv_pipeline_has_stage(pipeline, i) ? NULL :
-         (const struct elk_vue_prog_data *) pipeline->shaders[i]->prog_data;
+         (const struct brw_vue_prog_data *) pipeline->shaders[i]->prog_data;
 
       entry_size[i] = prog_data ? prog_data->urb_entry_size : 1;
    }
@@ -334,7 +334,7 @@ emit_urb_setup(struct anv_graphics_pipeline *pipeline)
 static void
 emit_3dstate_sbe(struct anv_graphics_pipeline *pipeline)
 {
-   const struct elk_wm_prog_data *wm_prog_data = get_wm_prog_data(pipeline);
+   const struct brw_wm_prog_data *wm_prog_data = get_wm_prog_data(pipeline);
 
    if (!anv_pipeline_has_stage(pipeline, MESA_SHADER_FRAGMENT)) {
       anv_batch_emit(&pipeline->base.batch, GENX(3DSTATE_SBE), sbe);
@@ -364,8 +364,8 @@ emit_3dstate_sbe(struct anv_graphics_pipeline *pipeline)
    const struct intel_vue_map *fs_input_map =
       &anv_pipeline_get_last_vue_prog_data(pipeline)->vue_map;
 
-   int first_slot = elk_compute_first_urb_slot_required(wm_prog_data->inputs,
-                                                        fs_input_map);
+   int first_slot = brw_compute_first_fs_urb_slot_required(wm_prog_data->inputs,
+                                                        fs_input_map, false);
    assert(first_slot % 2 == 0);
    unsigned urb_entry_read_offset = first_slot / 2;
    int max_source_attr = 0;
@@ -474,7 +474,10 @@ genX(raster_polygon_mode)(struct anv_graphics_pipeline *pipeline,
       }
       UNREACHABLE("Unsupported GS output topology");
    } else if (anv_pipeline_has_stage(pipeline, MESA_SHADER_TESS_EVAL)) {
-      switch (get_tes_prog_data(pipeline)->output_topology) {
+      const struct brw_tes_prog_data *tes_prog_data = get_tes_prog_data(pipeline);
+      enum intel_tess_output_topology output_topology =
+         brw_tess_info_output_topology(tes_prog_data->tess_info);
+      switch (output_topology) {
       case INTEL_TESS_OUTPUT_TOPOLOGY_POINT:
          return VK_POLYGON_MODE_POINT;
 
@@ -641,7 +644,7 @@ emit_rs_state(struct anv_graphics_pipeline *pipeline,
 #endif
 
    bool point_from_shader;
-   const struct elk_vue_prog_data *last_vue_prog_data =
+   const struct brw_vue_prog_data *last_vue_prog_data =
       anv_pipeline_get_last_vue_prog_data(pipeline);
    point_from_shader = last_vue_prog_data->vue_map.slots_valid & VARYING_BIT_PSIZ;
 
@@ -850,7 +853,7 @@ emit_cb_state(struct anv_graphics_pipeline *pipeline,
               const struct vk_render_pass_state *rp)
 {
    struct anv_device *device = pipeline->base.device;
-   const struct elk_wm_prog_data *wm_prog_data = get_wm_prog_data(pipeline);
+   const struct brw_wm_prog_data *wm_prog_data = get_wm_prog_data(pipeline);
 
    struct GENX(BLEND_STATE) blend_state = {
 #if GFX_VER >= 8
@@ -1012,7 +1015,7 @@ emit_3dstate_clip(struct anv_graphics_pipeline *pipeline,
                   const struct vk_viewport_state *vp,
                   const struct vk_rasterization_state *rs)
 {
-   const struct elk_wm_prog_data *wm_prog_data = get_wm_prog_data(pipeline);
+   const struct brw_wm_prog_data *wm_prog_data = get_wm_prog_data(pipeline);
    (void) wm_prog_data;
 
    struct GENX(3DSTATE_CLIP) clip = {
@@ -1050,7 +1053,7 @@ emit_3dstate_clip(struct anv_graphics_pipeline *pipeline,
    clip.MinimumPointWidth = 0.125;
    clip.MaximumPointWidth = 255.875;
 
-   const struct elk_vue_prog_data *last =
+   const struct brw_vue_prog_data *last =
       anv_pipeline_get_last_vue_prog_data(pipeline);
 
    /* From the Vulkan 1.0.45 spec:
@@ -1093,7 +1096,7 @@ static void
 emit_3dstate_streamout(struct anv_graphics_pipeline *pipeline,
                        const struct vk_rasterization_state *rs)
 {
-   const struct elk_vue_prog_data *prog_data =
+   const struct brw_vue_prog_data *prog_data =
       anv_pipeline_get_last_vue_prog_data(pipeline);
    const struct intel_vue_map *vue_map = &prog_data->vue_map;
 
@@ -1325,7 +1328,7 @@ static void
 emit_3dstate_vs(struct anv_graphics_pipeline *pipeline)
 {
    const struct intel_device_info *devinfo = pipeline->base.device->info;
-   const struct elk_vs_prog_data *vs_prog_data = get_vs_prog_data(pipeline);
+   const struct brw_vs_prog_data *vs_prog_data = get_vs_prog_data(pipeline);
    const struct anv_shader_bin *vs_bin =
       pipeline->shaders[MESA_SHADER_VERTEX];
 
@@ -1385,8 +1388,8 @@ emit_3dstate_hs_te_ds(struct anv_graphics_pipeline *pipeline,
    const struct anv_shader_bin *tes_bin =
       pipeline->shaders[MESA_SHADER_TESS_EVAL];
 
-   const struct elk_tcs_prog_data *tcs_prog_data = get_tcs_prog_data(pipeline);
-   const struct elk_tes_prog_data *tes_prog_data = get_tes_prog_data(pipeline);
+   const struct brw_tcs_prog_data *tcs_prog_data = get_tcs_prog_data(pipeline);
+   const struct brw_tes_prog_data *tes_prog_data = get_tes_prog_data(pipeline);
 
    anv_batch_emit(&pipeline->base.batch, GENX(3DSTATE_HS), hs) {
       hs.Enable = true;
@@ -1410,22 +1413,25 @@ emit_3dstate_hs_te_ds(struct anv_graphics_pipeline *pipeline,
    }
 
    anv_batch_emit(&pipeline->base.batch, GENX(3DSTATE_TE), te) {
-      te.Partitioning = tes_prog_data->partitioning;
+      te.Partitioning = brw_tess_info_partitioning(tes_prog_data->tess_info);
+
+      enum intel_tess_output_topology output_topology =
+         brw_tess_info_output_topology(tes_prog_data->tess_info);
 
       if (ts->domain_origin == VK_TESSELLATION_DOMAIN_ORIGIN_LOWER_LEFT) {
-         te.OutputTopology = tes_prog_data->output_topology;
+         te.OutputTopology = output_topology;
       } else {
          /* When the origin is upper-left, we have to flip the winding order */
-         if (tes_prog_data->output_topology == OUTPUT_TRI_CCW) {
-            te.OutputTopology = OUTPUT_TRI_CW;
-         } else if (tes_prog_data->output_topology == OUTPUT_TRI_CW) {
-            te.OutputTopology = OUTPUT_TRI_CCW;
+         if (output_topology == INTEL_TESS_OUTPUT_TOPOLOGY_TRI_CCW) {
+            te.OutputTopology = INTEL_TESS_OUTPUT_TOPOLOGY_TRI_CW;
+         } else if (output_topology == INTEL_TESS_OUTPUT_TOPOLOGY_TRI_CW) {
+            te.OutputTopology = INTEL_TESS_OUTPUT_TOPOLOGY_TRI_CCW;
          } else {
-            te.OutputTopology = tes_prog_data->output_topology;
+            te.OutputTopology = output_topology;
          }
       }
 
-      te.TEDomain = tes_prog_data->domain;
+      te.TEDomain = brw_tess_info_domain(tes_prog_data->tess_info);
       te.TEEnable = true;
       te.MaximumTessellationFactorOdd = 63.0;
       te.MaximumTessellationFactorNotOdd = 64.0;
@@ -1440,7 +1446,7 @@ emit_3dstate_hs_te_ds(struct anv_graphics_pipeline *pipeline,
       ds.MaximumNumberofThreads = devinfo->max_tes_threads - 1;
 
       ds.ComputeWCoordinateEnable =
-         tes_prog_data->domain == INTEL_TESS_DOMAIN_TRI;
+         brw_tess_info_domain(tes_prog_data->tess_info) == INTEL_TESS_DOMAIN_TRI;
 
       ds.PatchURBEntryReadLength = tes_prog_data->base.urb_read_length;
       ds.PatchURBEntryReadOffset = 0;
@@ -1478,7 +1484,7 @@ emit_3dstate_gs(struct anv_graphics_pipeline *pipeline,
       return;
    }
 
-   const struct elk_gs_prog_data *gs_prog_data = get_gs_prog_data(pipeline);
+   const struct brw_gs_prog_data *gs_prog_data = get_gs_prog_data(pipeline);
 
    anv_batch_emit(&pipeline->base.batch, GENX(3DSTATE_GS), gs) {
       gs.Enable                  = true;
@@ -1559,7 +1565,7 @@ emit_3dstate_wm(struct anv_graphics_pipeline *pipeline,
                 const struct vk_color_blend_state *cb,
                 const struct vk_graphics_pipeline_state *state)
 {
-   const struct elk_wm_prog_data *wm_prog_data = get_wm_prog_data(pipeline);
+   const struct brw_wm_prog_data *wm_prog_data = get_wm_prog_data(pipeline);
 
    struct GENX(3DSTATE_WM) wm = {
       GENX(3DSTATE_WM_header),
@@ -1601,7 +1607,7 @@ emit_3dstate_wm(struct anv_graphics_pipeline *pipeline,
 #endif
 
       wm.BarycentricInterpolationMode =
-         elk_wm_prog_data_barycentric_modes(wm_prog_data, 0);
+         wm_prog_data_barycentric_modes(wm_prog_data, 0);
 
 #if GFX_VER < 8
       wm.PixelShaderComputedDepthMode  = wm_prog_data->computed_depth_mode;
@@ -1626,7 +1632,7 @@ emit_3dstate_wm(struct anv_graphics_pipeline *pipeline,
          wm.PixelShaderKillsPixel;
 
       if (ms != NULL && ms->rasterization_samples > 1) {
-         if (elk_wm_prog_data_is_persample(wm_prog_data, 0)) {
+         if (brw_wm_prog_data_is_persample(wm_prog_data, 0)) {
             wm.MultisampleDispatchMode = MSDISPMODE_PERSAMPLE;
          } else {
             wm.MultisampleDispatchMode = MSDISPMODE_PERPIXEL;
@@ -1666,7 +1672,7 @@ emit_3dstate_ps(struct anv_graphics_pipeline *pipeline,
       return;
    }
 
-   const struct elk_wm_prog_data *wm_prog_data = get_wm_prog_data(pipeline);
+   const struct brw_wm_prog_data *wm_prog_data = get_wm_prog_data(pipeline);
 
 #if GFX_VER < 8
    /* The hardware wedges if you have this bit set but don't turn on any dual
@@ -1696,11 +1702,11 @@ emit_3dstate_ps(struct anv_graphics_pipeline *pipeline,
                                   0 /* msaa_flags */);
 
       ps.KernelStartPointer0 = fs_bin->kernel.offset +
-                               elk_wm_prog_data_prog_offset(wm_prog_data, ps, 0);
+                               brw_wm_prog_data_prog_offset(wm_prog_data, ps, 0);
       ps.KernelStartPointer1 = fs_bin->kernel.offset +
-                               elk_wm_prog_data_prog_offset(wm_prog_data, ps, 1);
+                               brw_wm_prog_data_prog_offset(wm_prog_data, ps, 1);
       ps.KernelStartPointer2 = fs_bin->kernel.offset +
-                               elk_wm_prog_data_prog_offset(wm_prog_data, ps, 2);
+                               brw_wm_prog_data_prog_offset(wm_prog_data, ps, 2);
 
       ps.SingleProgramFlow          = false;
       ps.VectorMaskEnable           = GFX_VER >= 8 &&
@@ -1732,11 +1738,11 @@ emit_3dstate_ps(struct anv_graphics_pipeline *pipeline,
 #endif
 
       ps.DispatchGRFStartRegisterForConstantSetupData0 =
-         elk_wm_prog_data_dispatch_grf_start_reg(wm_prog_data, ps, 0);
+         brw_wm_prog_data_dispatch_grf_start_reg(wm_prog_data, ps, 0);
       ps.DispatchGRFStartRegisterForConstantSetupData1 =
-         elk_wm_prog_data_dispatch_grf_start_reg(wm_prog_data, ps, 1);
+         brw_wm_prog_data_dispatch_grf_start_reg(wm_prog_data, ps, 1);
       ps.DispatchGRFStartRegisterForConstantSetupData2 =
-         elk_wm_prog_data_dispatch_grf_start_reg(wm_prog_data, ps, 2);
+         brw_wm_prog_data_dispatch_grf_start_reg(wm_prog_data, ps, 2);
 
       ps.PerThreadScratchSpace   = get_scratch_space(fs_bin);
       ps.ScratchSpaceBasePointer =
@@ -1750,7 +1756,7 @@ emit_3dstate_ps_extra(struct anv_graphics_pipeline *pipeline,
                       const struct vk_rasterization_state *rs,
                       const struct vk_graphics_pipeline_state *state)
 {
-   const struct elk_wm_prog_data *wm_prog_data = get_wm_prog_data(pipeline);
+   const struct brw_wm_prog_data *wm_prog_data = get_wm_prog_data(pipeline);
 
    if (!anv_pipeline_has_stage(pipeline, MESA_SHADER_FRAGMENT)) {
       anv_batch_emit(&pipeline->base.batch, GENX(3DSTATE_PS_EXTRA), ps);
@@ -1762,7 +1768,7 @@ emit_3dstate_ps_extra(struct anv_graphics_pipeline *pipeline,
       ps.AttributeEnable               = wm_prog_data->num_varying_inputs > 0;
       ps.oMaskPresenttoRenderTarget    = wm_prog_data->uses_omask;
       ps.PixelShaderIsPerSample        =
-         elk_wm_prog_data_is_persample(wm_prog_data, 0);
+         brw_wm_prog_data_is_persample(wm_prog_data, 0);
       ps.PixelShaderComputedDepthMode  = wm_prog_data->computed_depth_mode;
       ps.PixelShaderUsesSourceDepth    = wm_prog_data->uses_src_depth;
       ps.PixelShaderUsesSourceW        = wm_prog_data->uses_src_w;
@@ -1799,7 +1805,7 @@ compute_kill_pixel(struct anv_graphics_pipeline *pipeline,
       return;
    }
 
-   const struct elk_wm_prog_data *wm_prog_data = get_wm_prog_data(pipeline);
+   const struct brw_wm_prog_data *wm_prog_data = get_wm_prog_data(pipeline);
 
    /* This computes the KillPixel portion of the computation for whether or
     * not we want to enable the PMA fix on gfx8 or gfx9.  It's given by this
@@ -1852,7 +1858,7 @@ genX(graphics_pipeline_emit)(struct anv_graphics_pipeline *pipeline,
     * Stall" bit set.
     */
    if (device->info->platform == INTEL_PLATFORM_IVB)
-      gfx7_emit_vs_workaround_flush(elk);
+      gfx7_emit_vs_workaround_flush(brw);
 #endif
 
    emit_vertex_input(pipeline, state->vi);
@@ -1879,12 +1885,12 @@ genX(compute_pipeline_emit)(struct anv_compute_pipeline *pipeline)
 {
    struct anv_device *device = pipeline->base.device;
    const struct intel_device_info *devinfo = device->info;
-   const struct elk_cs_prog_data *cs_prog_data = get_cs_prog_data(pipeline);
+   const struct brw_cs_prog_data *cs_prog_data = get_cs_prog_data(pipeline);
 
    anv_pipeline_setup_l3_config(&pipeline->base, cs_prog_data->base.total_shared > 0);
 
    const struct intel_cs_dispatch_info dispatch =
-      elk_cs_get_dispatch_info(devinfo, cs_prog_data, NULL);
+      brw_cs_get_dispatch_info(devinfo, cs_prog_data, NULL);
    const uint32_t vfe_curbe_allocation =
       align(cs_prog_data->push.per_thread.regs * dispatch.threads +
             cs_prog_data->push.cross_thread.regs, 2);
@@ -1933,7 +1939,7 @@ genX(compute_pipeline_emit)(struct anv_compute_pipeline *pipeline)
    struct GENX(INTERFACE_DESCRIPTOR_DATA) desc = {
       .KernelStartPointer     =
          cs_bin->kernel.offset +
-         elk_cs_prog_data_prog_offset(cs_prog_data, dispatch.simd_size),
+         brw_cs_prog_data_prog_offset(cs_prog_data, dispatch.simd_size),
       .SamplerCount           = get_sampler_count(cs_bin),
       /* We add 1 because the CS indirect parameters buffer isn't accounted
        * for in bind_map.surface_count.

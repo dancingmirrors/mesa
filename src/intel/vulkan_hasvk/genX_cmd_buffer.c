@@ -2953,7 +2953,7 @@ cmd_buffer_emit_clip(struct anv_cmd_buffer *cmd_buffer)
 
    struct anv_graphics_pipeline *pipeline = cmd_buffer->state.gfx.pipeline;
    if (anv_pipeline_is_primitive(pipeline)) {
-      const struct elk_vue_prog_data *last =
+      const struct brw_vue_prog_data *last =
          anv_pipeline_get_last_vue_prog_data(pipeline);
       if (last->vue_map.slots_valid & VARYING_BIT_VIEWPORT) {
          clip.MaximumVPIndex = dyn->vp.viewport_count > 0 ?
@@ -3551,7 +3551,7 @@ update_dirty_vbs_for_gfx8_vb_flush(struct anv_cmd_buffer *cmd_buffer,
                                    uint32_t access_type)
 {
    struct anv_graphics_pipeline *pipeline = cmd_buffer->state.gfx.pipeline;
-   const struct elk_vs_prog_data *vs_prog_data = get_vs_prog_data(pipeline);
+   const struct brw_vs_prog_data *vs_prog_data = get_vs_prog_data(pipeline);
 
    uint64_t vb_used = pipeline->vb_used;
    if (vs_prog_data->uses_firstvertex ||
@@ -3567,7 +3567,7 @@ update_dirty_vbs_for_gfx8_vb_flush(struct anv_cmd_buffer *cmd_buffer,
 
 ALWAYS_INLINE static void
 cmd_buffer_emit_vertex_constants_and_flush(struct anv_cmd_buffer *cmd_buffer,
-                                           const struct elk_vs_prog_data *vs_prog_data,
+                                           const struct brw_vs_prog_data *vs_prog_data,
                                            uint32_t base_vertex,
                                            uint32_t base_instance,
                                            uint32_t draw_id,
@@ -3599,7 +3599,7 @@ void genX(CmdDraw)(
 {
    ANV_FROM_HANDLE(anv_cmd_buffer, cmd_buffer, commandBuffer);
    struct anv_graphics_pipeline *pipeline = cmd_buffer->state.gfx.pipeline;
-   const struct elk_vs_prog_data *vs_prog_data = get_vs_prog_data(pipeline);
+   const struct brw_vs_prog_data *vs_prog_data = get_vs_prog_data(pipeline);
 
    if (anv_batch_has_error(&cmd_buffer->batch))
       return;
@@ -3653,7 +3653,7 @@ void genX(CmdDrawMultiEXT)(
 {
    ANV_FROM_HANDLE(anv_cmd_buffer, cmd_buffer, commandBuffer);
    struct anv_graphics_pipeline *pipeline = cmd_buffer->state.gfx.pipeline;
-   const struct elk_vs_prog_data *vs_prog_data = get_vs_prog_data(pipeline);
+   const struct brw_vs_prog_data *vs_prog_data = get_vs_prog_data(pipeline);
 
    if (anv_batch_has_error(&cmd_buffer->batch))
       return;
@@ -3704,7 +3704,7 @@ void genX(CmdDrawIndexed)(
 {
    ANV_FROM_HANDLE(anv_cmd_buffer, cmd_buffer, commandBuffer);
    struct anv_graphics_pipeline *pipeline = cmd_buffer->state.gfx.pipeline;
-   const struct elk_vs_prog_data *vs_prog_data = get_vs_prog_data(pipeline);
+   const struct brw_vs_prog_data *vs_prog_data = get_vs_prog_data(pipeline);
 
    if (anv_batch_has_error(&cmd_buffer->batch))
       return;
@@ -3760,7 +3760,7 @@ void genX(CmdDrawMultiIndexedEXT)(
 {
    ANV_FROM_HANDLE(anv_cmd_buffer, cmd_buffer, commandBuffer);
    struct anv_graphics_pipeline *pipeline = cmd_buffer->state.gfx.pipeline;
-   const struct elk_vs_prog_data *vs_prog_data = get_vs_prog_data(pipeline);
+   const struct brw_vs_prog_data *vs_prog_data = get_vs_prog_data(pipeline);
 
    if (anv_batch_has_error(&cmd_buffer->batch))
       return;
@@ -3880,7 +3880,7 @@ void genX(CmdDrawIndirectByteCountEXT)(
    ANV_FROM_HANDLE(anv_cmd_buffer, cmd_buffer, commandBuffer);
    ANV_FROM_HANDLE(anv_buffer, counter_buffer, counterBuffer);
    struct anv_graphics_pipeline *pipeline = cmd_buffer->state.gfx.pipeline;
-   const struct elk_vs_prog_data *vs_prog_data = get_vs_prog_data(pipeline);
+   const struct brw_vs_prog_data *vs_prog_data = get_vs_prog_data(pipeline);
 
    /* firstVertex is always zero for this draw function */
    const uint32_t firstVertex = 0;
@@ -3991,7 +3991,7 @@ void genX(CmdDrawIndirect)(
    ANV_FROM_HANDLE(anv_cmd_buffer, cmd_buffer, commandBuffer);
    ANV_FROM_HANDLE(anv_buffer, buffer, _buffer);
    struct anv_graphics_pipeline *pipeline = cmd_buffer->state.gfx.pipeline;
-   const struct elk_vs_prog_data *vs_prog_data = get_vs_prog_data(pipeline);
+   const struct brw_vs_prog_data *vs_prog_data = get_vs_prog_data(pipeline);
 
    if (anv_batch_has_error(&cmd_buffer->batch))
       return;
@@ -4048,7 +4048,7 @@ void genX(CmdDrawIndexedIndirect)(
    ANV_FROM_HANDLE(anv_cmd_buffer, cmd_buffer, commandBuffer);
    ANV_FROM_HANDLE(anv_buffer, buffer, _buffer);
    struct anv_graphics_pipeline *pipeline = cmd_buffer->state.gfx.pipeline;
-   const struct elk_vs_prog_data *vs_prog_data = get_vs_prog_data(pipeline);
+   const struct brw_vs_prog_data *vs_prog_data = get_vs_prog_data(pipeline);
 
    if (anv_batch_has_error(&cmd_buffer->batch))
       return;
@@ -4211,7 +4211,7 @@ void genX(CmdDrawIndirectCount)(
    ANV_FROM_HANDLE(anv_buffer, count_buffer, _countBuffer);
    struct anv_cmd_state *cmd_state = &cmd_buffer->state;
    struct anv_graphics_pipeline *pipeline = cmd_state->gfx.pipeline;
-   const struct elk_vs_prog_data *vs_prog_data = get_vs_prog_data(pipeline);
+   const struct brw_vs_prog_data *vs_prog_data = get_vs_prog_data(pipeline);
 
    if (anv_batch_has_error(&cmd_buffer->batch))
       return;
@@ -4281,7 +4281,7 @@ void genX(CmdDrawIndexedIndirectCount)(
    ANV_FROM_HANDLE(anv_buffer, count_buffer, _countBuffer);
    struct anv_cmd_state *cmd_state = &cmd_buffer->state;
    struct anv_graphics_pipeline *pipeline = cmd_state->gfx.pipeline;
-   const struct elk_vs_prog_data *vs_prog_data = get_vs_prog_data(pipeline);
+   const struct brw_vs_prog_data *vs_prog_data = get_vs_prog_data(pipeline);
 
    if (anv_batch_has_error(&cmd_buffer->batch))
       return;
@@ -4576,7 +4576,7 @@ anv_cmd_buffer_push_base_group_id(struct anv_cmd_buffer *cmd_buffer,
 static inline void
 emit_gpgpu_walker(struct anv_cmd_buffer *cmd_buffer,
                   const struct anv_compute_pipeline *pipeline, bool indirect,
-                  const struct elk_cs_prog_data *prog_data,
+                  const struct brw_cs_prog_data *prog_data,
                   uint32_t groupCountX, uint32_t groupCountY,
                   uint32_t groupCountZ)
 {
@@ -4585,7 +4585,7 @@ emit_gpgpu_walker(struct anv_cmd_buffer *cmd_buffer,
 
    const struct intel_device_info *devinfo = pipeline->base.device->info;
    const struct intel_cs_dispatch_info dispatch =
-      elk_cs_get_dispatch_info(devinfo, prog_data, NULL);
+      brw_cs_get_dispatch_info(devinfo, prog_data, NULL);
 
    anv_batch_emit(&cmd_buffer->batch, GENX(GPGPU_WALKER), ggw) {
       ggw.IndirectParameterEnable      = indirect;
@@ -4607,7 +4607,7 @@ emit_gpgpu_walker(struct anv_cmd_buffer *cmd_buffer,
 static inline void
 emit_cs_walker(struct anv_cmd_buffer *cmd_buffer,
                const struct anv_compute_pipeline *pipeline, bool indirect,
-               const struct elk_cs_prog_data *prog_data,
+               const struct brw_cs_prog_data *prog_data,
                uint32_t groupCountX, uint32_t groupCountY,
                uint32_t groupCountZ)
 {
@@ -4626,7 +4626,7 @@ void genX(CmdDispatchBase)(
 {
    ANV_FROM_HANDLE(anv_cmd_buffer, cmd_buffer, commandBuffer);
    struct anv_compute_pipeline *pipeline = cmd_buffer->state.compute.pipeline;
-   const struct elk_cs_prog_data *prog_data = get_cs_prog_data(pipeline);
+   const struct brw_cs_prog_data *prog_data = get_cs_prog_data(pipeline);
 
    anv_cmd_buffer_push_base_group_id(cmd_buffer, baseGroupX,
                                      baseGroupY, baseGroupZ);
@@ -4684,7 +4684,7 @@ void genX(CmdDispatchIndirect)(
    ANV_FROM_HANDLE(anv_cmd_buffer, cmd_buffer, commandBuffer);
    ANV_FROM_HANDLE(anv_buffer, buffer, _buffer);
    struct anv_compute_pipeline *pipeline = cmd_buffer->state.compute.pipeline;
-   const struct elk_cs_prog_data *prog_data = get_cs_prog_data(pipeline);
+   const struct brw_cs_prog_data *prog_data = get_cs_prog_data(pipeline);
    struct anv_address addr = anv_address_add(buffer->address, offset);
    UNUSED struct anv_batch *batch = &cmd_buffer->batch;
 
