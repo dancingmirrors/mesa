@@ -1100,6 +1100,26 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
          fprintf(stderr, "Unmapped bitstream buffer\n");
       }
    }
+
+   /* Emit MI_FLUSH as required by the IVB PRM (Vol 2, Part 3, Section 1.6.1)
+    * The MFX decode command sequence must end with MI_FLUSH to ensure proper
+    * command buffer submission.
+    */
+#if GFX_VER == 8
+   anv_batch_emit(&cmd_buffer->batch, GENX(MI_FLUSH_DW), flush) {
+      flush.PostSyncOperation = NoWrite;
+   }
+#elif GFX_VERx10 <= 75
+   anv_batch_emit(&cmd_buffer->batch, GENX(PIPE_CONTROL), pc) {
+      pc.DCFlushEnable = 1;
+      pc.RenderTargetCacheFlushEnable = 1;
+      pc.VFCacheInvalidationEnable = 1;
+      pc.StateCacheInvalidationEnable = 1;
+      pc.CommandStreamerStallEnable = 1;
+      pc.StallAtPixelScoreboard = 1;
+      pc.DepthStallEnable = true;
+   };
+#endif
 #undef HEADER_OFFSET
 }
 
