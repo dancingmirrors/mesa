@@ -536,6 +536,11 @@ anv_vaapi_import_surface_from_image(struct anv_device *device,
    uint32_t plane = anv_image_aspect_to_plane(image, VK_IMAGE_ASPECT_COLOR_BIT);
    const struct anv_surface *surface = &image->planes[plane].primary_surface;
    
+   /* Get the DRM format modifier for the image.
+    * For video on Gen7/7.5/8, we need Y-tiling for compatibility with crocus VA-API driver.
+    */
+   uint64_t drm_modifier = image->vk.drm_format_mod;
+   
    /* Set up DMA-buf descriptor for VA-API
     * For NV12 format (YUV 4:2:0), we have 2 planes:
     * - Plane 0: Y (luma)
@@ -549,6 +554,7 @@ anv_vaapi_import_surface_from_image(struct anv_device *device,
       .buffers = (uintptr_t *)&fd,
       .flags = 0,
       .num_planes = 2,  /* Y and UV for NV12 */
+      .modifier = drm_modifier,  /* Y-tiled for Gen7/7.5/8 */
    };
    
    /* Set stride (row pitch) for both planes
