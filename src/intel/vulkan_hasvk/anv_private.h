@@ -103,6 +103,7 @@ struct anv_buffer_view;
 struct anv_image;
 struct anv_image_view;
 struct anv_instance;
+struct anv_vaapi_session;
 
 struct intel_perf_config;
 struct intel_perf_counter_pass;
@@ -1119,6 +1120,9 @@ struct anv_device
    struct intel_debug_block_frame *debug_frame_desc;
 
    struct intel_ds_device ds;
+
+   /* VA-API display for video decode bridge */
+   void *va_display;
 };
 
 static inline bool
@@ -3825,6 +3829,9 @@ struct anv_video_session
 
    /* the decoder needs some private memory allocations */
    struct anv_vid_mem vid_mem[ANV_VID_MEM_H264_MAX];
+
+   /* VA-API bridge session for hardware decode */
+   struct anv_vaapi_session *vaapi_session;
 };
 
 struct anv_video_session_params

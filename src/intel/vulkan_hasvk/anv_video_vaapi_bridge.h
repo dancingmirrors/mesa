@@ -1,0 +1,154 @@
+/*
+ * Copyright © 2024 Mesa Contributors
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a
+ * copy of this software and associated documentation files (the "Software"),
+ * to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense,
+ * and/or sell copies of the Software, and to permit persons to whom the
+ * Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice (including the next
+ * paragraph) shall be included in all copies or substantial portions of the
+ * Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL
+ * THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+ * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+ * IN THE SOFTWARE.
+ */
+
+#ifndef ANV_VIDEO_VAAPI_BRIDGE_H
+#define ANV_VIDEO_VAAPI_BRIDGE_H
+
+#include <va/va.h>
+#include <va/va_drm.h>
+
+#include "anv_private.h"
+
+/**
+ * VA-API Bridge for HasVK Video Decode
+ * 
+ * This module provides a bridge between Vulkan Video decode operations
+ * and VA-API, leveraging the stable VA-API implementation on Gen7/7.5/8
+ * hardware through the crocus driver.
+ * 
+ * Architecture:
+ *   Application → HasVK Vulkan Video API → anv_video.c
+ *       → anv_video_vaapi_bridge.c → VA-API → Crocus → Hardware
+ */
+
+/**
+ * VA-API session state
+ * 
+ * Manages the VA-API objects associated with a Vulkan video session.
+ */
+struct anv_vaapi_session {
+   VADisplay va_display;          /* VA display handle */
+   VAContextID va_context;        /* VA decode context */
+   VAConfigID va_config;          /* VA configuration */
+   
+   /* DPB (Decoded Picture Buffer) surfaces */
+   VASurfaceID *va_surfaces;      /* Array of VA surfaces for reference frames */
+   uint32_t num_surfaces;         /* Number of surfaces allocated */
+   
+   /* Parameter buffers for decode operations */
+   VABufferID va_picture_param;   /* Picture parameter buffer */
+   VABufferID va_slice_param;     /* Slice parameter buffer */
+   VABufferID va_slice_data;      /* Slice data buffer */
+   
+   /* Session properties */
+   uint32_t width;                /* Video frame width */
+   uint32_t height;               /* Video frame height */
+   VAProfile va_profile;          /* VA-API profile (e.g., VAProfileH264Main) */
+};
+
+/**
+ * Initialize VA-API bridge for a video session
+ * 
+ * Creates VA-API display, config, and context for video decoding.
+ * 
+ * @param device        ANV device
+ * @param vid           Video session to initialize
+ * @param pCreateInfo   Vulkan video session creation info
+ * @return VK_SUCCESS on success, error code otherwise
+ */
+VkResult
+anv_vaapi_session_create(struct anv_device *device,
+                         struct anv_video_session *vid,
+                         const VkVideoSessionCreateInfoKHR *pCreateInfo);
+
+/**
+ * Destroy VA-API bridge session
+ * 
+ * Releases all VA-API resources associated with the video session.
+ * 
+ * @param device  ANV device
+ * @param vid     Video session to destroy
+ */
+void
+anv_vaapi_session_destroy(struct anv_device *device,
+                          struct anv_video_session *vid);
+
+/**
+ * Decode a frame using VA-API
+ * 
+ * Translates Vulkan video decode info to VA-API calls and submits
+ * the decode operation.
+ * 
+ * @param cmd_buffer   Command buffer
+ * @param frame_info   Vulkan decode info
+ * @return VK_SUCCESS on success, error code otherwise
+ */
+VkResult
+anv_vaapi_decode_frame(struct anv_cmd_buffer *cmd_buffer,
+                       const VkVideoDecodeInfoKHR *frame_info);
+
+/**
+ * Get VA display from device
+ * 
+ * Returns the VA display associated with the device, creating it
+ * if necessary.
+ * 
+ * @param device  ANV device
+ * @return VA display handle or NULL on failure
+ */
+VADisplay
+anv_vaapi_get_display(struct anv_device *device);
+
+/**
+ * Export Vulkan image as DMA-buf
+ * 
+ * Exports a Vulkan video surface as a DMA-buf file descriptor
+ * for sharing with VA-API.
+ * 
+ * @param device   ANV device
+ * @param image    Image to export
+ * @param fd_out   Output file descriptor
+ * @return VK_SUCCESS on success, error code otherwise
+ */
+VkResult
+anv_vaapi_export_video_surface_dmabuf(struct anv_device *device,
+                                      struct anv_image *image,
+                                      int *fd_out);
+
+/**
+ * Import DMA-buf into VA-API surface
+ * 
+ * Creates a VA-API surface from a DMA-buf file descriptor exported
+ * from a Vulkan image.
+ * 
+ * @param device      ANV device
+ * @param image       Source Vulkan image
+ * @param surface_id  Output VA surface ID
+ * @return VK_SUCCESS on success, error code otherwise
+ */
+VkResult
+anv_vaapi_import_surface_from_image(struct anv_device *device,
+                                    struct anv_image *image,
+                                    VASurfaceID *surface_id);
+
+#endif /* ANV_VIDEO_VAAPI_BRIDGE_H */
