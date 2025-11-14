@@ -854,7 +854,6 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
                                        vid_dmv_top_surface).bo;
          }
 #if GFX_VERx10 == 70
-         /* IVB: MOCS fields are split into CacheabilityControl and GraphicsDataType */
          uint32_t dmv_read_mocs = anv_mocs(cmd_buffer->device, ref_iv->image->bindings[0].address.bo, 0);
 
          avc_directmode.DirectMVBufferAddress[idx * 2] =
@@ -884,7 +883,6 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       }
 
 #if GFX_VERx10 == 70
-      /* IVB: MOCS fields are split into CacheabilityControl and GraphicsDataType */
       uint32_t dmv_write_mocs = anv_mocs(cmd_buffer->device, img->bindings[0].address.bo, 0);
 
       avc_directmode.DirectMVBufferWriteAddress[0] =
@@ -1101,10 +1099,6 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       }
    }
 
-   /* Emit MI_FLUSH as required by the IVB PRM (Vol 2, Part 3, Section 1.6.1)
-    * The MFX decode command sequence must end with MI_FLUSH to ensure proper
-    * command buffer submission.
-    */
 #if GFX_VER == 8
    anv_batch_emit(&cmd_buffer->batch, GENX(MI_FLUSH_DW), flush) {
       flush.PostSyncOperation = NoWrite;
