@@ -2321,6 +2321,8 @@ compaction_state_init(struct compaction_state *c,
       c->src1_index_table = gfx8_src_index_table;
       break;
    case 9:
+   case 8:
+   case 7:
       c->control_index_table = gfx8_control_index_table;
       c->datatype_table = gfx8_datatype_table;
       c->subreg_table = gfx8_subreg_table;
