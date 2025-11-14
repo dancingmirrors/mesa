@@ -26,13 +26,13 @@
 #include "anv_private.h"
 #include "anv_measure.h"
 
-/* These are defined in anv_private.h and blorp_genX_exec_elk.h */
+/* These are defined in anv_private.h and blorp_genX_exec_brw.h */
 #undef __gen_address_type
 #undef __gen_user_data
 #undef __gen_combine_address
 
 #include "common/intel_l3_config.h"
-#include "blorp/blorp_genX_exec_elk.h"
+#include "blorp/blorp_genX_exec_brw.h"
 
 #include "ds/intel_tracepoints.h"
 
@@ -118,6 +118,15 @@ blorp_get_surface_base_address(struct blorp_batch *batch)
       .buffer = cmd_buffer->device->surface_state_pool.block_pool.bo,
       .offset = 0,
    };
+}
+
+static uint32_t
+blorp_get_dynamic_state(UNUSED struct blorp_batch *batch,
+                        UNUSED enum blorp_dynamic_state name)
+{
+   /* hasvk doesn't use cached dynamic states */
+   UNREACHABLE("hasvk blorp doesn't support cached dynamic states");
+   return 0;
 }
 
 static void *

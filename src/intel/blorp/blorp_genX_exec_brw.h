@@ -417,7 +417,13 @@ blorp_fill_vertex_buffer_state(struct GENX(VERTEX_BUFFER_STATE) *vb,
    vb[idx].BufferPitch = stride;
    vb[idx].MOCS = addr.mocs;
    vb[idx].AddressModifyEnable = true;
+#if GFX_VER >= 8
    vb[idx].BufferSize = size;
+#else
+   vb[idx].BufferAccessType = stride > 0 ? VERTEXDATA : INSTANCEDATA;
+   vb[idx].EndAddress = vb[idx].BufferStartingAddress;
+   vb[idx].EndAddress.offset += size - 1;
+#endif
 
 #if GFX_VER >= 12
    vb[idx].L3BypassDisable = true;
@@ -573,6 +579,7 @@ blorp_emit_vertex_elements(struct blorp_batch *batch,
       vf.StatisticsEnable = false;
    }
 
+#if GFX_VER >= 8
    /* Overwrite Render Target Array Index (2nd dword) in the VUE header with
     * primitive instance identifier. This is used for layered clears.
     */
@@ -608,6 +615,7 @@ blorp_emit_vertex_elements(struct blorp_batch *batch,
    blorp_emit(batch, GENX(3DSTATE_VF_TOPOLOGY), topo) {
       topo.PrimitiveTopologyType = _3DPRIM_RECTLIST;
    }
+#endif /* GFX_VER >= 8 */
 }
 
 /* 3DSTATE_VIEWPORT_STATE_POINTERS */
@@ -705,7 +713,7 @@ blorp_emit_vs_config(struct blorp_batch *batch,
             batch->blorp->isl_dev->info->max_vs_threads - 1;
 
          assert(vs_prog_data->base.dispatch_mode == INTEL_DISPATCH_MODE_SIMD8);
-#if GFX_VER < 20
+#if GFX_VER >= 8 && GFX_VER < 20
          vs.SIMD8DispatchEnable = true;
 #endif
 
@@ -748,9 +756,11 @@ blorp_emit_sf_config(struct blorp_batch *batch,
 #endif
    }
 
+#if GFX_VER >= 8
    blorp_emit(batch, GENX(3DSTATE_RASTER), raster) {
       raster.CullMode = CULLMODE_NONE;
    }
+#endif
 
    blorp_emit(batch, GENX(3DSTATE_SBE), sbe) {
       sbe.VertexURBEntryReadOffset = 1;
@@ -762,11 +772,15 @@ blorp_emit_sf_config(struct blorp_batch *batch,
          sbe.NumberofSFOutputAttributes = 0;
          sbe.VertexURBEntryReadLength = 1;
       }
+#if GFX_VER >= 8
       sbe.ForceVertexURBEntryReadLength = true;
       sbe.ForceVertexURBEntryReadOffset = true;
+#endif
 
+#if GFX_VER >= 9
       for (unsigned i = 0; i < 32; i++)
          sbe.AttributeActiveComponentFormat[i] = ACF_XYZW;
+#endif
    }
 }
 
@@ -806,7 +820,11 @@ blorp_emit_ps_config(struct blorp_batch *batch,
        * k, it implies 2(k+1) threads. It implicitly scales for different GT
        * levels (which have some # of PSDs).
        */
+#if GFX_VER >= 8
       ps.MaximumNumberofThreadsPerPSD = devinfo->max_threads_per_psd - 1;
+#else
+      ps.MaximumNumberofThreads = devinfo->max_threads_per_psd - 1;
+#endif
 
       switch (params->fast_clear_op) {
       case ISL_AUX_OP_NONE:
@@ -818,12 +836,14 @@ blorp_emit_ps_config(struct blorp_batch *batch,
          ps.RenderTargetResolveType = FAST_CLEAR_0;
          break;
 #endif /* GFX_VER >= 10 */
+#if GFX_VER >= 9
       case ISL_AUX_OP_PARTIAL_RESOLVE:
          ps.RenderTargetResolveType = RESOLVE_PARTIAL;
          break;
       case ISL_AUX_OP_FULL_RESOLVE:
          ps.RenderTargetResolveType = RESOLVE_FULL;
          break;
+#endif /* GFX_VER >= 9 */
 #endif /* GFX_VER < 20 */
       case ISL_AUX_OP_FAST_CLEAR:
          ps.RenderTargetFastClearEnable = true;
@@ -917,6 +937,7 @@ blorp_emit_ps_config(struct blorp_batch *batch,
       }
    }
 
+#if GFX_VER >= 8
    blorp_emit(batch, GENX(3DSTATE_PS_EXTRA), psx) {
       if (params->src.enabled)
          psx.PixelShaderKillsPixel = true;
@@ -924,7 +945,9 @@ blorp_emit_ps_config(struct blorp_batch *batch,
       if (prog_data) {
          psx.PixelShaderValid = true;
          psx.PixelShaderComputedDepthMode = prog_data->computed_depth_mode;
+#if GFX_VER >= 9
          psx.PixelShaderComputesStencil = prog_data->computed_stencil;
+#endif
          psx.PixelShaderIsPerSample = prog_data->persample_dispatch;
 
 #if INTEL_WA_18038825448_GFX_VER
@@ -962,6 +985,7 @@ blorp_emit_ps_config(struct blorp_batch *batch,
 #endif
       }
    }
+#endif /* GFX_VER >= 8 */
 }
 
 static void
@@ -1008,12 +1032,16 @@ blorp_emit_blend_state(struct blorp_batch *batch,
 
    blorp_emit(batch, GENX(3DSTATE_BLEND_STATE_POINTERS), sp) {
       sp.BlendStatePointer = offset;
+#if GFX_VER >= 8
       sp.BlendStatePointerValid = true;
+#endif
    }
 
+#if GFX_VER >= 8
    blorp_emit(batch, GENX(3DSTATE_PS_BLEND), ps_blend) {
       ps_blend.HasWriteableRT = true;
    }
+#endif
 }
 
 static void
@@ -1029,7 +1057,9 @@ blorp_emit_color_calc_state(struct blorp_batch *batch,
 
    blorp_emit(batch, GENX(3DSTATE_CC_STATE_POINTERS), sp) {
       sp.ColorCalcStatePointer = offset;
+#if GFX_VER >= 8
       sp.ColorCalcStatePointerValid = true;
+#endif
    }
 }
 
@@ -1037,6 +1067,7 @@ static void
 blorp_emit_depth_stencil_state(struct blorp_batch *batch,
                                const struct blorp_params *params)
 {
+#if GFX_VER >= 8
    blorp_emit(batch, GENX(3DSTATE_WM_DEPTH_STENCIL), ds) {
       if (params->depth.enabled) {
          ds.DepthBufferWriteEnable = true;
@@ -1071,9 +1102,12 @@ blorp_emit_depth_stencil_state(struct blorp_batch *batch,
          ds.StencilPassDepthPassOp = STENCILOP_REPLACE;
 
          ds.StencilWriteMask = params->stencil_mask;
+#if GFX_VER >= 9
          ds.StencilReferenceValue = params->stencil_ref;
+#endif
       }
    }
+#endif /* GFX_VER >= 8 */
 
 #if GFX_VER >= 12
    blorp_emit(batch, GENX(3DSTATE_DEPTH_BOUNDS), db) {
@@ -1115,12 +1149,18 @@ blorp_emit_pipeline(struct blorp_batch *batch,
       pc.ShaderUpdateEnable = 0x1f;
       pc.MOCS = mocs;
    }
-#else
+#elif GFX_VER >= 9
    blorp_emit(batch, GENX(3DSTATE_CONSTANT_VS), xs) { xs.MOCS = mocs; }
    blorp_emit(batch, GENX(3DSTATE_CONSTANT_HS), xs) { xs.MOCS = mocs; }
    blorp_emit(batch, GENX(3DSTATE_CONSTANT_DS), xs) { xs.MOCS = mocs; }
    blorp_emit(batch, GENX(3DSTATE_CONSTANT_GS), xs) { xs.MOCS = mocs; }
    blorp_emit(batch, GENX(3DSTATE_CONSTANT_PS), xs) { xs.MOCS = mocs; }
+#else
+   blorp_emit(batch, GENX(3DSTATE_CONSTANT_VS), xs) { }
+   blorp_emit(batch, GENX(3DSTATE_CONSTANT_HS), xs) { }
+   blorp_emit(batch, GENX(3DSTATE_CONSTANT_DS), xs) { }
+   blorp_emit(batch, GENX(3DSTATE_CONSTANT_GS), xs) { }
+   blorp_emit(batch, GENX(3DSTATE_CONSTANT_PS), xs) { }
 #endif
 
    if (params->src.enabled)
@@ -1179,6 +1219,7 @@ blorp_emit_memcpy(struct blorp_batch *batch,
                   struct blorp_address src,
                   uint32_t size)
 {
+#if GFX_VER >= 8
    assert(size % 4 == 0);
 
    for (unsigned dw = 0; dw < size; dw += 4) {
@@ -1189,6 +1230,9 @@ blorp_emit_memcpy(struct blorp_batch *batch,
       dst.offset += 4;
       src.offset += 4;
    }
+#else
+   UNREACHABLE("blorp_emit_memcpy not supported on Gfx7");
+#endif
 }
 
 static void
@@ -1307,7 +1351,7 @@ blorp_emit_null_surface_state(struct blorp_batch *batch,
 
 #if GFX_VERx10 >= 125
       .TileMode = TILE4,
-#else
+#elif GFX_VER >= 8
       .TileMode = YMAJOR,
 #endif
    };
@@ -1452,6 +1496,7 @@ blorp_emit_depth_stencil_config(struct blorp_batch *batch,
    }
 }
 
+#if GFX_VER >= 8
 /* Emits the Optimized HiZ sequence specified in the BDW+ PRMs. The
  * depth/stencil buffer extents are ignored to handle APIs which perform
  * clearing operations without such information.
@@ -1603,6 +1648,7 @@ blorp_emit_gfx8_hiz_op(struct blorp_batch *batch,
 
    blorp_measure_end(batch, params);
 }
+#endif /* GFX_VER >= 8 */
 
 static bool
 blorp_uses_bti_rt_writes(const struct blorp_batch *batch, const struct blorp_params *params)
@@ -1617,10 +1663,12 @@ blorp_uses_bti_rt_writes(const struct blorp_batch *batch, const struct blorp_par
 static void
 blorp_exec_3d(struct blorp_batch *batch, const struct blorp_params *params)
 {
+#if GFX_VER >= 8
    if (params->hiz_op != ISL_AUX_OP_NONE) {
       blorp_emit_gfx8_hiz_op(batch, params);
       return;
    }
+#endif
 
    blorp_emit_vertex_buffers(batch, params);
    blorp_emit_vertex_elements(batch, params);
@@ -1891,8 +1939,10 @@ blorp_exec_compute(struct blorp_batch *batch, const struct blorp_params *params)
       .SharedLocalMemorySize = intel_compute_slm_encode_size(GFX_VER,
                                                              prog_data->total_shared),
       .BarrierEnable = cs_prog_data->uses_barrier,
+#if GFX_VER >= 8
       .CrossThreadConstantDataReadLength =
          cs_prog_data->push.cross_thread.regs,
+#endif
    };
 
    uint32_t idd_offset;
@@ -1914,7 +1964,11 @@ blorp_exec_compute(struct blorp_batch *batch, const struct blorp_params *params)
       ggw.ThreadWidthCounterMaximum    = dispatch.threads - 1;
       ggw.ThreadGroupIDStartingX       = group_x0;
       ggw.ThreadGroupIDStartingY       = group_y0;
+#if GFX_VER >= 8
       ggw.ThreadGroupIDStartingResumeZ = group_z0;
+#else
+      ggw.ThreadGroupIDStartingZ       = group_z0;
+#endif
       ggw.ThreadGroupIDXDimension      = group_x1;
       ggw.ThreadGroupIDYDimension      = group_y1;
       ggw.ThreadGroupIDZDimension      = group_z1;
