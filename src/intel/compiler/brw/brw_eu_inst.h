@@ -445,9 +445,12 @@ brw_eu_inst_set_3src_a16_##srcN##_subreg_nr(const struct                    \
 {                                                                           \
    if (devinfo->ver <= 8) {                                                 \
       /* Gen7/8: Simple 3-bit field at bits [src_base+2:src_base] */       \
-      assert((value & ~0b111) == 0);                                        \
+      /* Value is in bytes, but 3src uses 32-bit units (0..7) */           \
+      assert((value & 0x3) == 0);  /* Must be 4-byte aligned */            \
+      unsigned subreg = value / 4;                                          \
+      assert(subreg <= 7);                                                  \
       brw_eu_inst_set_bits(inst, src_base_gen78 + 2,                        \
-                           src_base_gen78, value);                          \
+                           src_base_gen78, subreg);                         \
    } else if (devinfo->ver == 9) {                                          \
       /* Gen9: Split encoding across multiple bit positions */             \
       assert((value & ~0b11110) == 0);                                      \
@@ -456,7 +459,7 @@ brw_eu_inst_set_3src_a16_##srcN##_subreg_nr(const struct                    \
       brw_eu_inst_set_bits(inst, src_base_gen9 + 20,                        \
                            src_base_gen9 + 20, (value >> 1) & 1);           \
    } else {                                                                 \
-      unreachable("Invalid generation for 3src a16 subreg encoding");      \
+      UNREACHABLE("Invalid generation for 3src a16 subreg encoding");      \
    }                                                                        \
 }                                                                           \
 static inline unsigned                                                      \
@@ -466,7 +469,8 @@ brw_eu_inst_3src_a16_##srcN##_subreg_nr(const struct                        \
 {                                                                           \
    if (devinfo->ver <= 8) {                                                 \
       /* Gen7/8: Simple 3-bit field at bits [src_base+2:src_base] */       \
-      return brw_eu_inst_bits(inst, src_base_gen78 + 2, src_base_gen78);   \
+      /* Returns value in bytes (32-bit units * 4) */                      \
+      return brw_eu_inst_bits(inst, src_base_gen78 + 2, src_base_gen78) * 4; \
    } else if (devinfo->ver == 9) {                                          \
       /* Gen9: Split encoding across multiple bit positions */             \
       return brw_eu_inst_bits(inst, src_base_gen9 + 11,                     \
@@ -474,7 +478,7 @@ brw_eu_inst_3src_a16_##srcN##_subreg_nr(const struct                        \
              brw_eu_inst_bits(inst, src_base_gen9 + 20,                     \
                               src_base_gen9 + 20) << 1;                     \
    } else {                                                                 \
-      unreachable("Invalid generation for 3src a16 subreg encoding");      \
+      UNREACHABLE("Invalid generation for 3src a16 subreg encoding");      \
    }                                                                        \
 }
 
