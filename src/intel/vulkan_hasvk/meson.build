@@ -117,6 +117,7 @@ libanv_files = files(
   'anv_utrace.c',
   'anv_wsi.c',
   'anv_video.c',
+  'anv_video_vaapi_bridge.c',
 )
 
 anv_deps = [
@@ -129,6 +130,11 @@ anv_deps = [
   idep_vulkan_runtime_headers,
   idep_vulkan_wsi_headers,
 ]
+
+# Add VA-API dependencies for video decode bridge
+if dep_va.found()
+  anv_deps += dep_va
+endif
 anv_flags = [
   no_override_init_args,
   sse2_args,

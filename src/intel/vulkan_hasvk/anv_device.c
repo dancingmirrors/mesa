@@ -64,6 +64,8 @@
 #include "genxml/hasvk_gen7_pack.h"
 #include "genxml/genX_bits.h"
 
+#include <va/va.h>
+
 static const driOptionDescription anv_dri_options[] = {
    DRI_CONF_SECTION_PERFORMANCE DRI_CONF_ADAPTIVE_SYNC(true)
       DRI_CONF_VK_X11_OVERRIDE_MIN_IMAGE_COUNT(0)
@@ -2991,6 +2993,12 @@ anv_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
             intel_batch_print_stats(&device->decoder[i]);
          intel_batch_decode_ctx_finish(&device->decoder[i]);
       }
+   }
+
+   /* Terminate VA-API display if it was initialized */
+   if (device->va_display) {
+      vaTerminate((VADisplay)device->va_display);
+      device->va_display = NULL;
    }
 
    close(device->fd);
