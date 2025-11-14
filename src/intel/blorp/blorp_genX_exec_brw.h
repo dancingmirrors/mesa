@@ -170,7 +170,11 @@ _blorp_combine_address(struct blorp_batch *batch, void *location,
 #define __gen_user_data struct blorp_batch
 #define __gen_combine_address _blorp_combine_address
 
+#ifdef BLORP_USE_HASVK_PACK_HEADERS
+#include "genxml/hasvk_genX_pack.h"
+#else
 #include "genxml/genX_pack.h"
+#endif
 #include "common/intel_genX_state_brw.h"
 
 #define _blorp_cmd_length(cmd) cmd ## _length
