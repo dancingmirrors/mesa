@@ -1004,7 +1004,11 @@ supports_src_as_imm(const struct intel_device_info *devinfo, const brw_inst *ins
 
    case BRW_OPCODE_MAD:
       switch (devinfo->verx10) {
+      case 70:
+      case 75:
+      case 80:
       case 90:
+         /* Gen7/8/9: MAD does not support immediate operands */
          return false;
 
       case 110:
