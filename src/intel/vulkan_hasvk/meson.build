@@ -132,8 +132,11 @@ anv_deps = [
 ]
 
 # Add VA-API dependencies for video decode bridge
-if dep_va.found()
-  anv_deps += dep_va
+# Check for VA-API separately for hasvk video decode support
+_hasvk_va_name = host_machine.system() == 'windows' ? 'libva-win32' : 'libva'
+dep_hasvk_va = dependency(_hasvk_va_name, version : '>= 1.8.0', required : false)
+if dep_hasvk_va.found()
+  anv_deps += dep_hasvk_va
 endif
 anv_flags = [
   no_override_init_args,
