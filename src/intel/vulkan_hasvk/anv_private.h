@@ -49,7 +49,7 @@
 #include "decoder/intel_decoder.h"
 #include "dev/intel_device_info.h"
 #include "blorp/blorp.h"
-#include "compiler/elk/elk_compiler.h"
+#include "compiler/brw/brw_compiler.h"
 #include "ds/intel_driver_ds.h"
 #include "util/bitset.h"
 #include "util/bitscan.h"
@@ -865,7 +865,7 @@ struct anv_physical_device
    char path[20];
    struct intel_device_info info;
    bool supports_48bit_addresses;
-   struct elk_compiler *compiler;
+   struct brw_compiler *compiler;
    struct isl_device isl_dev;
    struct intel_perf_config *perf;
    /* True if hardware support is incomplete/alpha */
@@ -1004,10 +1004,10 @@ struct anv_shader_bin *anv_device_upload_kernel(struct anv_device *device,
                                                 const void *kernel_data,
                                                 uint32_t kernel_size,
                                                 const struct
-                                                elk_stage_prog_data
+                                                brw_stage_prog_data
                                                 *prog_data,
                                                 uint32_t prog_data_size,
-                                                const struct elk_compile_stats
+                                                const struct genisa_stats
                                                 *stats, uint32_t num_stats,
                                                 const struct nir_xfb_info
                                                 *xfb_info,
@@ -2827,10 +2827,10 @@ struct anv_shader_bin
    struct anv_state kernel;
    uint32_t kernel_size;
 
-   const struct elk_stage_prog_data *prog_data;
+   const struct brw_stage_prog_data *prog_data;
    uint32_t prog_data_size;
 
-   struct elk_compile_stats stats[3];
+   struct genisa_stats stats[3];
    uint32_t num_stats;
 
    struct nir_xfb_info *xfb_info;
@@ -2844,10 +2844,10 @@ struct anv_shader_bin *anv_shader_bin_create(struct anv_device *device,
                                              uint32_t key_size,
                                              const void *kernel,
                                              uint32_t kernel_size,
-                                             const struct elk_stage_prog_data
+                                             const struct brw_stage_prog_data
                                              *prog_data,
                                              uint32_t prog_data_size,
-                                             const struct elk_compile_stats
+                                             const struct genisa_stats
                                              *stats, uint32_t num_stats,
                                              const struct nir_xfb_info
                                              *xfb_info,
@@ -2870,7 +2870,7 @@ struct anv_pipeline_executable
 {
    mesa_shader_stage stage;
 
-   struct elk_compile_stats stats;
+   struct genisa_stats stats;
 
    char *nir;
    char *disasm;
@@ -3035,11 +3035,11 @@ anv_cmd_graphic_state_update_has_uint_rt(struct anv_cmd_graphics_state *state)
 }
 
 #define ANV_DECL_GET_GRAPHICS_PROG_DATA_FUNC(prefix, stage)             \
-static inline const struct elk_##prefix##_prog_data *                   \
+static inline const struct brw_##prefix##_prog_data *                   \
 get_##prefix##_prog_data(const struct anv_graphics_pipeline *pipeline)  \
 {                                                                       \
    if (anv_pipeline_has_stage(pipeline, stage)) {                       \
-      return (const struct elk_##prefix##_prog_data *)                  \
+      return (const struct brw_##prefix##_prog_data *)                  \
              pipeline->shaders[stage]->prog_data;                       \
    } else {                                                             \
       return NULL;                                                      \
@@ -3051,16 +3051,16 @@ ANV_DECL_GET_GRAPHICS_PROG_DATA_FUNC(vs, MESA_SHADER_VERTEX)
    ANV_DECL_GET_GRAPHICS_PROG_DATA_FUNC(tes, MESA_SHADER_TESS_EVAL)
    ANV_DECL_GET_GRAPHICS_PROG_DATA_FUNC(gs, MESA_SHADER_GEOMETRY)
    ANV_DECL_GET_GRAPHICS_PROG_DATA_FUNC(wm, MESA_SHADER_FRAGMENT)
-     static inline const struct elk_cs_prog_data *get_cs_prog_data(const
+     static inline const struct brw_cs_prog_data *get_cs_prog_data(const
                                                                    struct
                                                                    anv_compute_pipeline
                                                                    *pipeline)
 {
    assert(pipeline->cs);
-   return (const struct elk_cs_prog_data *) pipeline->cs->prog_data;
+   return (const struct brw_cs_prog_data *) pipeline->cs->prog_data;
 }
 
-static inline const struct elk_vue_prog_data *
+static inline const struct brw_vue_prog_data *
 anv_pipeline_get_last_vue_prog_data(const struct anv_graphics_pipeline
                                     *pipeline)
 {

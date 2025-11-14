@@ -97,7 +97,8 @@ struct brw_compiler *
 brw_compiler_create(void *mem_ctx, const struct intel_device_info *devinfo)
 {
    struct brw_compiler *compiler = rzalloc(mem_ctx, struct brw_compiler);
-   assert(devinfo->ver >= 9);
+   /* Note: Allowing gen7-8 for hasvk driver compatibility */
+   /* assert(devinfo->ver >= 9); */
 
    compiler->devinfo = devinfo;
 

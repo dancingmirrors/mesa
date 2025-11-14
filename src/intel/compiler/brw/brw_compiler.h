@@ -172,6 +172,11 @@ struct brw_compiler {
     */
    uint32_t num_lowered_storage_formats;
    uint32_t *lowered_storage_formats;
+
+   /* Fields for gen7-8 compatibility (hasvk) */
+   bool scalar_stage[MESA_ALL_SHADER_STAGES];
+   bool constant_buffer_0_is_relative;
+   bool supports_shader_constants;
 };
 
 #define brw_shader_debug_log(compiler, data, fmt, ... ) do {    \
@@ -248,6 +253,19 @@ enum brw_robustness_flags {
    BRW_ROBUSTNESS_SSBO = BITFIELD_BIT(1),
 };
 
+/* Gen7-8 compatibility */
+enum brw_sometimes {
+   BRW_NEVER = 0,
+   BRW_SOMETIMES,
+   BRW_ALWAYS
+};
+
+/* Gen7-8 compatibility: sampler key data (unused in brw but needed for hasvk) */
+struct brw_sampler_prog_key_data {
+   uint16_t swizzles[32]; /* BRW_MAX_SAMPLERS */
+   uint32_t gl_clamp_mask[3];
+} __attribute__((packed));
+
 struct brw_base_prog_key {
    unsigned program_string_id;
 
@@ -270,7 +288,10 @@ struct brw_base_prog_key {
     */
    bool limit_trig_input_range:1;
 
-   uint64_t padding:58;
+   uint64_t padding:55; /* Reduced from 58 to account for added fields */
+
+   /* Gen7-8 compatibility: sampler data */
+   struct brw_sampler_prog_key_data tex;
 };
 
 /**
@@ -596,6 +617,11 @@ struct brw_stage_prog_data {
     */
    uint8_t robust_ubo_ranges;
    unsigned push_reg_mask_param;
+
+   /* Gen7-8 compatibility: zero_push_reg is a bitfield which indicates what
+    * push registers (if any) should be zeroed by SW at the start of the shader.
+    */
+   uint64_t zero_push_reg;
 
    unsigned curb_read_length;
    unsigned total_scratch;
