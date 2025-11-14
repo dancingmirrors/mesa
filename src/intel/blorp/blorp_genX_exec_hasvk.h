@@ -31,37 +31,30 @@
  * The hasvk genxml files were crafted when BRW was still the compiler
  * for Gen7/8 and have the correct structure definitions for these
  * generations.
- *
- * We need to include the hasvk genxml BEFORE including blorp_genX_exec_brw.h
- * and then redefine the GENX macro to use the hasvk versions.
  */
 
-/* First, include hasvk genxml to get all the hasvk-specific definitions */
+/* Include blorp private header for blorp_address and blorp_batch definitions */
+#include "blorp_priv.h"
+
+/* Define the required macros for genxml before including hasvk pack headers.
+ * These are the same definitions that blorp_genX_exec_brw.h uses.
+ */
+#define __gen_address_type struct blorp_address
+#define __gen_user_data struct blorp_batch
+#define __gen_combine_address _blorp_combine_address
+
+/* Forward declare _blorp_combine_address - full definition is in blorp_genX_exec_brw.h */
+static uint64_t
+_blorp_combine_address(struct blorp_batch *batch, void *location,
+                       struct blorp_address address, uint32_t delta);
+
+/* Now include hasvk genxml to get all the hasvk-specific definitions */
 #include "genxml/hasvk_genX_pack.h"
 
-/* Now redefine GENX to use hasvk prefix for the blorp code.
- * Save the original definition first.
- */
-#pragma push_macro("GENX")
-#undef GENX
-
-#if GFX_VERx10 == 70
-#  define GENX(X) GFX7_##X
-#elif GFX_VERx10 == 75
-#  define GENX(X) GFX75_##X
-#elif GFX_VERx10 == 80
-#  define GENX(X) GFX8_##X
-#else
-#  error "hasvk only supports Gen 7, 7.5, and 8"
-#endif
-
-/* Prevent blorp from including genX_pack.h since we already have hasvk definitions */
+/* Prevent blorp from re-including genX_pack.h since we already have hasvk definitions */
 #define GENX_PACK_H
 
 /* Now include the main blorp implementation */
 #include "blorp_genX_exec_brw.h"
-
-/* Restore original GENX macro */
-#pragma pop_macro("GENX")
 
 #endif /* BLORP_GENX_EXEC_HASVK_H */
