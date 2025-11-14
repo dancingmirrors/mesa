@@ -893,6 +893,39 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
     */
 #define HEADER_OFFSET 3
 
+   /* Map the bitstream buffer to access slice header data.
+    * In long format mode, we need to parse slice headers to extract parameters.
+    */
+   void *buffer_map = NULL;
+   bool needs_unmap = false;
+   
+   if (src_buffer->address.bo) {
+      if (src_buffer->address.bo->map) {
+         /* Buffer is already mapped */
+         buffer_map = src_buffer->address.bo->map;
+      } else {
+         /* Buffer is not mapped, map it temporarily */
+         VkResult result = anv_device_map_bo(cmd_buffer->device,
+                                            src_buffer->address.bo,
+                                            0,
+                                            src_buffer->address.bo->size,
+                                            0, &buffer_map);
+         if (result == VK_SUCCESS) {
+            needs_unmap = true;
+            if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+               fprintf(stderr, "Mapped bitstream buffer: bo=%p, size=%lu, map=%p\n",
+                      (void*)src_buffer->address.bo,
+                      (unsigned long)src_buffer->address.bo->size,
+                      buffer_map);
+            }
+         } else {
+            if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+               fprintf(stderr, "Failed to map bitstream buffer for slice parsing\n");
+            }
+         }
+      }
+   }
+
    for (unsigned s = 0; s < h264_pic_info->sliceCount; s++) {
       bool last_slice = s == (h264_pic_info->sliceCount - 1);
       uint32_t current_offset = h264_pic_info->pSliceOffsets[s];
@@ -903,33 +936,29 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       else
           slice_data_size = h264_pic_info->pSliceOffsets[s+1] - current_offset;
 
-      /* In long format mode, we need to parse slice headers to extract parameters.
-       * Try to access the buffer data if it's mapped.
-       */
+      /* Default values in case buffer is not accessible */
       uint32_t slice_type = h264_pic_info->pStdPictureInfo->flags.is_intra ? 2 : 0;
       int32_t slice_qp_delta = 0;
       uint8_t nal_unit_type = 1; /* Non-IDR slice by default */
       uint8_t nal_ref_idc = 0;
 
-      /* Try to parse slice header from the buffer if it's mapped */
-      if (src_buffer->address.bo && src_buffer->address.bo->map) {
-         const uint8_t *slice_data = (const uint8_t *)src_buffer->address.bo->map +
+      /* Parse slice header from the buffer if it's accessible */
+      if (buffer_map && slice_data_size > 0) {
+         const uint8_t *slice_data = (const uint8_t *)buffer_map +
                                       src_buffer->address.offset +
                                       frame_info->srcBufferOffset + current_offset;
 
          /* Extract NAL unit type and ref_idc from NAL header
           * NAL header format: forbidden_zero_bit(1) | nal_ref_idc(2) | nal_unit_type(5) */
-         if (slice_data_size > 0) {
-            uint8_t nal_header = slice_data[0];
-            nal_ref_idc = (nal_header >> 5) & 0x3;
-            nal_unit_type = nal_header & 0x1F;
+         uint8_t nal_header = slice_data[0];
+         nal_ref_idc = (nal_header >> 5) & 0x3;
+         nal_unit_type = nal_header & 0x1F;
 
-            /* Parse the slice header */
-            anv_h264_parse_slice_header(slice_data, slice_data_size,
-                                       sps, pps,
-                                       nal_unit_type, nal_ref_idc,
-                                       &slice_type, &slice_qp_delta);
-         }
+         /* Parse the slice header */
+         anv_h264_parse_slice_header(slice_data, slice_data_size,
+                                    sps, pps,
+                                    nal_unit_type, nal_ref_idc,
+                                    &slice_type, &slice_qp_delta);
       }
 
       if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
@@ -962,6 +991,15 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
          /* Start decoding after the 3-byte NAL header */
          avc_bsd.IndirectBSDDataStartAddress = buffer_offset + current_offset + HEADER_OFFSET;
       };
+   }
+
+   /* Unmap the buffer if we mapped it */
+   if (needs_unmap && buffer_map) {
+      anv_device_unmap_bo(cmd_buffer->device, src_buffer->address.bo,
+                         buffer_map, src_buffer->address.bo->size);
+      if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+         fprintf(stderr, "Unmapped bitstream buffer\n");
+      }
    }
 #undef HEADER_OFFSET
 }
