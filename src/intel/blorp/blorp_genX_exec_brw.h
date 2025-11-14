@@ -32,6 +32,7 @@
 #include "common/intel_l3_config.h"
 #include "genxml/gen_macros.h"
 #include "compiler/brw/brw_compiler.h"
+#include <string.h>
 
 /**
  * This file provides the blorp pipeline setup and execution functionality.
@@ -806,9 +807,13 @@ blorp_emit_ps_config(struct blorp_batch *batch,
     * We must explicitly zero all fields to avoid assertion failures in
     * util_bitpack_uint() when uninitialized values exceed field bit widths.
     */
-   struct GENX(3DSTATE_WM) wm = {
-      GENX(3DSTATE_WM_header),
-   };
+   struct GENX(3DSTATE_WM) wm;
+   memset(&wm, 0, sizeof(wm));
+   wm.DWordLength = 1;
+   wm._3DCommandSubOpcode = 20;
+   wm._3DCommandOpcode = 0;
+   wm.CommandSubType = 3;
+   wm.CommandType = 3;
    GENX(3DSTATE_WM_pack)(batch, blorp_emit_dwords(batch, GENX(3DSTATE_WM_length)), &wm);
 
    blorp_emit(batch, GENX(3DSTATE_PS), ps) {
