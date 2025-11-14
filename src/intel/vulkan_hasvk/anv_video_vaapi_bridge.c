@@ -533,8 +533,10 @@ anv_vaapi_import_surface_from_image(struct anv_device *device,
       return result;
    }
    
-   /* Get image layout information for stride and offsets */
-   uint32_t plane = anv_image_aspect_to_plane(image, VK_IMAGE_ASPECT_COLOR_BIT);
+   /* Get image layout information for stride and offsets
+    * For NV12 (multi-planar format), use PLANE_0 aspect for the Y plane
+    */
+   uint32_t plane = anv_image_aspect_to_plane(image, VK_IMAGE_ASPECT_PLANE_0_BIT);
    const struct anv_surface *surface = &image->planes[plane].primary_surface;
    
    /* Set up DMA-buf descriptor for VA-API
