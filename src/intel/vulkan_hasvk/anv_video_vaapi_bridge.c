@@ -207,15 +207,16 @@ anv_vaapi_session_create(struct anv_device *device,
    }
    
    /* Create VA context
-    * Note: Surfaces will be created later when images are bound
+    * Pass NULL for render_targets since surfaces will be created dynamically
+    * when images are bound during decode operations.
     */
    va_status = vaCreateContext(session->va_display,
                                session->va_config,
                                session->width,
                                session->height,
                                VA_PROGRESSIVE,
-                               session->va_surfaces,
-                               session->num_surfaces,
+                               NULL,  /* render_targets - populated dynamically */
+                               0,     /* num_render_targets */
                                &session->va_context);
    if (va_status != VA_STATUS_SUCCESS) {
       vk_loge(VK_LOG_OBJS(&device->vk.base),
