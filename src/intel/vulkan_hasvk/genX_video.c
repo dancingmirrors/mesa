@@ -246,14 +246,14 @@ anv_h264_parse_slice_header(const uint8_t *slice_data, size_t slice_size,
        (pps->weighted_bipred_idc == 1 && *slice_type == 1)) {
       /* Parse luma_log2_weight_denom */
       vl_rbsp_ue(&rbsp);
-      
+
       /* Parse chroma_log2_weight_denom if chroma is present */
       if (sps->chroma_format_idc != 0)
          vl_rbsp_ue(&rbsp);
 
       /* Get number of reference pictures for L0 */
       uint32_t num_ref_idx_l0 = pps->num_ref_idx_l0_default_active_minus1 + 1;
-      
+
       /* Parse weights for L0 references */
       for (uint32_t i = 0; i < num_ref_idx_l0; i++) {
          uint32_t luma_weight_flag = vl_rbsp_u(&rbsp, 1);
@@ -331,7 +331,7 @@ anv_h264_parse_slice_header(const uint8_t *slice_data, size_t slice_size,
    /* Finally, parse slice_qp_delta */
    CHECK_BITS(1);
    *slice_qp_delta = vl_rbsp_se(&rbsp);
-   
+
    #undef CHECK_BITS
 }
 
@@ -421,7 +421,7 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       ss.SurfacePitch = img->planes[0].primary_surface.isl.row_pitch_B - 1;
       ss.TiledSurface = img->planes[0].primary_surface.isl.tiling != ISL_TILING_LINEAR;
       ss.TileWalk = TW_YMAJOR;
-      
+
       /* Calculate chroma plane Y offset from ISL surface layout.
        * For NV12 format, planes[1] contains the interleaved U/V chroma plane.
        * The Y offset must be in units of rows, calculated from the plane's
@@ -856,13 +856,13 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
 #if GFX_VERx10 == 70
          /* IVB: MOCS fields are split into CacheabilityControl and GraphicsDataType */
          uint32_t dmv_read_mocs = anv_mocs(cmd_buffer->device, ref_iv->image->bindings[0].address.bo, 0);
-         
+
          avc_directmode.DirectMVBufferAddress[idx * 2] =
             anv_image_address(ref_iv->image,
                               &ref_iv->image->vid_dmv_top_surface);
          avc_directmode.DirectMVBufferCacheabilityControl[idx * 2] = dmv_read_mocs & 0x3;
          avc_directmode.DirectMVBufferGraphicsDataType[idx * 2] = (dmv_read_mocs >> 2) & 0x1;
-         
+
          avc_directmode.DirectMVBufferAddress[idx * 2 + 1] =
             anv_image_address(ref_iv->image,
                               &ref_iv->image->vid_dmv_top_surface);
@@ -886,12 +886,12 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
 #if GFX_VERx10 == 70
       /* IVB: MOCS fields are split into CacheabilityControl and GraphicsDataType */
       uint32_t dmv_write_mocs = anv_mocs(cmd_buffer->device, img->bindings[0].address.bo, 0);
-      
+
       avc_directmode.DirectMVBufferWriteAddress[0] =
          anv_image_address(img, &img->vid_dmv_top_surface);
       avc_directmode.DirectMVBufferWriteCacheabilityControl[0] = dmv_write_mocs & 0x3;
       avc_directmode.DirectMVBufferWriteGraphicsDataType[0] = (dmv_write_mocs >> 2) & 0x1;
-      
+
       avc_directmode.DirectMVBufferWriteAddress[1] =
          anv_image_address(img, &img->vid_dmv_top_surface);
       avc_directmode.DirectMVBufferWriteCacheabilityControl[1] = dmv_write_mocs & 0x3;
@@ -918,7 +918,7 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
 
    if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
       fprintf(stderr, "H.264 Decode: %u slices, src_buffer=%p, bo=%p, mapped=%s\n",
-              h264_pic_info->sliceCount, 
+              h264_pic_info->sliceCount,
               (void*)src_buffer,
               src_buffer->address.bo,
               (src_buffer->address.bo && src_buffer->address.bo->map) ? "yes" : "no");
@@ -935,7 +935,7 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
     */
    void *buffer_map = NULL;
    bool needs_unmap = false;
-   
+
    if (src_buffer->address.bo) {
       if (src_buffer->address.bo->map) {
          /* Buffer is already mapped */
@@ -991,16 +991,16 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
           * The NAL header is the byte immediately after the start code */
          const uint8_t *nal_start = slice_data;
          size_t nal_size = slice_data_size;
-         
+
          /* Check for 3-byte start code (0x000001) */
-         if (slice_data_size >= 4 && 
+         if (slice_data_size >= 4 &&
              slice_data[0] == 0x00 && slice_data[1] == 0x00 && slice_data[2] == 0x01) {
             nal_start = slice_data + 3;
             nal_size = slice_data_size - 3;
          }
          /* Check for 4-byte start code (0x00000001) */
          else if (slice_data_size >= 5 &&
-                  slice_data[0] == 0x00 && slice_data[1] == 0x00 && 
+                  slice_data[0] == 0x00 && slice_data[1] == 0x00 &&
                   slice_data[2] == 0x00 && slice_data[3] == 0x01) {
             nal_start = slice_data + 4;
             nal_size = slice_data_size - 4;
