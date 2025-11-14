@@ -120,6 +120,15 @@ blorp_get_surface_base_address(struct blorp_batch *batch)
    };
 }
 
+static uint32_t
+blorp_get_dynamic_state(UNUSED struct blorp_batch *batch,
+                        UNUSED enum blorp_dynamic_state name)
+{
+   /* hasvk doesn't use cached dynamic states */
+   UNREACHABLE("hasvk blorp doesn't support cached dynamic states");
+   return 0;
+}
+
 static void *
 blorp_alloc_dynamic_state(struct blorp_batch *batch,
                           uint32_t size, uint32_t alignment, uint32_t *offset)

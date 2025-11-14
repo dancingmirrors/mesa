@@ -1219,6 +1219,7 @@ blorp_emit_memcpy(struct blorp_batch *batch,
                   struct blorp_address src,
                   uint32_t size)
 {
+#if GFX_VER >= 8
    assert(size % 4 == 0);
 
    for (unsigned dw = 0; dw < size; dw += 4) {
@@ -1229,6 +1230,9 @@ blorp_emit_memcpy(struct blorp_batch *batch,
       dst.offset += 4;
       src.offset += 4;
    }
+#else
+   UNREACHABLE("blorp_emit_memcpy not supported on Gfx7");
+#endif
 }
 
 static void
@@ -1347,7 +1351,7 @@ blorp_emit_null_surface_state(struct blorp_batch *batch,
 
 #if GFX_VERx10 >= 125
       .TileMode = TILE4,
-#else
+#elif GFX_VER >= 8
       .TileMode = YMAJOR,
 #endif
    };
@@ -1492,6 +1496,7 @@ blorp_emit_depth_stencil_config(struct blorp_batch *batch,
    }
 }
 
+#if GFX_VER >= 8
 /* Emits the Optimized HiZ sequence specified in the BDW+ PRMs. The
  * depth/stencil buffer extents are ignored to handle APIs which perform
  * clearing operations without such information.
@@ -1643,6 +1648,7 @@ blorp_emit_gfx8_hiz_op(struct blorp_batch *batch,
 
    blorp_measure_end(batch, params);
 }
+#endif /* GFX_VER >= 8 */
 
 static bool
 blorp_uses_bti_rt_writes(const struct blorp_batch *batch, const struct blorp_params *params)
@@ -1657,10 +1663,12 @@ blorp_uses_bti_rt_writes(const struct blorp_batch *batch, const struct blorp_par
 static void
 blorp_exec_3d(struct blorp_batch *batch, const struct blorp_params *params)
 {
+#if GFX_VER >= 8
    if (params->hiz_op != ISL_AUX_OP_NONE) {
       blorp_emit_gfx8_hiz_op(batch, params);
       return;
    }
+#endif
 
    blorp_emit_vertex_buffers(batch, params);
    blorp_emit_vertex_elements(batch, params);
@@ -1931,8 +1939,10 @@ blorp_exec_compute(struct blorp_batch *batch, const struct blorp_params *params)
       .SharedLocalMemorySize = intel_compute_slm_encode_size(GFX_VER,
                                                              prog_data->total_shared),
       .BarrierEnable = cs_prog_data->uses_barrier,
+#if GFX_VER >= 8
       .CrossThreadConstantDataReadLength =
          cs_prog_data->push.cross_thread.regs,
+#endif
    };
 
    uint32_t idd_offset;
@@ -1954,7 +1964,11 @@ blorp_exec_compute(struct blorp_batch *batch, const struct blorp_params *params)
       ggw.ThreadWidthCounterMaximum    = dispatch.threads - 1;
       ggw.ThreadGroupIDStartingX       = group_x0;
       ggw.ThreadGroupIDStartingY       = group_y0;
+#if GFX_VER >= 8
       ggw.ThreadGroupIDStartingResumeZ = group_z0;
+#else
+      ggw.ThreadGroupIDStartingZ       = group_z0;
+#endif
       ggw.ThreadGroupIDXDimension      = group_x1;
       ggw.ThreadGroupIDYDimension      = group_y1;
       ggw.ThreadGroupIDZDimension      = group_z1;
