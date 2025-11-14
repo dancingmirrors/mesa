@@ -421,7 +421,7 @@ anv_pipeline_stage_get_nir(struct anv_pipeline *pipeline,
 {
    const struct brw_compiler *compiler = pipeline->device->physical->compiler;
    const nir_shader_compiler_options *nir_options =
-      compiler->nir_options[stage->stage];
+      &compiler->nir_options[stage->stage];
    nir_shader *nir;
 
    nir = anv_device_search_for_nir(pipeline->device, cache,
@@ -485,13 +485,11 @@ anv_pipeline_lower_nir(struct anv_pipeline *pipeline,
 
    nir_shader_gather_info(nir, nir_shader_get_entrypoint(nir));
 
-   NIR_PASS(_, nir, brw_nir_lower_storage_image,
+   NIR_PASS(_, nir, brw_nir_lower_storage_image, compiler,
             &(struct brw_nir_lower_storage_image_opts) {
-            .devinfo = compiler->devinfo,
             .lower_loads = true,
             .lower_stores = true,
-            .lower_atomics = true,
-            .lower_get_size = true,
+            .lower_stores_64bit = true,
             });
 
    NIR_PASS(_, nir, nir_lower_explicit_io, nir_var_mem_global,
@@ -681,10 +679,6 @@ anv_pipeline_link_tcs(const struct brw_compiler *compiler,
     */
    tcs_stage->key.tcs._tes_primitive_mode =
       tes_stage->nir->info.tess._primitive_mode;
-   tcs_stage->key.tcs.quads_workaround =
-      compiler->devinfo->ver < 9 &&
-      tes_stage->nir->info.tess._primitive_mode == TESS_PRIMITIVE_QUADS &&
-      tes_stage->nir->info.tess.spacing == TESS_SPACING_EQUAL;
 }
 
 static void
@@ -966,7 +960,7 @@ anv_pipeline_add_executable(struct anv_pipeline *pipeline,
        * do it for every binary.
        */
       brw_disassemble_with_errors(&pipeline->device->physical->compiler->isa,
-                                  stage->code, code_offset, stream);
+                                  stage->code, code_offset, NULL, stream);
 
       fclose(stream);
 
@@ -1521,10 +1515,10 @@ anv_pipeline_compile_cs(struct anv_compute_pipeline *pipeline,
        */
       if (device->physical->instance->assume_full_subgroups &&
           stage.nir->info.uses_wide_subgroup_intrinsics &&
-          stage.nir->info.api_subgroup_size == ELK_SUBGROUP_SIZE &&
-          local_size && local_size % ELK_SUBGROUP_SIZE == 0) {
-         stage.nir->info.max_subgroup_size = ELK_SUBGROUP_SIZE;
-         stage.nir->info.min_subgroup_size = ELK_SUBGROUP_SIZE;
+          stage.nir->info.api_subgroup_size == BRW_SUBGROUP_SIZE &&
+          local_size && local_size % BRW_SUBGROUP_SIZE == 0) {
+         stage.nir->info.max_subgroup_size = BRW_SUBGROUP_SIZE;
+         stage.nir->info.min_subgroup_size = BRW_SUBGROUP_SIZE;
       }
 
       stage.num_stats = 1;

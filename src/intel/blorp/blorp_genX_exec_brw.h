@@ -417,7 +417,13 @@ blorp_fill_vertex_buffer_state(struct GENX(VERTEX_BUFFER_STATE) *vb,
    vb[idx].BufferPitch = stride;
    vb[idx].MOCS = addr.mocs;
    vb[idx].AddressModifyEnable = true;
+#if GFX_VER >= 8
    vb[idx].BufferSize = size;
+#else
+   vb[idx].BufferAccessType = stride > 0 ? VERTEXDATA : INSTANCEDATA;
+   vb[idx].EndAddress = vb[idx].BufferStartingAddress;
+   vb[idx].EndAddress.offset += size - 1;
+#endif
 
 #if GFX_VER >= 12
    vb[idx].L3BypassDisable = true;
@@ -765,8 +771,10 @@ blorp_emit_sf_config(struct blorp_batch *batch,
       sbe.ForceVertexURBEntryReadLength = true;
       sbe.ForceVertexURBEntryReadOffset = true;
 
+#if GFX_VER >= 9
       for (unsigned i = 0; i < 32; i++)
          sbe.AttributeActiveComponentFormat[i] = ACF_XYZW;
+#endif
    }
 }
 
@@ -818,12 +826,14 @@ blorp_emit_ps_config(struct blorp_batch *batch,
          ps.RenderTargetResolveType = FAST_CLEAR_0;
          break;
 #endif /* GFX_VER >= 10 */
+#if GFX_VER >= 9
       case ISL_AUX_OP_PARTIAL_RESOLVE:
          ps.RenderTargetResolveType = RESOLVE_PARTIAL;
          break;
       case ISL_AUX_OP_FULL_RESOLVE:
          ps.RenderTargetResolveType = RESOLVE_FULL;
          break;
+#endif /* GFX_VER >= 9 */
 #endif /* GFX_VER < 20 */
       case ISL_AUX_OP_FAST_CLEAR:
          ps.RenderTargetFastClearEnable = true;
@@ -924,7 +934,9 @@ blorp_emit_ps_config(struct blorp_batch *batch,
       if (prog_data) {
          psx.PixelShaderValid = true;
          psx.PixelShaderComputedDepthMode = prog_data->computed_depth_mode;
+#if GFX_VER >= 9
          psx.PixelShaderComputesStencil = prog_data->computed_stencil;
+#endif
          psx.PixelShaderIsPerSample = prog_data->persample_dispatch;
 
 #if INTEL_WA_18038825448_GFX_VER
@@ -1071,7 +1083,9 @@ blorp_emit_depth_stencil_state(struct blorp_batch *batch,
          ds.StencilPassDepthPassOp = STENCILOP_REPLACE;
 
          ds.StencilWriteMask = params->stencil_mask;
+#if GFX_VER >= 9
          ds.StencilReferenceValue = params->stencil_ref;
+#endif
       }
    }
 
@@ -1115,12 +1129,18 @@ blorp_emit_pipeline(struct blorp_batch *batch,
       pc.ShaderUpdateEnable = 0x1f;
       pc.MOCS = mocs;
    }
-#else
+#elif GFX_VER >= 9
    blorp_emit(batch, GENX(3DSTATE_CONSTANT_VS), xs) { xs.MOCS = mocs; }
    blorp_emit(batch, GENX(3DSTATE_CONSTANT_HS), xs) { xs.MOCS = mocs; }
    blorp_emit(batch, GENX(3DSTATE_CONSTANT_DS), xs) { xs.MOCS = mocs; }
    blorp_emit(batch, GENX(3DSTATE_CONSTANT_GS), xs) { xs.MOCS = mocs; }
    blorp_emit(batch, GENX(3DSTATE_CONSTANT_PS), xs) { xs.MOCS = mocs; }
+#else
+   blorp_emit(batch, GENX(3DSTATE_CONSTANT_VS), xs) { }
+   blorp_emit(batch, GENX(3DSTATE_CONSTANT_HS), xs) { }
+   blorp_emit(batch, GENX(3DSTATE_CONSTANT_DS), xs) { }
+   blorp_emit(batch, GENX(3DSTATE_CONSTANT_GS), xs) { }
+   blorp_emit(batch, GENX(3DSTATE_CONSTANT_PS), xs) { }
 #endif
 
    if (params->src.enabled)
