@@ -193,6 +193,17 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       dpb_slots[idx] = i;
    }
 
+#if GFX_VER == 8
+   anv_batch_emit(&cmd_buffer->batch, GENX(MI_FLUSH_DW), flush) {
+      flush.DWordLength = 2;
+      flush.VideoPipelineCacheInvalidate = 1;
+   }
+#elif GFX_VERx10 <= 75
+   anv_batch_emit(&cmd_buffer->batch, GENX(PIPE_CONTROL), pc) {
+      pc.CommandStreamerStallEnable = 1;
+   }
+#endif
+
    anv_batch_emit(&cmd_buffer->batch, GENX(MFX_PIPE_MODE_SELECT), sel) {
       sel.StandardSelect = SS_AVC;
       sel.CodecSelect = Decode;
@@ -201,6 +212,7 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       /* One or the other *must* be set on HSW. */
       sel.PreDeblockingOutputEnable = 0;
       sel.PostDeblockingOutputEnable = 1;
+      sel.StreamOutEnable = 0;
    }
 
    const struct anv_image_view *iv =
@@ -213,12 +225,30 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
 
       ss.Height = img->vk.extent.height - 1;
       ss.SurfaceFormat = PLANAR_420_8;
+      ss.InterleaveChroma = 1;
       ss.SurfacePitch = img->planes[0].primary_surface.isl.row_pitch_B - 1;
+      ss.TiledSurface = img->planes[0].primary_surface.isl.tiling != ISL_TILING_LINEAR;
       ss.TileWalk = TW_YMAJOR;
-      ss.YOffsetforUCb = align(img->vk.extent.height, 32);
+      
+      /* Calculate chroma plane Y offset from ISL surface layout.
+       * For NV12 format, planes[1] contains the interleaved U/V chroma plane.
+       * The Y offset must be in units of rows, calculated from the plane's
+       * memory offset divided by the luma plane's row pitch.
+       */
+      if (img->n_planes > 1) {
+         ss.YOffsetforUCb =
+            img->planes[1].primary_surface.memory_range.offset /
+            img->planes[0].primary_surface.isl.row_pitch_B;
 #if GFX_VERx10 >= 75
-      ss.YOffsetforVCr = align(img->vk.extent.height, 32);
+         ss.YOffsetforVCr = ss.YOffsetforUCb;
 #endif
+      } else {
+         /* Fallback for single-plane layout (shouldn't normally happen for NV12) */
+         ss.YOffsetforUCb = align(img->vk.extent.height, 32);
+#if GFX_VERx10 >= 75
+         ss.YOffsetforVCr = align(img->vk.extent.height, 32);
+#endif
+      }
 #if GFX_VERx10 == 70
       ss.XOffsetforVCr = 0;
 #endif
@@ -632,12 +662,20 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
                                        vid_dmv_top_surface).bo;
          }
 #if GFX_VERx10 == 70
+         /* IVB: MOCS fields are split into CacheabilityControl and GraphicsDataType */
+         uint32_t dmv_read_mocs = anv_mocs(cmd_buffer->device, ref_iv->image->bindings[0].address.bo, 0);
+         
          avc_directmode.DirectMVBufferAddress[idx * 2] =
             anv_image_address(ref_iv->image,
                               &ref_iv->image->vid_dmv_top_surface);
+         avc_directmode.DirectMVBufferCacheabilityControl[idx * 2] = dmv_read_mocs & 0x3;
+         avc_directmode.DirectMVBufferGraphicsDataType[idx * 2] = (dmv_read_mocs >> 2) & 0x1;
+         
          avc_directmode.DirectMVBufferAddress[idx * 2 + 1] =
             anv_image_address(ref_iv->image,
                               &ref_iv->image->vid_dmv_top_surface);
+         avc_directmode.DirectMVBufferCacheabilityControl[idx * 2 + 1] = dmv_read_mocs & 0x3;
+         avc_directmode.DirectMVBufferGraphicsDataType[idx * 2 + 1] = (dmv_read_mocs >> 2) & 0x1;
 #endif
 #if GFX_VERx10 == 75
          if (idx == 0)
@@ -654,10 +692,18 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       }
 
 #if GFX_VERx10 == 70
+      /* IVB: MOCS fields are split into CacheabilityControl and GraphicsDataType */
+      uint32_t dmv_write_mocs = anv_mocs(cmd_buffer->device, img->bindings[0].address.bo, 0);
+      
       avc_directmode.DirectMVBufferWriteAddress[0] =
          anv_image_address(img, &img->vid_dmv_top_surface);
+      avc_directmode.DirectMVBufferWriteCacheabilityControl[0] = dmv_write_mocs & 0x3;
+      avc_directmode.DirectMVBufferWriteGraphicsDataType[0] = (dmv_write_mocs >> 2) & 0x1;
+      
       avc_directmode.DirectMVBufferWriteAddress[1] =
          anv_image_address(img, &img->vid_dmv_top_surface);
+      avc_directmode.DirectMVBufferWriteCacheabilityControl[1] = dmv_write_mocs & 0x3;
+      avc_directmode.DirectMVBufferWriteGraphicsDataType[1] = (dmv_write_mocs >> 2) & 0x1;
 #else
       avc_directmode.DirectMVBufferWriteAddress =
          anv_image_address(img, &img->vid_dmv_top_surface);
@@ -678,6 +724,20 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
 
    uint32_t buffer_offset = frame_info->srcBufferOffset & 4095;
 
+   if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+      fprintf(stderr, "H.264 Decode: %u slices, src_buffer=%p, bo=%p, mapped=%s\n",
+              h264_pic_info->sliceCount, 
+              (void*)src_buffer,
+              src_buffer->address.bo,
+              (src_buffer->address.bo && src_buffer->address.bo->map) ? "yes" : "no");
+   }
+
+   /* H.264 NAL units have a 3-byte start code prefix (0x000001) or 4-byte (0x00000001)
+    * followed by a 1-byte NAL header. The hardware expects to start decoding after
+    * the NAL header, so we skip the first 3 bytes of each slice.
+    */
+#define HEADER_OFFSET 3
+
    for (unsigned s = 0; s < h264_pic_info->sliceCount; s++) {
       bool last_slice = s == (h264_pic_info->sliceCount - 1);
       uint32_t current_offset = h264_pic_info->pSliceOffsets[s];
@@ -688,20 +748,18 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       else
           slice_data_size = h264_pic_info->pSliceOffsets[s+1] - current_offset;
 
-      /* Ensure buffer is mapped before accessing */
-      const uint8_t *slice_data_ptr = NULL;
-      if (src_buffer->address.bo && src_buffer->address.bo->map) {
-         slice_data_ptr = (const uint8_t *)src_buffer->address.bo->map +
-                          src_buffer->address.offset +
-                          frame_info->srcBufferOffset +
-                          current_offset;
-      }
-
-      uint32_t slice_type = 0;
+      /* Use picture-level information instead of parsing unmapped buffers.
+       * In long format mode, we need to provide slice parameters, but the
+       * source buffer may not be CPU-accessible. Use picture information
+       * to derive slice type: intra pictures use I slices, others use P slices.
+       */
+      uint32_t slice_type = h264_pic_info->pStdPictureInfo->flags.is_intra ? 2 : 0;
       int32_t slice_qp_delta = 0;
-      if (slice_data_ptr) {
-         anv_h264_parse_slice_header(slice_data_ptr, slice_data_size, sps, pps,
-                                     &slice_type, &slice_qp_delta);
+
+      if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+         fprintf(stderr, "Slice[%d]: offset=%u, size=%u, type=%s (from picture flags)\n",
+                 s, buffer_offset + current_offset, slice_data_size,
+                 h264_pic_info->pStdPictureInfo->flags.is_intra ? "I" : "P");
       }
 
       anv_batch_emit(&cmd_buffer->batch, GENX(MFX_AVC_SLICE_STATE), slice) {
@@ -724,10 +782,12 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       }
 
       anv_batch_emit(&cmd_buffer->batch, GENX(MFD_AVC_BSD_OBJECT), avc_bsd) {
-         avc_bsd.IndirectBSDDataLength = slice_data_size;
-         avc_bsd.IndirectBSDDataStartAddress = buffer_offset + current_offset;
+         avc_bsd.IndirectBSDDataLength = slice_data_size - HEADER_OFFSET;
+         /* Start decoding after the 3-byte NAL header */
+         avc_bsd.IndirectBSDDataStartAddress = buffer_offset + current_offset + HEADER_OFFSET;
       };
    }
+#undef HEADER_OFFSET
 }
 
 void
