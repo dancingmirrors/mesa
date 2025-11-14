@@ -75,13 +75,14 @@ void genX(CmdEndVideoCodingKHR) (VkCommandBuffer commandBuffer,
    cmd_buffer->video.params = NULL;
 }
 
-/* Parse H.264 slice header to extract slice type and QP delta for long mode */
+/* Parse H.264 slice header to extract slice type, QP delta, and first MB for long mode */
 static void
 anv_h264_parse_slice_header(const uint8_t *slice_data, size_t slice_size,
                             const StdVideoH264SequenceParameterSet *sps,
                             const StdVideoH264PictureParameterSet *pps,
                             uint8_t nal_unit_type,
                             uint8_t nal_ref_idc,
+                            uint32_t *first_mb_in_slice,
                             uint32_t *slice_type,
                             int32_t *slice_qp_delta)
 {
@@ -89,6 +90,7 @@ anv_h264_parse_slice_header(const uint8_t *slice_data, size_t slice_size,
    struct vl_rbsp rbsp;
 
    /* Set defaults in case parsing fails */
+   *first_mb_in_slice = 0;
    *slice_type = 2; /* I slice */
    *slice_qp_delta = 0;
 
@@ -116,7 +118,7 @@ anv_h264_parse_slice_header(const uint8_t *slice_data, size_t slice_size,
 
    /* Parse first_mb_in_slice - ue(v) */
    CHECK_BITS(1);
-   vl_rbsp_ue(&rbsp);
+   *first_mb_in_slice = vl_rbsp_ue(&rbsp);
 
    /* Parse slice_type - ue(v) */
    CHECK_BITS(1);
@@ -972,6 +974,7 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
           slice_data_size = h264_pic_info->pSliceOffsets[s+1] - current_offset;
 
       /* Default values in case buffer is not accessible */
+      uint32_t first_mb_in_slice = 0;
       uint32_t slice_type = h264_pic_info->pStdPictureInfo->flags.is_intra ? 2 : 0;
       int32_t slice_qp_delta = 0;
       uint8_t nal_unit_type = 1; /* Non-IDR slice by default */
@@ -1014,14 +1017,53 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
             anv_h264_parse_slice_header(nal_start, nal_size,
                                        sps, pps,
                                        nal_unit_type, nal_ref_idc,
+                                       &first_mb_in_slice,
                                        &slice_type, &slice_qp_delta);
          }
       }
 
+      /* Calculate FirstMbX and FirstMbY from first_mb_in_slice */
+      uint32_t pic_width_in_mbs = sps->pic_width_in_mbs_minus1 + 1;
+      uint32_t first_mb_x = first_mb_in_slice % pic_width_in_mbs;
+      uint32_t first_mb_y = first_mb_in_slice / pic_width_in_mbs;
+
       if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
-         fprintf(stderr, "Slice[%d]: offset=%u, size=%u, type=%u, qp_delta=%d, nal_type=%u\n",
+         fprintf(stderr, "Slice[%d]: offset=%u, size=%u, type=%u, qp_delta=%d, nal_type=%u, first_mb=%u (x=%u, y=%u)\n",
                  s, buffer_offset + current_offset, slice_data_size,
-                 slice_type, slice_qp_delta, nal_unit_type);
+                 slice_type, slice_qp_delta, nal_unit_type, first_mb_in_slice, first_mb_x, first_mb_y);
+      }
+
+      /* Insert phantom slice if this is the first slice and it doesn't start at (0, 0) */
+      if (s == 0 && (first_mb_x != 0 || first_mb_y != 0)) {
+         if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+            fprintf(stderr, "Inserting phantom slice at (0, 0)\n");
+         }
+
+         /* Emit phantom slice state */
+         anv_batch_emit(&cmd_buffer->batch, GENX(MFX_AVC_SLICE_STATE), slice) {
+            slice.SliceType = anv_h264_get_slice_type(slice_type);
+            slice.Log2WeightDenominatorLuma = 0;
+            slice.Log2WeightDenominatorChroma = 0;
+            slice.CABACInitIDC = 0;
+            slice.NumberofReferencePicturesinInterpredictionList0 =
+               pps->num_ref_idx_l0_default_active_minus1 + 1;
+            if (slice.SliceType == 1 /* B Slice */)
+               slice.NumberofReferencePicturesinInterpredictionList1 =
+                  pps->num_ref_idx_l1_default_active_minus1 + 1;
+            slice.SliceQuantizationParameter = pps->pic_init_qp_minus26 + 26
+                                               + slice_qp_delta;
+            slice.SliceHorizontalPosition = 0;
+            slice.SliceVerticalPosition = 0;
+#if GFX_VERx10 >= 75
+            slice.LastSliceGroup = false;
+#endif
+         }
+
+         /* Emit phantom BSD object with zero length */
+         anv_batch_emit(&cmd_buffer->batch, GENX(MFD_AVC_BSD_OBJECT), avc_bsd) {
+            avc_bsd.IndirectBSDDataLength = 0;
+            avc_bsd.IndirectBSDDataStartAddress = buffer_offset + current_offset + HEADER_OFFSET;
+         };
       }
 
       anv_batch_emit(&cmd_buffer->batch, GENX(MFX_AVC_SLICE_STATE), slice) {
@@ -1036,9 +1078,9 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
                pps->num_ref_idx_l1_default_active_minus1 + 1;
          slice.SliceQuantizationParameter = pps->pic_init_qp_minus26 + 26
                                             + slice_qp_delta;
-         slice.SliceHorizontalPosition = 0;
+         slice.SliceHorizontalPosition = first_mb_x;
+         slice.SliceVerticalPosition = first_mb_y;
 #if GFX_VERx10 >= 75
-         slice.SliceVerticalPosition = 0;
          slice.LastSliceGroup = last_slice;
 #endif
       }
