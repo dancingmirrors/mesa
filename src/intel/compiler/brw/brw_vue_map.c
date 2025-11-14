@@ -458,3 +458,37 @@ brw_print_vue_map(FILE *fp, const struct intel_vue_map *vue_map,
    }
    fprintf(fp, "\n");
 }
+
+/**
+ * Compute the first URB slot that the fragment shader needs to read from.
+ *
+ * This is used to optimize the SBE configuration to only read the varying
+ * data that the fragment shader actually uses.
+ *
+ * Note that:
+ *
+ * - Each URB offset contains two varying slots and we can only skip a
+ *   full offset if both slots are unused, so the value we return here is always
+ *   rounded down to the closest multiple of two.
+ *
+ * - gl_Layer and gl_ViewportIndex don't have their own varying slots, they are
+ *   part of the vue header, so if these are read we can't skip anything.
+ */
+int
+brw_compute_first_fs_urb_slot_required(uint64_t inputs_read,
+                                       const struct intel_vue_map *prev_stage_vue_map,
+                                       bool mesh)
+{
+   (void)mesh; /* unused for gen 7-8 */
+   
+   if ((inputs_read & (VARYING_BIT_LAYER | VARYING_BIT_VIEWPORT | VARYING_BIT_PRIMITIVE_SHADING_RATE)) == 0) {
+      for (int i = 0; i < prev_stage_vue_map->num_slots; i++) {
+         int varying = prev_stage_vue_map->slot_to_varying[i];
+         if (varying != BRW_VARYING_SLOT_PAD && varying > 0 &&
+             (inputs_read & BITFIELD64_BIT(varying)) != 0)
+            return ROUND_DOWN_TO(i, 2);
+      }
+   }
+
+   return 0;
+}
