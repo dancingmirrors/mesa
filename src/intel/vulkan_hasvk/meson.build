@@ -117,6 +117,7 @@ libanv_files = files(
   'anv_utrace.c',
   'anv_wsi.c',
   'anv_video.c',
+  'anv_video_vaapi_bridge.c',
 )
 
 anv_deps = [
@@ -129,6 +130,21 @@ anv_deps = [
   idep_vulkan_runtime_headers,
   idep_vulkan_wsi_headers,
 ]
+
+# Add VA-API dependencies for video decode bridge
+# Check for VA-API separately for hasvk video decode support
+_hasvk_va_name = host_machine.system() == 'windows' ? 'libva-win32' : 'libva'
+dep_hasvk_va = dependency(_hasvk_va_name, version : '>= 1.8.0', required : false)
+if dep_hasvk_va.found()
+  anv_deps += dep_hasvk_va
+  # Also need libva-drm for vaGetDisplayDRM and DRM-specific functions
+  if host_machine.system() != 'windows'
+    dep_hasvk_va_drm = dependency('libva-drm', version : '>= 1.8.0', required : false)
+    if dep_hasvk_va_drm.found()
+      anv_deps += dep_hasvk_va_drm
+    endif
+  endif
+endif
 anv_flags = [
   no_override_init_args,
   sse2_args,
