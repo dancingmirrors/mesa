@@ -44,9 +44,15 @@ void
 genX(CmdBeginVideoCodingKHR) (VkCommandBuffer commandBuffer,
                               const VkVideoBeginCodingInfoKHR * pBeginInfo)
 {
-   /* VA-API session is already initialized during vkCreateVideoSessionKHR.
-    * No additional setup needed for begin coding.
+   ANV_FROM_HANDLE(anv_cmd_buffer, cmd_buffer, commandBuffer);
+   ANV_FROM_HANDLE(anv_video_session, vid, pBeginInfo->videoSession);
+   ANV_FROM_HANDLE(anv_video_session_params, params, pBeginInfo->videoSessionParameters);
+
+   /* Bind the video session and parameters to the command buffer.
+    * The VA-API session is already initialized during vkCreateVideoSessionKHR.
     */
+   cmd_buffer->video.vid = vid;
+   cmd_buffer->video.params = params;
 }
 
 void
