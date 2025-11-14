@@ -45,7 +45,6 @@
 #include <string.h>
 
 #include "vk_video/vulkan_video_codecs_common.h"
-#include "vk_log.h"
 
 /**
  * Map Vulkan video profile to VA-API profile
@@ -91,9 +90,8 @@ anv_vaapi_get_display(struct anv_device *device)
    /* Create VA display from DRM file descriptor */
    VADisplay va_display = vaGetDisplayDRM(device->fd);
    if (!va_display) {
-      vk_log(VK_LOG_OBJS(&device->vk.base),
-             VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
-             0, "Failed to get VA display from DRM fd");
+      vk_loge(VK_LOG_OBJS(&device->vk.base),
+              "Failed to get VA display from DRM fd");
       return NULL;
    }
    
@@ -101,15 +99,13 @@ anv_vaapi_get_display(struct anv_device *device)
    int major, minor;
    VAStatus va_status = vaInitialize(va_display, &major, &minor);
    if (va_status != VA_STATUS_SUCCESS) {
-      vk_log(VK_LOG_OBJS(&device->vk.base),
-             VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
-             0, "Failed to initialize VA-API: %d", va_status);
+      vk_loge(VK_LOG_OBJS(&device->vk.base),
+              "Failed to initialize VA-API: %d", va_status);
       return NULL;
    }
    
-   vk_log(VK_LOG_OBJS(&device->vk.base),
-          VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT,
-          0, "VA-API initialized: version %d.%d", major, minor);
+   vk_logi(VK_LOG_OBJS(&device->vk.base),
+           "VA-API initialized: version %d.%d", major, minor);
    
    device->va_display = va_display;
    return va_display;
@@ -152,9 +148,8 @@ anv_vaapi_session_create(struct anv_device *device,
    VAEntrypoint va_entrypoint = get_va_entrypoint(pCreateInfo->pVideoProfile);
    
    if (session->va_profile == VAProfileNone || va_entrypoint == 0) {
-      vk_log(VK_LOG_OBJS(&device->vk.base),
-             VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
-             0, "Unsupported video codec profile");
+      vk_loge(VK_LOG_OBJS(&device->vk.base),
+              "Unsupported video codec profile");
       vk_free(&device->vk.alloc, vid->vaapi_session);
       vid->vaapi_session = NULL;
       return vk_error(device, VK_ERROR_VIDEO_PROFILE_OPERATION_NOT_SUPPORTED_KHR);
@@ -167,9 +162,8 @@ anv_vaapi_session_create(struct anv_device *device,
                               NULL, 0,
                               &session->va_config);
    if (va_status != VA_STATUS_SUCCESS) {
-      vk_log(VK_LOG_OBJS(&device->vk.base),
-             VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
-             0, "Failed to create VA config: %d", va_status);
+      vk_loge(VK_LOG_OBJS(&device->vk.base),
+              "Failed to create VA config: %d", va_status);
       vk_free(&device->vk.alloc, vid->vaapi_session);
       vid->vaapi_session = NULL;
       return vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
@@ -206,9 +200,8 @@ anv_vaapi_session_create(struct anv_device *device,
                                session->num_surfaces,
                                &session->va_context);
    if (va_status != VA_STATUS_SUCCESS) {
-      vk_log(VK_LOG_OBJS(&device->vk.base),
-             VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
-             0, "Failed to create VA context: %d", va_status);
+      vk_loge(VK_LOG_OBJS(&device->vk.base),
+              "Failed to create VA context: %d", va_status);
       vk_free(&device->vk.alloc, session->va_surfaces);
       vaDestroyConfig(session->va_display, session->va_config);
       vk_free(&device->vk.alloc, vid->vaapi_session);
@@ -221,10 +214,9 @@ anv_vaapi_session_create(struct anv_device *device,
    session->va_slice_param = VA_INVALID_ID;
    session->va_slice_data = VA_INVALID_ID;
    
-   vk_log(VK_LOG_OBJS(&device->vk.base),
-          VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT,
-          0, "VA-API session created: %ux%u, profile=%d",
-          session->width, session->height, session->va_profile);
+   vk_logi(VK_LOG_OBJS(&device->vk.base),
+           "VA-API session created: %ux%u, profile=%d",
+           session->width, session->height, session->va_profile);
    
    return VK_SUCCESS;
 }
@@ -270,9 +262,8 @@ anv_vaapi_session_destroy(struct anv_device *device,
    vk_free(&device->vk.alloc, vid->vaapi_session);
    vid->vaapi_session = NULL;
    
-   vk_log(VK_LOG_OBJS(&device->vk.base),
-          VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT,
-          0, "VA-API session destroyed");
+   vk_logi(VK_LOG_OBJS(&device->vk.base),
+           "VA-API session destroyed");
 }
 
 /**
@@ -304,9 +295,8 @@ anv_vaapi_decode_frame(struct anv_cmd_buffer *cmd_buffer,
     * - Synchronization with Vulkan timeline
     */
    
-   vk_log(VK_LOG_OBJS(&cmd_buffer->device->vk.base),
-          VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT,
-          0, "anv_vaapi_decode_frame: Not yet fully implemented");
+   vk_logw(VK_LOG_OBJS(&cmd_buffer->device->vk.base),
+           "anv_vaapi_decode_frame: Not yet fully implemented");
    
    return VK_SUCCESS;
 }
@@ -328,9 +318,8 @@ anv_vaapi_export_video_surface_dmabuf(struct anv_device *device,
     * to export the image's backing memory as a DMA-buf fd
     */
    
-   vk_log(VK_LOG_OBJS(&device->vk.base),
-          VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT,
-          0, "anv_vaapi_export_video_surface_dmabuf: Not yet implemented");
+   vk_logw(VK_LOG_OBJS(&device->vk.base),
+           "anv_vaapi_export_video_surface_dmabuf: Not yet implemented");
    
    return vk_error(device, VK_ERROR_FEATURE_NOT_PRESENT);
 }
@@ -354,9 +343,8 @@ anv_vaapi_import_surface_from_image(struct anv_device *device,
     * 3. Create VA surface with vaCreateSurfaces using DRM PRIME attributes
     */
    
-   vk_log(VK_LOG_OBJS(&device->vk.base),
-          VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT,
-          0, "anv_vaapi_import_surface_from_image: Not yet implemented");
+   vk_logw(VK_LOG_OBJS(&device->vk.base),
+           "anv_vaapi_import_surface_from_image: Not yet implemented");
    
    return vk_error(device, VK_ERROR_FEATURE_NOT_PRESENT);
 }
