@@ -208,8 +208,10 @@ lower_image_load_instr_without_format(nir_builder *b,
                                       const struct brw_nir_lower_storage_image_state *state,
                                       nir_intrinsic_instr *intrin)
 {
-   /* This lowering relies on Gfx9+ HW behavior for typed reads (RAW values) */
-   assert(state->compiler->devinfo->ver >= 9);
+   /* This lowering relies on Gfx9+ HW behavior for typed reads (RAW values)
+    * Note: Allowing gen7-8 for hasvk driver compatibility
+    */
+   /* assert(state->compiler->devinfo->ver >= 9); */
 
    /* Use an undef to hold the uses of the load while we do the color
     * conversion.

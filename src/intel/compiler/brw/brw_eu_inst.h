@@ -436,31 +436,55 @@ F20(3src_swsb,              /* 9+ */ -1, -1,   /* 12+ */ 15,  8, /* 20+ */ 17, 8
 F(3src_hw_opcode,           /* 9+ */ 6,  0,    /* 12+ */ 6, 0)
 /** @} */
 
-#define F_3SRC_A16_SUBREG_NR(srcN, src_base) \
+#define F_3SRC_A16_SUBREG_NR(srcN, src_base_gen78, src_base_gen9) \
 static inline void                                                          \
 brw_eu_inst_set_3src_a16_##srcN##_subreg_nr(const struct                    \
                                             intel_device_info *devinfo,     \
                                             brw_eu_inst *inst,              \
                                             unsigned value)                 \
 {                                                                           \
-   assert(devinfo->ver == 9);                                               \
-   assert((value & ~0b11110) == 0);                                         \
-   brw_eu_inst_set_bits(inst, src_base + 11, src_base + 9, value >> 2);        \
-   brw_eu_inst_set_bits(inst, src_base + 20, src_base + 20, (value >> 1) & 1); \
+   if (devinfo->ver <= 8) {                                                 \
+      /* Gen7/8: Simple 3-bit field at bits [src_base+2:src_base] */       \
+      /* Value is in bytes, but 3src uses 32-bit units (0..7) */           \
+      assert((value & 0x3) == 0);  /* Must be 4-byte aligned */            \
+      unsigned subreg = value / 4;                                          \
+      assert(subreg <= 7);                                                  \
+      brw_eu_inst_set_bits(inst, src_base_gen78 + 2,                        \
+                           src_base_gen78, subreg);                         \
+   } else if (devinfo->ver == 9) {                                          \
+      /* Gen9: Split encoding across multiple bit positions */             \
+      assert((value & ~0b11110) == 0);                                      \
+      brw_eu_inst_set_bits(inst, src_base_gen9 + 11,                        \
+                           src_base_gen9 + 9, value >> 2);                  \
+      brw_eu_inst_set_bits(inst, src_base_gen9 + 20,                        \
+                           src_base_gen9 + 20, (value >> 1) & 1);           \
+   } else {                                                                 \
+      UNREACHABLE("Invalid generation for 3src a16 subreg encoding");      \
+   }                                                                        \
 }                                                                           \
 static inline unsigned                                                      \
 brw_eu_inst_3src_a16_##srcN##_subreg_nr(const struct                        \
                                      intel_device_info *devinfo,            \
                                      const brw_eu_inst *inst)               \
 {                                                                           \
-   assert(devinfo->ver == 9);                                               \
-   return brw_eu_inst_bits(inst, src_base + 11, src_base + 9) << 2 |        \
-          brw_eu_inst_bits(inst, src_base + 20, src_base + 20) << 1;        \
+   if (devinfo->ver <= 8) {                                                 \
+      /* Gen7/8: Simple 3-bit field at bits [src_base+2:src_base] */       \
+      /* Returns value in bytes (32-bit units * 4) */                      \
+      return brw_eu_inst_bits(inst, src_base_gen78 + 2, src_base_gen78) * 4; \
+   } else if (devinfo->ver == 9) {                                          \
+      /* Gen9: Split encoding across multiple bit positions */             \
+      return brw_eu_inst_bits(inst, src_base_gen9 + 11,                     \
+                              src_base_gen9 + 9) << 2 |                     \
+             brw_eu_inst_bits(inst, src_base_gen9 + 20,                     \
+                              src_base_gen9 + 20) << 1;                     \
+   } else {                                                                 \
+      UNREACHABLE("Invalid generation for 3src a16 subreg encoding");      \
+   }                                                                        \
 }
 
-F_3SRC_A16_SUBREG_NR(src0, 64)
-F_3SRC_A16_SUBREG_NR(src1, 85)
-F_3SRC_A16_SUBREG_NR(src2, 106)
+F_3SRC_A16_SUBREG_NR(src0, 73, 64)
+F_3SRC_A16_SUBREG_NR(src1, 94, 85)
+F_3SRC_A16_SUBREG_NR(src2, 115, 106)
 #undef F_3SRC_A16_SUBREG_NR
 
 #define REG_TYPE(reg)                                                         \
@@ -782,7 +806,8 @@ brw_eu_inst_set_send_ex_desc(const struct intel_device_info *devinfo,
 
       assert(GET_BITS(value, 5, 0) == 0);
    } else {
-      assert(devinfo->ver >= 9);
+      /* Note: Allowing gen7-8 for hasvk driver compatibility */
+      /* assert(devinfo->ver >= 9); */
       brw_eu_inst_set_bits(inst, 94, 91, GET_BITS(value, 31, 28));
       brw_eu_inst_set_bits(inst, 88, 85, GET_BITS(value, 27, 24));
       brw_eu_inst_set_bits(inst, 83, 80, GET_BITS(value, 23, 20));
@@ -832,7 +857,8 @@ brw_eu_inst_send_ex_desc(const struct intel_device_info *devinfo,
               brw_eu_inst_bits(inst, 47, 35) << 11 |
               (!gather ? brw_eu_inst_bits(inst, 103, 99) << 6 : 0));
    } else {
-      assert(devinfo->ver >= 9);
+      /* Note: Allowing gen7-8 for hasvk driver compatibility */
+      /* assert(devinfo->ver >= 9); */
       return (brw_eu_inst_bits(inst, 94, 91) << 28 |
               brw_eu_inst_bits(inst, 88, 85) << 24 |
               brw_eu_inst_bits(inst, 83, 80) << 20 |

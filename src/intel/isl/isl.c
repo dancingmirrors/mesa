@@ -230,6 +230,9 @@ isl_device_setup_mocs(struct isl_device *dev)
           */
          dev->mocs.uncached = 0x20;
       }
+      /* For blitter operations, use WB setting same as internal */
+      dev->mocs.blitter_src = 0x78;
+      dev->mocs.blitter_dst = 0x78;
    } else if (dev->info->ver >= 7) {
       if (dev->info->platform == INTEL_PLATFORM_HSW) {
          /* MEMORY_OBJECT_CONTROL_STATE:
@@ -243,6 +246,9 @@ isl_device_setup_mocs(struct isl_device *dev)
           * .L3CacheabilityControlL3CC                   = 0,
           */
          dev->mocs.uncached = 2;
+         /* For blitter operations, use L3 cached setting */
+         dev->mocs.blitter_src = 1;
+         dev->mocs.blitter_dst = 1;
       } else {
          /* MEMORY_OBJECT_CONTROL_STATE:
           * .GraphicsDataTypeGFDT                        = 0,
@@ -257,6 +263,9 @@ isl_device_setup_mocs(struct isl_device *dev)
           * .L3CacheabilityControlL3CC                   = 0,
           */
          dev->mocs.uncached = 0;
+         /* For blitter operations, use L3 cached setting */
+         dev->mocs.blitter_src = 1;
+         dev->mocs.blitter_dst = 1;
       }
    } else {
       dev->mocs.internal = 0;

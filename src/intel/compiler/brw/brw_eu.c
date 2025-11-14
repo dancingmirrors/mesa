@@ -661,7 +661,8 @@ void
 brw_init_isa_info(struct brw_isa_info *isa,
                   const struct intel_device_info *devinfo)
 {
-   assert(devinfo->ver >= 9);
+   /* Note: Allowing gen7-8 for hasvk driver compatibility */
+   /* assert(devinfo->ver >= 9); */
 
    isa->devinfo = devinfo;
 

@@ -801,7 +801,46 @@ blorp_emit_ps_config(struct blorp_batch *batch,
 
    const struct intel_device_info *devinfo = batch->blorp->compiler->brw->devinfo;
 
+#if GFX_VER >= 8
    blorp_emit(batch, GENX(3DSTATE_WM), wm);
+#elif GFX_VER >= 7
+   /* Gen7: Need to properly initialize 3DSTATE_WM fields */
+   blorp_emit(batch, GENX(3DSTATE_WM), wm) {
+      switch (params->hiz_op) {
+      case ISL_AUX_OP_FAST_CLEAR:
+         wm.DepthBufferClear = true;
+         break;
+      case ISL_AUX_OP_FULL_RESOLVE:
+         wm.DepthBufferResolveEnable = true;
+         break;
+      case ISL_AUX_OP_AMBIGUATE:
+         wm.HierarchicalDepthBufferResolveEnable = true;
+         break;
+      case ISL_AUX_OP_NONE:
+         break;
+      default:
+         UNREACHABLE("not reached");
+      }
+
+      if (prog_data) {
+         wm.ThreadDispatchEnable = true;
+         wm.PixelShaderComputedDepthMode = prog_data->computed_depth_mode;
+      }
+
+      if (params->src.enabled)
+         wm.PixelShaderKillsPixel = true;
+
+      if (params->num_samples > 1) {
+         wm.MultisampleRasterizationMode = MSRASTMODE_ON_PATTERN;
+         wm.MultisampleDispatchMode =
+            (prog_data && prog_data->persample_dispatch) ?
+            MSDISPMODE_PERSAMPLE : MSDISPMODE_PERPIXEL;
+      } else {
+         wm.MultisampleRasterizationMode = MSRASTMODE_OFF_PIXEL;
+         wm.MultisampleDispatchMode = MSDISPMODE_PERSAMPLE;
+      }
+   }
+#endif
 
    blorp_emit(batch, GENX(3DSTATE_PS), ps) {
       if (params->src.enabled) {
@@ -1155,12 +1194,23 @@ blorp_emit_pipeline(struct blorp_batch *batch,
    blorp_emit(batch, GENX(3DSTATE_CONSTANT_DS), xs) { xs.MOCS = mocs; }
    blorp_emit(batch, GENX(3DSTATE_CONSTANT_GS), xs) { xs.MOCS = mocs; }
    blorp_emit(batch, GENX(3DSTATE_CONSTANT_PS), xs) { xs.MOCS = mocs; }
-#else
+#elif GFX_VER == 8
+   /* The Broadwell PRM says:
+    *    "Constant Buffer Object Control State must be always programmed to zero."
+    * Don't set MOCS on gen8.
+    */
    blorp_emit(batch, GENX(3DSTATE_CONSTANT_VS), xs) { }
    blorp_emit(batch, GENX(3DSTATE_CONSTANT_HS), xs) { }
    blorp_emit(batch, GENX(3DSTATE_CONSTANT_DS), xs) { }
    blorp_emit(batch, GENX(3DSTATE_CONSTANT_GS), xs) { }
    blorp_emit(batch, GENX(3DSTATE_CONSTANT_PS), xs) { }
+#else
+   /* Gen7: MOCS is in the ConstantBody sub-structure */
+   blorp_emit(batch, GENX(3DSTATE_CONSTANT_VS), xs) { xs.ConstantBody.MOCS = mocs; }
+   blorp_emit(batch, GENX(3DSTATE_CONSTANT_HS), xs) { xs.ConstantBody.MOCS = mocs; }
+   blorp_emit(batch, GENX(3DSTATE_CONSTANT_DS), xs) { xs.ConstantBody.MOCS = mocs; }
+   blorp_emit(batch, GENX(3DSTATE_CONSTANT_GS), xs) { xs.ConstantBody.MOCS = mocs; }
+   blorp_emit(batch, GENX(3DSTATE_CONSTANT_PS), xs) { xs.ConstantBody.MOCS = mocs; }
 #endif
 
    if (params->src.enabled)
