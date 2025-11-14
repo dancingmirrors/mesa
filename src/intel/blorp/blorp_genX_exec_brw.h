@@ -1155,8 +1155,18 @@ blorp_emit_pipeline(struct blorp_batch *batch,
    blorp_emit(batch, GENX(3DSTATE_CONSTANT_DS), xs) { xs.MOCS = mocs; }
    blorp_emit(batch, GENX(3DSTATE_CONSTANT_GS), xs) { xs.MOCS = mocs; }
    blorp_emit(batch, GENX(3DSTATE_CONSTANT_PS), xs) { xs.MOCS = mocs; }
+#elif GFX_VER == 8
+   /* The Broadwell PRM says:
+    *    "Constant Buffer Object Control State must be always programmed to zero."
+    * Don't set MOCS on gen8.
+    */
+   blorp_emit(batch, GENX(3DSTATE_CONSTANT_VS), xs) { }
+   blorp_emit(batch, GENX(3DSTATE_CONSTANT_HS), xs) { }
+   blorp_emit(batch, GENX(3DSTATE_CONSTANT_DS), xs) { }
+   blorp_emit(batch, GENX(3DSTATE_CONSTANT_GS), xs) { }
+   blorp_emit(batch, GENX(3DSTATE_CONSTANT_PS), xs) { }
 #else
-   /* Gen7/8: MOCS is in the ConstantBody sub-structure */
+   /* Gen7: MOCS is in the ConstantBody sub-structure */
    blorp_emit(batch, GENX(3DSTATE_CONSTANT_VS), xs) { xs.ConstantBody.MOCS = mocs; }
    blorp_emit(batch, GENX(3DSTATE_CONSTANT_HS), xs) { xs.ConstantBody.MOCS = mocs; }
    blorp_emit(batch, GENX(3DSTATE_CONSTANT_DS), xs) { xs.ConstantBody.MOCS = mocs; }
