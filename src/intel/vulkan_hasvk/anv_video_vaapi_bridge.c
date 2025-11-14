@@ -287,36 +287,187 @@ anv_vaapi_session_destroy(struct anv_device *device,
 /**
  * Decode a frame using VA-API
  * 
- * This is a placeholder implementation. The full implementation will:
- * 1. Translate Vulkan decode info to VA-API parameters
- * 2. Map bitstream buffer
- * 3. Create VA buffers for picture/slice params
- * 4. Submit decode operation
- * 5. Handle synchronization
+ * Translates Vulkan Video decode parameters to VA-API and submits the decode operation.
  */
 VkResult
 anv_vaapi_decode_frame(struct anv_cmd_buffer *cmd_buffer,
                        const VkVideoDecodeInfoKHR *frame_info)
 {
+   struct anv_device *device = cmd_buffer->device;
    struct anv_video_session *vid = cmd_buffer->video.vid;
+   struct anv_vaapi_session *session = vid->vaapi_session;
+   VAStatus va_status;
+   VkResult result;
    
-   if (!vid || !vid->vaapi_session) {
-      return vk_error(cmd_buffer->device, VK_ERROR_INITIALIZATION_FAILED);
+   if (!vid || !session) {
+      return vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
    }
    
-   /* TODO: Implement full decode pipeline
-    * This includes:
-    * - Translating VkVideoDecodeH264PictureInfoKHR to VAPictureParameterBufferH264
-    * - Translating slice parameters
-    * - Mapping and submitting bitstream data
-    * - Managing DPB (Decoded Picture Buffer)
-    * - Synchronization with Vulkan timeline
-    */
+   /* Get H.264-specific picture info */
+   const VkVideoDecodeH264PictureInfoKHR *h264_pic_info =
+      vk_find_struct_const(frame_info->pNext, VIDEO_DECODE_H264_PICTURE_INFO_KHR);
+   if (!h264_pic_info) {
+      vk_loge(VK_LOG_OBJS(&device->vk.base),
+              "Missing H.264 picture info in decode");
+      return vk_error(device, VK_ERROR_FORMAT_NOT_SUPPORTED);
+   }
    
-   vk_logw(VK_LOG_OBJS(&cmd_buffer->device->vk.base),
-           "anv_vaapi_decode_frame: Not yet fully implemented");
+   /* Get destination image */
+   ANV_FROM_HANDLE(anv_image, dst_image, frame_info->dstPictureResource.imageViewBinding);
+   if (!dst_image) {
+      vk_loge(VK_LOG_OBJS(&device->vk.base),
+              "Invalid destination image for decode");
+      return vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
+   }
    
-   return VK_SUCCESS;
+   /* Import destination surface to VA-API (or get cached surface) */
+   VASurfaceID dst_surface;
+   result = anv_vaapi_import_surface_from_image(device, dst_image, &dst_surface);
+   if (result != VK_SUCCESS) {
+      return result;
+   }
+   
+   /* Get video session parameters */
+   ANV_FROM_HANDLE(anv_video_session_params, params, cmd_buffer->video.params);
+   if (!params) {
+      vk_loge(VK_LOG_OBJS(&device->vk.base),
+              "No video session parameters bound");
+      return vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
+   }
+   
+   /* Translate picture parameters */
+   VAPictureParameterBufferH264 va_pic_param;
+   anv_vaapi_translate_h264_picture_params(device, frame_info, h264_pic_info,
+                                           &params->vk, dst_surface, &va_pic_param);
+   
+   /* Create picture parameter buffer */
+   VABufferID pic_param_buf;
+   va_status = vaCreateBuffer(session->va_display, session->va_context,
+                              VAPictureParameterBufferType,
+                              sizeof(VAPictureParameterBufferH264), 1,
+                              &va_pic_param, &pic_param_buf);
+   if (va_status != VA_STATUS_SUCCESS) {
+      vk_loge(VK_LOG_OBJS(&device->vk.base),
+              "Failed to create VA picture parameter buffer: %d", va_status);
+      return vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
+   }
+   
+   /* Get bitstream buffer */
+   ANV_FROM_HANDLE(anv_buffer, src_buffer, frame_info->srcBuffer);
+   if (!src_buffer) {
+      vaDestroyBuffer(session->va_display, pic_param_buf);
+      return vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
+   }
+   
+   /* Map the bitstream buffer to get its contents */
+   void *bitstream_data = src_buffer->address.map;
+   if (!bitstream_data) {
+      /* Try to map it */
+      bitstream_data = anv_gem_mmap(device, src_buffer->address.bo->gem_handle,
+                                    src_buffer->address.offset,
+                                    frame_info->srcBufferRange, 0);
+      if (!bitstream_data) {
+         vaDestroyBuffer(session->va_display, pic_param_buf);
+         return vk_error(device, VK_ERROR_MEMORY_MAP_FAILED);
+      }
+   }
+   
+   /* Create slice parameter buffer - simplified version */
+   VASliceParameterBufferH264 va_slice_param;
+   anv_vaapi_translate_h264_slice_params(frame_info, h264_pic_info,
+                                         0, frame_info->srcBufferRange,
+                                         &va_slice_param);
+   
+   VABufferID slice_param_buf;
+   va_status = vaCreateBuffer(session->va_display, session->va_context,
+                              VASliceParameterBufferType,
+                              sizeof(VASliceParameterBufferH264), 1,
+                              &va_slice_param, &slice_param_buf);
+   if (va_status != VA_STATUS_SUCCESS) {
+      vaDestroyBuffer(session->va_display, pic_param_buf);
+      vk_loge(VK_LOG_OBJS(&device->vk.base),
+              "Failed to create VA slice parameter buffer: %d", va_status);
+      return vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
+   }
+   
+   /* Create slice data buffer with the actual bitstream */
+   VABufferID slice_data_buf;
+   va_status = vaCreateBuffer(session->va_display, session->va_context,
+                              VASliceDataBufferType,
+                              frame_info->srcBufferRange, 1,
+                              bitstream_data + frame_info->srcBufferOffset,
+                              &slice_data_buf);
+   if (va_status != VA_STATUS_SUCCESS) {
+      vaDestroyBuffer(session->va_display, slice_param_buf);
+      vaDestroyBuffer(session->va_display, pic_param_buf);
+      vk_loge(VK_LOG_OBJS(&device->vk.base),
+              "Failed to create VA slice data buffer: %d", va_status);
+      return vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
+   }
+   
+   /* Submit decode operation to VA-API */
+   va_status = vaBeginPicture(session->va_display, session->va_context, dst_surface);
+   if (va_status != VA_STATUS_SUCCESS) {
+      vk_loge(VK_LOG_OBJS(&device->vk.base),
+              "vaBeginPicture failed: %d", va_status);
+      goto cleanup_buffers;
+   }
+   
+   /* Render picture parameters */
+   va_status = vaRenderPicture(session->va_display, session->va_context,
+                               &pic_param_buf, 1);
+   if (va_status != VA_STATUS_SUCCESS) {
+      vk_loge(VK_LOG_OBJS(&device->vk.base),
+              "vaRenderPicture (picture params) failed: %d", va_status);
+      vaEndPicture(session->va_display, session->va_context);
+      goto cleanup_buffers;
+   }
+   
+   /* Render slice parameters */
+   va_status = vaRenderPicture(session->va_display, session->va_context,
+                               &slice_param_buf, 1);
+   if (va_status != VA_STATUS_SUCCESS) {
+      vk_loge(VK_LOG_OBJS(&device->vk.base),
+              "vaRenderPicture (slice params) failed: %d", va_status);
+      vaEndPicture(session->va_display, session->va_context);
+      goto cleanup_buffers;
+   }
+   
+   /* Render slice data */
+   va_status = vaRenderPicture(session->va_display, session->va_context,
+                               &slice_data_buf, 1);
+   if (va_status != VA_STATUS_SUCCESS) {
+      vk_loge(VK_LOG_OBJS(&device->vk.base),
+              "vaRenderPicture (slice data) failed: %d", va_status);
+      vaEndPicture(session->va_display, session->va_context);
+      goto cleanup_buffers;
+   }
+   
+   /* End picture and execute decode */
+   va_status = vaEndPicture(session->va_display, session->va_context);
+   if (va_status != VA_STATUS_SUCCESS) {
+      vk_loge(VK_LOG_OBJS(&device->vk.base),
+              "vaEndPicture failed: %d", va_status);
+      goto cleanup_buffers;
+   }
+   
+   /* Sync - wait for decode to complete */
+   va_status = vaSyncSurface(session->va_display, dst_surface);
+   if (va_status != VA_STATUS_SUCCESS) {
+      vk_loge(VK_LOG_OBJS(&device->vk.base),
+              "vaSyncSurface failed: %d", va_status);
+   }
+   
+   vk_logi(VK_LOG_OBJS(&device->vk.base),
+           "Successfully decoded H.264 frame via VA-API");
+   
+cleanup_buffers:
+   vaDestroyBuffer(session->va_display, slice_data_buf);
+   vaDestroyBuffer(session->va_display, slice_param_buf);
+   vaDestroyBuffer(session->va_display, pic_param_buf);
+   
+   return va_status == VA_STATUS_SUCCESS ? VK_SUCCESS : 
+          vk_error(device, VK_ERROR_UNKNOWN);
 }
 
 /**

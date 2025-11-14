@@ -151,4 +151,44 @@ anv_vaapi_import_surface_from_image(struct anv_device *device,
                                     struct anv_image *image,
                                     VASurfaceID *surface_id);
 
+/**
+ * H.264-specific parameter translation functions
+ */
+
+/**
+ * Translate Vulkan H.264 picture parameters to VA-API format
+ * 
+ * @param device         ANV device
+ * @param decode_info    Vulkan decode info
+ * @param h264_pic_info  H.264-specific picture info
+ * @param params         Video session parameters (contains SPS/PPS)
+ * @param dst_surface_id VA surface ID for decode destination
+ * @param va_pic         Output VA-API picture parameter buffer
+ */
+void
+anv_vaapi_translate_h264_picture_params(
+   struct anv_device *device,
+   const VkVideoDecodeInfoKHR *decode_info,
+   const VkVideoDecodeH264PictureInfoKHR *h264_pic_info,
+   const struct vk_video_session_parameters *params,
+   VASurfaceID dst_surface_id,
+   VAPictureParameterBufferH264 *va_pic);
+
+/**
+ * Translate Vulkan H.264 slice parameters to VA-API format
+ * 
+ * @param decode_info    Vulkan decode info
+ * @param h264_pic_info  H.264-specific picture info
+ * @param slice_offset   Offset of slice data in bitstream buffer
+ * @param slice_size     Size of slice data
+ * @param va_slice       Output VA-API slice parameter buffer
+ */
+void
+anv_vaapi_translate_h264_slice_params(
+   const VkVideoDecodeInfoKHR *decode_info,
+   const VkVideoDecodeH264PictureInfoKHR *h264_pic_info,
+   uint32_t slice_offset,
+   uint32_t slice_size,
+   VASliceParameterBufferH264 *va_slice);
+
 #endif /* ANV_VIDEO_VAAPI_BRIDGE_H */
