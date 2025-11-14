@@ -280,9 +280,9 @@ VkResult
 anv_vaapi_decode_frame(struct anv_cmd_buffer *cmd_buffer,
                        const VkVideoDecodeInfoKHR *frame_info)
 {
-   ANV_FROM_HANDLE(anv_video_session, vid, frame_info->videoSession);
+   struct anv_video_session *vid = cmd_buffer->video.vid;
    
-   if (!vid->vaapi_session) {
+   if (!vid || !vid->vaapi_session) {
       return vk_error(cmd_buffer->device, VK_ERROR_INITIALIZATION_FAILED);
    }
    
