@@ -177,6 +177,7 @@ struct brw_compiler {
    bool scalar_stage[MESA_ALL_SHADER_STAGES];
    bool constant_buffer_0_is_relative;
    bool supports_shader_constants;
+   bool padding[5]; /* Padding to ensure struct alignment */
 };
 
 #define brw_shader_debug_log(compiler, data, fmt, ... ) do {    \
@@ -264,7 +265,7 @@ enum brw_sometimes {
 struct brw_sampler_prog_key_data {
    uint16_t swizzles[32]; /* BRW_MAX_SAMPLERS */
    uint32_t gl_clamp_mask[3];
-} __attribute__((packed));
+};
 
 struct brw_base_prog_key {
    unsigned program_string_id;
@@ -288,10 +289,12 @@ struct brw_base_prog_key {
     */
    bool limit_trig_input_range:1;
 
-   uint64_t padding:55; /* Reduced from 58 to account for added fields */
+   uint64_t padding:58;
 
    /* Gen7-8 compatibility: sampler data */
    struct brw_sampler_prog_key_data tex;
+   
+   uint32_t _pad; /* Padding to ensure struct is 8-byte aligned */
 };
 
 /**
