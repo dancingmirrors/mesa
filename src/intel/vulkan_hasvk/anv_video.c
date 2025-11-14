@@ -25,6 +25,7 @@
 
 #include "vk_common_entrypoints.h"
 #include "vk_video/vulkan_video_codecs_common.h"
+#include "anv_video_vaapi_bridge.h"
 
 VkResult
 anv_CreateVideoSessionKHR(VkDevice _device,
@@ -50,6 +51,14 @@ anv_CreateVideoSessionKHR(VkDevice _device,
       return result;
    }
 
+   /* Initialize VA-API bridge session */
+   result = anv_vaapi_session_create(device, vid, pCreateInfo);
+   if (result != VK_SUCCESS) {
+      vk_video_session_finish(&vid->vk);
+      vk_free2(&device->vk.alloc, pAllocator, vid);
+      return result;
+   }
+
    *pVideoSession = anv_video_session_to_handle(vid);
    return VK_SUCCESS;
 }
@@ -69,6 +78,9 @@ anv_DestroyVideoSessionKHR(VkDevice _device,
     * may not properly wait before destroying, so we add a defensive check.
     */
    vk_common_DeviceWaitIdle(_device);
+
+   /* Destroy VA-API bridge session */
+   anv_vaapi_session_destroy(device, vid);
 
    vk_video_session_finish(&vid->vk);
    vk_free2(&device->vk.alloc, pAllocator, vid);
