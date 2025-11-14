@@ -312,23 +312,24 @@ anv_vaapi_decode_frame(struct anv_cmd_buffer *cmd_buffer,
       return vk_error(device, VK_ERROR_FORMAT_NOT_SUPPORTED);
    }
    
-   /* Get destination image */
-   ANV_FROM_HANDLE(anv_image, dst_image, frame_info->dstPictureResource.imageViewBinding);
-   if (!dst_image) {
+   /* Get destination image view and extract image */
+   ANV_FROM_HANDLE(anv_image_view, dst_image_view, frame_info->dstPictureResource.imageViewBinding);
+   if (!dst_image_view || !dst_image_view->image) {
       vk_loge(VK_LOG_OBJS(&device->vk.base),
-              "Invalid destination image for decode");
+              "Invalid destination image view for decode");
       return vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
    }
+   const struct anv_image *dst_image = dst_image_view->image;
    
    /* Import destination surface to VA-API (or get cached surface) */
    VASurfaceID dst_surface;
-   result = anv_vaapi_import_surface_from_image(device, dst_image, &dst_surface);
+   result = anv_vaapi_import_surface_from_image(device, (struct anv_image *)dst_image, &dst_surface);
    if (result != VK_SUCCESS) {
       return result;
    }
    
-   /* Get video session parameters */
-   ANV_FROM_HANDLE(anv_video_session_params, params, cmd_buffer->video.params);
+   /* Get video session parameters - already a pointer, no need for FROM_HANDLE */
+   struct anv_video_session_params *params = cmd_buffer->video.params;
    if (!params) {
       vk_loge(VK_LOG_OBJS(&device->vk.base),
               "No video session parameters bound");
@@ -354,22 +355,21 @@ anv_vaapi_decode_frame(struct anv_cmd_buffer *cmd_buffer,
    
    /* Get bitstream buffer */
    ANV_FROM_HANDLE(anv_buffer, src_buffer, frame_info->srcBuffer);
-   if (!src_buffer) {
+   if (!src_buffer || !src_buffer->address.bo) {
       vaDestroyBuffer(session->va_display, pic_param_buf);
+      vk_loge(VK_LOG_OBJS(&device->vk.base),
+              "Invalid source buffer for decode");
       return vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
    }
    
    /* Map the bitstream buffer to get its contents */
-   void *bitstream_data = src_buffer->address.map;
+   void *bitstream_data = anv_gem_mmap(device, src_buffer->address.bo->gem_handle,
+                                       0, frame_info->srcBufferRange, 0);
    if (!bitstream_data) {
-      /* Try to map it */
-      bitstream_data = anv_gem_mmap(device, src_buffer->address.bo->gem_handle,
-                                    src_buffer->address.offset,
-                                    frame_info->srcBufferRange, 0);
-      if (!bitstream_data) {
-         vaDestroyBuffer(session->va_display, pic_param_buf);
-         return vk_error(device, VK_ERROR_MEMORY_MAP_FAILED);
-      }
+      vaDestroyBuffer(session->va_display, pic_param_buf);
+      vk_loge(VK_LOG_OBJS(&device->vk.base),
+              "Failed to map bitstream buffer");
+      return vk_error(device, VK_ERROR_MEMORY_MAP_FAILED);
    }
    
    /* Create slice parameter buffer - simplified version */
@@ -465,6 +465,9 @@ cleanup_buffers:
    vaDestroyBuffer(session->va_display, slice_data_buf);
    vaDestroyBuffer(session->va_display, slice_param_buf);
    vaDestroyBuffer(session->va_display, pic_param_buf);
+   
+   /* Unmap the bitstream buffer */
+   anv_gem_munmap(device, bitstream_data, frame_info->srcBufferRange);
    
    return va_status == VA_STATUS_SUCCESS ? VK_SUCCESS : 
           vk_error(device, VK_ERROR_UNKNOWN);
