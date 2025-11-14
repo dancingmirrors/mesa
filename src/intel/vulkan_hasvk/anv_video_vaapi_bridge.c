@@ -40,11 +40,29 @@
 
 #include <va/va.h>
 #include <va/va_drm.h>
+#include <va/va_drmcommon.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <string.h>
 
 #include "vk_video/vulkan_video_codecs_common.h"
+
+/* Define VA-API constants and macros for compatibility with legacy intel-vaapi-driver */
+#ifndef VA_FOURCC
+#define VA_FOURCC(a,b,c,d) ((uint32_t)(a) | ((uint32_t)(b) << 8) | ((uint32_t)(c) << 16) | ((uint32_t)(d) << 24))
+#endif
+
+#ifndef VA_FOURCC_NV12
+#define VA_FOURCC_NV12 VA_FOURCC('N','V','1','2')
+#endif
+
+#ifndef VA_RT_FORMAT_YUV420
+#define VA_RT_FORMAT_YUV420 0x00000001
+#endif
+
+#ifndef VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME
+#define VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME 0x00000008
+#endif
 
 /**
  * Map Vulkan video profile to VA-API profile
@@ -304,47 +322,138 @@ anv_vaapi_decode_frame(struct anv_cmd_buffer *cmd_buffer,
 /**
  * Export Vulkan image as DMA-buf
  * 
- * This is a placeholder for DMA-buf export functionality.
- * The full implementation will export memory associated with
- * a Vulkan image as a DMA-buf file descriptor.
+ * Exports the memory backing a Vulkan video image as a DMA-buf
+ * file descriptor for sharing with VA-API.
  */
 VkResult
 anv_vaapi_export_video_surface_dmabuf(struct anv_device *device,
                                       struct anv_image *image,
                                       int *fd_out)
 {
-   /* TODO: Implement DMA-buf export
-    * This will use VK_KHR_external_memory_fd or similar mechanisms
-    * to export the image's backing memory as a DMA-buf fd
-    */
+   /* Get the main memory binding for the image */
+   struct anv_image_binding *binding = &image->bindings[ANV_IMAGE_MEMORY_BINDING_MAIN];
    
-   vk_logw(VK_LOG_OBJS(&device->vk.base),
-           "anv_vaapi_export_video_surface_dmabuf: Not yet implemented");
+   if (!binding->address.bo) {
+      vk_loge(VK_LOG_OBJS(&device->vk.base),
+              "Image has no backing memory");
+      return vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
+   }
    
-   return vk_error(device, VK_ERROR_FEATURE_NOT_PRESENT);
+   struct anv_bo *bo = binding->address.bo;
+   
+   /* Ensure the BO is marked for external use */
+   if (!bo->is_external) {
+      vk_loge(VK_LOG_OBJS(&device->vk.base),
+              "Image memory is not marked as external");
+      return vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
+   }
+   
+   /* Export the BO as a DMA-buf file descriptor */
+   return anv_device_export_bo(device, bo, fd_out);
 }
 
 /**
  * Import DMA-buf into VA-API surface
  * 
- * This is a placeholder for DMA-buf import functionality.
- * The full implementation will create a VA-API surface from
- * a DMA-buf exported from a Vulkan image.
+ * Creates a VA-API surface from a DMA-buf exported from a Vulkan image.
+ * This enables resource sharing between Vulkan (hasvk) and VA-API (crocus).
  */
 VkResult
 anv_vaapi_import_surface_from_image(struct anv_device *device,
                                     struct anv_image *image,
                                     VASurfaceID *surface_id)
 {
-   /* TODO: Implement DMA-buf import to VA-API
-    * Steps:
-    * 1. Export image as DMA-buf using anv_vaapi_export_video_surface_dmabuf
-    * 2. Set up VASurfaceAttribExternalBuffers descriptor
-    * 3. Create VA surface with vaCreateSurfaces using DRM PRIME attributes
+   VAStatus va_status;
+   int fd = -1;
+   
+   /* Get VA display */
+   VADisplay va_display = anv_vaapi_get_display(device);
+   if (!va_display) {
+      return vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
+   }
+   
+   /* Export image memory as DMA-buf */
+   VkResult result = anv_vaapi_export_video_surface_dmabuf(device, image, &fd);
+   if (result != VK_SUCCESS) {
+      return result;
+   }
+   
+   /* Get image layout information for stride and offsets */
+   uint32_t plane = anv_image_aspect_to_plane(image, VK_IMAGE_ASPECT_COLOR_BIT);
+   const struct anv_surface *surface = &image->planes[plane].primary_surface;
+   
+   /* Set up DMA-buf descriptor for VA-API
+    * For NV12 format (YUV 4:2:0), we have 2 planes:
+    * - Plane 0: Y (luma)
+    * - Plane 1: UV (chroma, interleaved)
     */
+   VASurfaceAttribExternalBuffers extbuf = {
+      .pixel_format = VA_FOURCC_NV12,
+      .width = image->vk.extent.width,
+      .height = image->vk.extent.height,
+      .num_buffers = 1,
+      .buffers = (uintptr_t *)&fd,
+      .flags = 0,
+      .num_planes = 2,  /* Y and UV for NV12 */
+   };
    
-   vk_logw(VK_LOG_OBJS(&device->vk.base),
-           "anv_vaapi_import_surface_from_image: Not yet implemented");
+   /* Set stride (row pitch) for both planes
+    * For NV12:
+    * - Y plane has full width stride
+    * - UV plane has same stride (U and V are interleaved)
+    */
+   extbuf.pitches[0] = surface->isl.row_pitch_B;
+   extbuf.pitches[1] = surface->isl.row_pitch_B;
    
-   return vk_error(device, VK_ERROR_FEATURE_NOT_PRESENT);
+   /* Set offsets for each plane
+    * For NV12:
+    * - Y plane starts at offset 0
+    * - UV plane starts after Y plane data
+    */
+   extbuf.offsets[0] = 0;
+   /* UV plane offset = Y plane size = height * stride */
+   extbuf.offsets[1] = image->vk.extent.height * surface->isl.row_pitch_B;
+   
+   /* Set up surface attributes for DRM PRIME import */
+   VASurfaceAttrib attribs[2] = {
+      {
+         .type = VASurfaceAttribMemoryType,
+         .flags = VA_SURFACE_ATTRIB_SETTABLE,
+         .value.type = VAGenericValueTypeInteger,
+         .value.value.i = VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME,
+      },
+      {
+         .type = VASurfaceAttribExternalBufferDescriptor,
+         .flags = VA_SURFACE_ATTRIB_SETTABLE,
+         .value.type = VAGenericValueTypePointer,
+         .value.value.p = &extbuf,
+      },
+   };
+   
+   /* Create VA surface from DMA-buf */
+   va_status = vaCreateSurfaces(
+      va_display,
+      VA_RT_FORMAT_YUV420,  /* NV12 is YUV 4:2:0 */
+      image->vk.extent.width,
+      image->vk.extent.height,
+      surface_id,
+      1,  /* num_surfaces */
+      attribs,
+      2   /* num_attribs */
+   );
+   
+   /* Close the fd - VA-API will duplicate it internally */
+   close(fd);
+   
+   if (va_status != VA_STATUS_SUCCESS) {
+      vk_loge(VK_LOG_OBJS(&device->vk.base),
+              "Failed to create VA surface from DMA-buf: %d", va_status);
+      return vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
+   }
+   
+   vk_logi(VK_LOG_OBJS(&device->vk.base),
+           "Created VA surface %u from Vulkan image (DMA-buf sharing)",
+           *surface_id);
+   
+   return VK_SUCCESS;
 }
