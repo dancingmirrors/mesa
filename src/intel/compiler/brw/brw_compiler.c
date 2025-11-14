@@ -243,11 +243,13 @@ brw_compiler_create(void *mem_ctx, const struct intel_device_info *devinfo)
       compiler->lowered_storage_formats[
          compiler->num_lowered_storage_formats++] = fmt;
    }
+   /* Note: Gen7/8 (hasvk) have different lowered format counts than gen9+ */
    assert((devinfo->verx10 >= 125 &&
            compiler->num_lowered_storage_formats == 0) ||
           (devinfo->verx10 >= 110 && devinfo->verx10 <= 120 &&
            compiler->num_lowered_storage_formats == 3) ||
-          devinfo->verx10 == 90);
+          devinfo->verx10 == 90 ||
+          (devinfo->verx10 >= 70 && devinfo->verx10 <= 80));
 
    return compiler;
 }

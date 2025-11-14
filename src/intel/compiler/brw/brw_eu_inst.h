@@ -436,31 +436,51 @@ F20(3src_swsb,              /* 9+ */ -1, -1,   /* 12+ */ 15,  8, /* 20+ */ 17, 8
 F(3src_hw_opcode,           /* 9+ */ 6,  0,    /* 12+ */ 6, 0)
 /** @} */
 
-#define F_3SRC_A16_SUBREG_NR(srcN, src_base) \
+#define F_3SRC_A16_SUBREG_NR(srcN, src_base_gen78, src_base_gen9) \
 static inline void                                                          \
 brw_eu_inst_set_3src_a16_##srcN##_subreg_nr(const struct                    \
                                             intel_device_info *devinfo,     \
                                             brw_eu_inst *inst,              \
                                             unsigned value)                 \
 {                                                                           \
-   assert(devinfo->ver == 9);                                               \
-   assert((value & ~0b11110) == 0);                                         \
-   brw_eu_inst_set_bits(inst, src_base + 11, src_base + 9, value >> 2);        \
-   brw_eu_inst_set_bits(inst, src_base + 20, src_base + 20, (value >> 1) & 1); \
+   if (devinfo->ver <= 8) {                                                 \
+      /* Gen7/8: Simple 3-bit field at bits [src_base+2:src_base] */       \
+      assert((value & ~0b111) == 0);                                        \
+      brw_eu_inst_set_bits(inst, src_base_gen78 + 2,                        \
+                           src_base_gen78, value);                          \
+   } else if (devinfo->ver == 9) {                                          \
+      /* Gen9: Split encoding across multiple bit positions */             \
+      assert((value & ~0b11110) == 0);                                      \
+      brw_eu_inst_set_bits(inst, src_base_gen9 + 11,                        \
+                           src_base_gen9 + 9, value >> 2);                  \
+      brw_eu_inst_set_bits(inst, src_base_gen9 + 20,                        \
+                           src_base_gen9 + 20, (value >> 1) & 1);           \
+   } else {                                                                 \
+      unreachable("Invalid generation for 3src a16 subreg encoding");      \
+   }                                                                        \
 }                                                                           \
 static inline unsigned                                                      \
 brw_eu_inst_3src_a16_##srcN##_subreg_nr(const struct                        \
                                      intel_device_info *devinfo,            \
                                      const brw_eu_inst *inst)               \
 {                                                                           \
-   assert(devinfo->ver == 9);                                               \
-   return brw_eu_inst_bits(inst, src_base + 11, src_base + 9) << 2 |        \
-          brw_eu_inst_bits(inst, src_base + 20, src_base + 20) << 1;        \
+   if (devinfo->ver <= 8) {                                                 \
+      /* Gen7/8: Simple 3-bit field at bits [src_base+2:src_base] */       \
+      return brw_eu_inst_bits(inst, src_base_gen78 + 2, src_base_gen78);   \
+   } else if (devinfo->ver == 9) {                                          \
+      /* Gen9: Split encoding across multiple bit positions */             \
+      return brw_eu_inst_bits(inst, src_base_gen9 + 11,                     \
+                              src_base_gen9 + 9) << 2 |                     \
+             brw_eu_inst_bits(inst, src_base_gen9 + 20,                     \
+                              src_base_gen9 + 20) << 1;                     \
+   } else {                                                                 \
+      unreachable("Invalid generation for 3src a16 subreg encoding");      \
+   }                                                                        \
 }
 
-F_3SRC_A16_SUBREG_NR(src0, 64)
-F_3SRC_A16_SUBREG_NR(src1, 85)
-F_3SRC_A16_SUBREG_NR(src2, 106)
+F_3SRC_A16_SUBREG_NR(src0, 73, 64)
+F_3SRC_A16_SUBREG_NR(src1, 94, 85)
+F_3SRC_A16_SUBREG_NR(src2, 115, 106)
 #undef F_3SRC_A16_SUBREG_NR
 
 #define REG_TYPE(reg)                                                         \
