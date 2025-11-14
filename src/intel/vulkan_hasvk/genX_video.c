@@ -92,7 +92,7 @@ anv_h264_parse_slice_header(const uint8_t *slice_data, size_t slice_size,
    *slice_type = 2; /* I slice */
    *slice_qp_delta = 0;
 
-   if (!slice_data || slice_size < 2)
+   if (!slice_data || slice_size < 2 || !sps || !pps)
       return;
 
    /* Initialize VLC reader */
@@ -106,6 +106,10 @@ anv_h264_parse_slice_header(const uint8_t *slice_data, size_t slice_size,
 
    /* Initialize RBSP reader with emulation prevention byte removal */
    vl_rbsp_init(&rbsp, &vlc, ~0, true);
+
+   /* Check if we have enough data before parsing */
+   if (vl_vlc_bits_left(&rbsp.nal) < 16)
+      return;
 
    /* Parse first_mb_in_slice - ue(v) */
    vl_rbsp_ue(&rbsp);
@@ -205,14 +209,57 @@ anv_h264_parse_slice_header(const uint8_t *slice_data, size_t slice_size,
       }
    }
 
-   /* Parse pred_weight_table if needed - this is complex and often not used */
+   /* Parse pred_weight_table if needed */
    if ((pps->flags.weighted_pred_flag && (*slice_type == 0 || *slice_type == 3)) ||
        (pps->weighted_bipred_idc == 1 && *slice_type == 1)) {
-      /* For simplicity, we skip detailed pred_weight_table parsing
-       * This would require parsing luma_log2_weight_denom, chroma_log2_weight_denom,
-       * and per-reference weights. Most streams don't use weighted prediction.
-       * TODO: Implement full pred_weight_table parsing if needed */
-      return; /* Cannot safely continue without full pred_weight_table parsing */
+      /* Parse luma_log2_weight_denom */
+      vl_rbsp_ue(&rbsp);
+      
+      /* Parse chroma_log2_weight_denom if chroma is present */
+      if (sps->chroma_format_idc != 0)
+         vl_rbsp_ue(&rbsp);
+
+      /* Get number of reference pictures for L0 */
+      uint32_t num_ref_idx_l0 = pps->num_ref_idx_l0_default_active_minus1 + 1;
+      
+      /* Parse weights for L0 references */
+      for (uint32_t i = 0; i < num_ref_idx_l0; i++) {
+         uint32_t luma_weight_flag = vl_rbsp_u(&rbsp, 1);
+         if (luma_weight_flag) {
+            vl_rbsp_se(&rbsp); /* luma_weight */
+            vl_rbsp_se(&rbsp); /* luma_offset */
+         }
+         if (sps->chroma_format_idc != 0) {
+            uint32_t chroma_weight_flag = vl_rbsp_u(&rbsp, 1);
+            if (chroma_weight_flag) {
+               for (int j = 0; j < 2; j++) {
+                  vl_rbsp_se(&rbsp); /* chroma_weight */
+                  vl_rbsp_se(&rbsp); /* chroma_offset */
+               }
+            }
+         }
+      }
+
+      /* Parse weights for L1 references if B slice */
+      if (*slice_type == 1) {
+         uint32_t num_ref_idx_l1 = pps->num_ref_idx_l1_default_active_minus1 + 1;
+         for (uint32_t i = 0; i < num_ref_idx_l1; i++) {
+            uint32_t luma_weight_flag = vl_rbsp_u(&rbsp, 1);
+            if (luma_weight_flag) {
+               vl_rbsp_se(&rbsp); /* luma_weight */
+               vl_rbsp_se(&rbsp); /* luma_offset */
+            }
+            if (sps->chroma_format_idc != 0) {
+               uint32_t chroma_weight_flag = vl_rbsp_u(&rbsp, 1);
+               if (chroma_weight_flag) {
+                  for (int j = 0; j < 2; j++) {
+                     vl_rbsp_se(&rbsp); /* chroma_weight */
+                     vl_rbsp_se(&rbsp); /* chroma_offset */
+                  }
+               }
+            }
+         }
+      }
    }
 
    /* Parse dec_ref_pic_marking */
