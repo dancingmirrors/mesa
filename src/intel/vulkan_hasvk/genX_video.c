@@ -80,13 +80,19 @@ static void
 anv_h264_parse_slice_header(const uint8_t *slice_data, size_t slice_size,
                             const StdVideoH264SequenceParameterSet *sps,
                             const StdVideoH264PictureParameterSet *pps,
+                            uint8_t nal_unit_type,
+                            uint8_t nal_ref_idc,
                             uint32_t *slice_type,
                             int32_t *slice_qp_delta)
 {
    struct vl_vlc vlc;
    struct vl_rbsp rbsp;
 
-   if (!slice_data || slice_size < 2)
+   /* Set defaults in case parsing fails */
+   *slice_type = 2; /* I slice */
+   *slice_qp_delta = 0;
+
+   if (!slice_data || slice_size < 2 || !sps || !pps)
       return;
 
    /* Initialize VLC reader */
@@ -101,10 +107,19 @@ anv_h264_parse_slice_header(const uint8_t *slice_data, size_t slice_size,
    /* Initialize RBSP reader with emulation prevention byte removal */
    vl_rbsp_init(&rbsp, &vlc, ~0, true);
 
+   /* Check if we have enough data before parsing */
+   if (vl_vlc_bits_left(&rbsp.nal) < 16)
+      return;
+
+   /* Helper macro to check if we have enough bits before reading */
+   #define CHECK_BITS(n) do { if (vl_vlc_bits_left(&rbsp.nal) < (n)) return; } while(0)
+
    /* Parse first_mb_in_slice - ue(v) */
+   CHECK_BITS(1);
    vl_rbsp_ue(&rbsp);
 
    /* Parse slice_type - ue(v) */
+   CHECK_BITS(1);
    uint32_t slice_type_raw = vl_rbsp_ue(&rbsp);
 
    /* Normalize slice type (values 5-9 are the same as 0-4 but indicate all
@@ -112,35 +127,210 @@ anv_h264_parse_slice_header(const uint8_t *slice_data, size_t slice_size,
    *slice_type = slice_type_raw % 5;
 
    /* Parse pic_parameter_set_id - ue(v) */
+   CHECK_BITS(1);
    vl_rbsp_ue(&rbsp);
 
    /* Parse frame_num - u(v) */
-   if (sps->log2_max_frame_num_minus4 < 28)
-      vl_rbsp_u(&rbsp, sps->log2_max_frame_num_minus4 + 4);
+   if (sps->log2_max_frame_num_minus4 < 28) {
+      uint32_t bits_needed = sps->log2_max_frame_num_minus4 + 4;
+      CHECK_BITS(bits_needed);
+      vl_rbsp_u(&rbsp, bits_needed);
+   }
 
    /* Handle field pictures */
    if (!sps->flags.frame_mbs_only_flag) {
-      if (vl_rbsp_u(&rbsp, 1)) /* field_pic_flag */
+      CHECK_BITS(1);
+      if (vl_rbsp_u(&rbsp, 1)) { /* field_pic_flag */
+         CHECK_BITS(1);
          vl_rbsp_u(&rbsp, 1); /* bottom_field_flag */
+      }
    }
 
-   /* Parse additional header fields to reach slice_qp_delta.
-    * Note: This is a simplified parser that handles common cases.
-    * A complete implementation would need to handle all H.264 slice header
-    * variations.
-    * For now, set QP delta to 0 as the default.
-    * A full implementation would continue parsing through:
-    * - idr_pic_id (for IDR pictures)
-    * - pic_order_cnt_lsb (if pic_order_cnt_type == 0)
-    * - delta_pic_order_cnt (if pic_order_cnt_type == 1)
-    * - redundant_pic_cnt (if present)
-    * - direct_spatial_mv_pred_flag (for B slices)
-    * - num_ref_idx_active_override_flag and related fields
-    * - ref_pic_list_modification
-    * - pred_weight_table (if using weighted prediction)
-    * - dec_ref_pic_marking (if nal_ref_idc != 0)
-    * - cabac_init_idc and slice_qp_delta */
-   *slice_qp_delta = 0;
+   /* Parse idr_pic_id for IDR slices */
+   if (nal_unit_type == 5) { /* IDR slice */
+      CHECK_BITS(1);
+      vl_rbsp_ue(&rbsp);
+   }
+
+   /* Parse picture order count fields */
+   if (sps->pic_order_cnt_type == 0) {
+      if (sps->log2_max_pic_order_cnt_lsb_minus4 < 28) {
+         uint32_t bits_needed = sps->log2_max_pic_order_cnt_lsb_minus4 + 4;
+         CHECK_BITS(bits_needed);
+         vl_rbsp_u(&rbsp, bits_needed);
+      }
+
+      if (pps->flags.bottom_field_pic_order_in_frame_present_flag &&
+          !vl_vlc_bits_left(&rbsp.nal))
+         return; /* Not enough data */
+
+      if (pps->flags.bottom_field_pic_order_in_frame_present_flag) {
+         CHECK_BITS(1);
+         vl_rbsp_se(&rbsp); /* delta_pic_order_cnt_bottom */
+      }
+   }
+
+   if (sps->pic_order_cnt_type == 1 && !sps->flags.delta_pic_order_always_zero_flag) {
+      CHECK_BITS(1);
+      vl_rbsp_se(&rbsp); /* delta_pic_order_cnt[0] */
+      if (pps->flags.bottom_field_pic_order_in_frame_present_flag) {
+         CHECK_BITS(1);
+         vl_rbsp_se(&rbsp); /* delta_pic_order_cnt[1] */
+      }
+   }
+
+   /* Parse redundant_pic_cnt if present */
+   if (pps->flags.redundant_pic_cnt_present_flag) {
+      CHECK_BITS(1);
+      vl_rbsp_ue(&rbsp);
+   }
+
+   /* Parse direct_spatial_mv_pred_flag for B slices */
+   if (*slice_type == 1) { /* B slice */
+      CHECK_BITS(1);
+      vl_rbsp_u(&rbsp, 1);
+   }
+
+   /* Parse num_ref_idx_active_override_flag and related fields */
+   if (*slice_type == 0 || *slice_type == 3 || *slice_type == 1) {
+      /* P, SP, or B slice */
+      CHECK_BITS(1);
+      uint32_t num_ref_idx_active_override_flag = vl_rbsp_u(&rbsp, 1);
+      if (num_ref_idx_active_override_flag) {
+         CHECK_BITS(1);
+         vl_rbsp_ue(&rbsp); /* num_ref_idx_l0_active_minus1 */
+         if (*slice_type == 1) { /* B slice */
+            CHECK_BITS(1);
+            vl_rbsp_ue(&rbsp); /* num_ref_idx_l1_active_minus1 */
+         }
+      }
+   }
+
+   /* Parse ref_pic_list_modification for non-I/SI slices */
+   if (*slice_type != 2 && *slice_type != 4) {
+      /* ref_pic_list_modification_flag_l0 */
+      uint32_t ref_pic_list_modification_flag_l0 = vl_rbsp_u(&rbsp, 1);
+      if (ref_pic_list_modification_flag_l0) {
+         while (true) {
+            uint32_t modification_of_pic_nums_idc = vl_rbsp_ue(&rbsp);
+            if (modification_of_pic_nums_idc == 3)
+               break;
+            if (modification_of_pic_nums_idc == 0 || modification_of_pic_nums_idc == 1)
+               vl_rbsp_ue(&rbsp); /* abs_diff_pic_num_minus1 */
+            else if (modification_of_pic_nums_idc == 2)
+               vl_rbsp_ue(&rbsp); /* long_term_pic_num */
+         }
+      }
+   }
+
+   /* Parse ref_pic_list_modification_flag_l1 for B slices */
+   if (*slice_type == 1) {
+      uint32_t ref_pic_list_modification_flag_l1 = vl_rbsp_u(&rbsp, 1);
+      if (ref_pic_list_modification_flag_l1) {
+         while (true) {
+            uint32_t modification_of_pic_nums_idc = vl_rbsp_ue(&rbsp);
+            if (modification_of_pic_nums_idc == 3)
+               break;
+            if (modification_of_pic_nums_idc == 0 || modification_of_pic_nums_idc == 1)
+               vl_rbsp_ue(&rbsp); /* abs_diff_pic_num_minus1 */
+            else if (modification_of_pic_nums_idc == 2)
+               vl_rbsp_ue(&rbsp); /* long_term_pic_num */
+         }
+      }
+   }
+
+   /* Parse pred_weight_table if needed */
+   if ((pps->flags.weighted_pred_flag && (*slice_type == 0 || *slice_type == 3)) ||
+       (pps->weighted_bipred_idc == 1 && *slice_type == 1)) {
+      /* Parse luma_log2_weight_denom */
+      vl_rbsp_ue(&rbsp);
+      
+      /* Parse chroma_log2_weight_denom if chroma is present */
+      if (sps->chroma_format_idc != 0)
+         vl_rbsp_ue(&rbsp);
+
+      /* Get number of reference pictures for L0 */
+      uint32_t num_ref_idx_l0 = pps->num_ref_idx_l0_default_active_minus1 + 1;
+      
+      /* Parse weights for L0 references */
+      for (uint32_t i = 0; i < num_ref_idx_l0; i++) {
+         uint32_t luma_weight_flag = vl_rbsp_u(&rbsp, 1);
+         if (luma_weight_flag) {
+            vl_rbsp_se(&rbsp); /* luma_weight */
+            vl_rbsp_se(&rbsp); /* luma_offset */
+         }
+         if (sps->chroma_format_idc != 0) {
+            uint32_t chroma_weight_flag = vl_rbsp_u(&rbsp, 1);
+            if (chroma_weight_flag) {
+               for (int j = 0; j < 2; j++) {
+                  vl_rbsp_se(&rbsp); /* chroma_weight */
+                  vl_rbsp_se(&rbsp); /* chroma_offset */
+               }
+            }
+         }
+      }
+
+      /* Parse weights for L1 references if B slice */
+      if (*slice_type == 1) {
+         uint32_t num_ref_idx_l1 = pps->num_ref_idx_l1_default_active_minus1 + 1;
+         for (uint32_t i = 0; i < num_ref_idx_l1; i++) {
+            uint32_t luma_weight_flag = vl_rbsp_u(&rbsp, 1);
+            if (luma_weight_flag) {
+               vl_rbsp_se(&rbsp); /* luma_weight */
+               vl_rbsp_se(&rbsp); /* luma_offset */
+            }
+            if (sps->chroma_format_idc != 0) {
+               uint32_t chroma_weight_flag = vl_rbsp_u(&rbsp, 1);
+               if (chroma_weight_flag) {
+                  for (int j = 0; j < 2; j++) {
+                     vl_rbsp_se(&rbsp); /* chroma_weight */
+                     vl_rbsp_se(&rbsp); /* chroma_offset */
+                  }
+               }
+            }
+         }
+      }
+   }
+
+   /* Parse dec_ref_pic_marking */
+   if (nal_ref_idc != 0) {
+      if (nal_unit_type == 5) { /* IDR slice */
+         vl_rbsp_u(&rbsp, 1); /* no_output_of_prior_pics_flag */
+         vl_rbsp_u(&rbsp, 1); /* long_term_reference_flag */
+      } else {
+         uint32_t adaptive_ref_pic_marking_mode_flag = vl_rbsp_u(&rbsp, 1);
+         if (adaptive_ref_pic_marking_mode_flag) {
+            while (true) {
+               uint32_t memory_management_control_operation = vl_rbsp_ue(&rbsp);
+               if (memory_management_control_operation == 0)
+                  break;
+               if (memory_management_control_operation == 1 ||
+                   memory_management_control_operation == 3)
+                  vl_rbsp_ue(&rbsp); /* difference_of_pic_nums_minus1 */
+               if (memory_management_control_operation == 2)
+                  vl_rbsp_ue(&rbsp); /* long_term_pic_num */
+               if (memory_management_control_operation == 3 ||
+                   memory_management_control_operation == 6)
+                  vl_rbsp_ue(&rbsp); /* long_term_frame_idx */
+               if (memory_management_control_operation == 4)
+                  vl_rbsp_ue(&rbsp); /* max_long_term_frame_idx_plus1 */
+            }
+         }
+      }
+   }
+
+   /* Parse cabac_init_idc for CABAC mode */
+   if (pps->flags.entropy_coding_mode_flag &&
+       *slice_type != 2 && *slice_type != 4) { /* Not I or SI slice */
+      CHECK_BITS(1);
+      vl_rbsp_ue(&rbsp); /* cabac_init_idc */
+   }
+
+   /* Finally, parse slice_qp_delta */
+   CHECK_BITS(1);
+   *slice_qp_delta = vl_rbsp_se(&rbsp);
+   
+   #undef CHECK_BITS
 }
 
 static uint32_t
@@ -738,6 +928,39 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
     */
 #define HEADER_OFFSET 3
 
+   /* Map the bitstream buffer to access slice header data.
+    * In long format mode, we need to parse slice headers to extract parameters.
+    */
+   void *buffer_map = NULL;
+   bool needs_unmap = false;
+   
+   if (src_buffer->address.bo) {
+      if (src_buffer->address.bo->map) {
+         /* Buffer is already mapped */
+         buffer_map = src_buffer->address.bo->map;
+      } else {
+         /* Buffer is not mapped, map it temporarily */
+         VkResult result = anv_device_map_bo(cmd_buffer->device,
+                                            src_buffer->address.bo,
+                                            0,
+                                            src_buffer->address.bo->size,
+                                            0, &buffer_map);
+         if (result == VK_SUCCESS) {
+            needs_unmap = true;
+            if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+               fprintf(stderr, "Mapped bitstream buffer: bo=%p, size=%lu, map=%p\n",
+                      (void*)src_buffer->address.bo,
+                      (unsigned long)src_buffer->address.bo->size,
+                      buffer_map);
+            }
+         } else {
+            if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+               fprintf(stderr, "Failed to map bitstream buffer for slice parsing\n");
+            }
+         }
+      }
+   }
+
    for (unsigned s = 0; s < h264_pic_info->sliceCount; s++) {
       bool last_slice = s == (h264_pic_info->sliceCount - 1);
       uint32_t current_offset = h264_pic_info->pSliceOffsets[s];
@@ -748,18 +971,57 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       else
           slice_data_size = h264_pic_info->pSliceOffsets[s+1] - current_offset;
 
-      /* Use picture-level information instead of parsing unmapped buffers.
-       * In long format mode, we need to provide slice parameters, but the
-       * source buffer may not be CPU-accessible. Use picture information
-       * to derive slice type: intra pictures use I slices, others use P slices.
-       */
+      /* Default values in case buffer is not accessible */
       uint32_t slice_type = h264_pic_info->pStdPictureInfo->flags.is_intra ? 2 : 0;
       int32_t slice_qp_delta = 0;
+      uint8_t nal_unit_type = 1; /* Non-IDR slice by default */
+      uint8_t nal_ref_idc = 0;
+
+      /* Parse slice header from the buffer if it's accessible */
+      if (buffer_map && slice_data_size > 4) {
+         const uint8_t *slice_data = (const uint8_t *)buffer_map +
+                                      src_buffer->address.offset +
+                                      frame_info->srcBufferOffset + current_offset;
+
+         /* Skip start code prefix to find NAL header
+          * H.264 NAL units start with 0x000001 (3-byte) or 0x00000001 (4-byte)
+          * The NAL header is the byte immediately after the start code */
+         const uint8_t *nal_start = slice_data;
+         size_t nal_size = slice_data_size;
+         
+         /* Check for 3-byte start code (0x000001) */
+         if (slice_data_size >= 4 && 
+             slice_data[0] == 0x00 && slice_data[1] == 0x00 && slice_data[2] == 0x01) {
+            nal_start = slice_data + 3;
+            nal_size = slice_data_size - 3;
+         }
+         /* Check for 4-byte start code (0x00000001) */
+         else if (slice_data_size >= 5 &&
+                  slice_data[0] == 0x00 && slice_data[1] == 0x00 && 
+                  slice_data[2] == 0x00 && slice_data[3] == 0x01) {
+            nal_start = slice_data + 4;
+            nal_size = slice_data_size - 4;
+         }
+
+         if (nal_size > 0) {
+            /* Extract NAL unit type and ref_idc from NAL header
+             * NAL header format: forbidden_zero_bit(1) | nal_ref_idc(2) | nal_unit_type(5) */
+            uint8_t nal_header = nal_start[0];
+            nal_ref_idc = (nal_header >> 5) & 0x3;
+            nal_unit_type = nal_header & 0x1F;
+
+            /* Parse the slice header */
+            anv_h264_parse_slice_header(nal_start, nal_size,
+                                       sps, pps,
+                                       nal_unit_type, nal_ref_idc,
+                                       &slice_type, &slice_qp_delta);
+         }
+      }
 
       if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
-         fprintf(stderr, "Slice[%d]: offset=%u, size=%u, type=%s (from picture flags)\n",
+         fprintf(stderr, "Slice[%d]: offset=%u, size=%u, type=%u, qp_delta=%d, nal_type=%u\n",
                  s, buffer_offset + current_offset, slice_data_size,
-                 h264_pic_info->pStdPictureInfo->flags.is_intra ? "I" : "P");
+                 slice_type, slice_qp_delta, nal_unit_type);
       }
 
       anv_batch_emit(&cmd_buffer->batch, GENX(MFX_AVC_SLICE_STATE), slice) {
@@ -786,6 +1048,15 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
          /* Start decoding after the 3-byte NAL header */
          avc_bsd.IndirectBSDDataStartAddress = buffer_offset + current_offset + HEADER_OFFSET;
       };
+   }
+
+   /* Unmap the buffer if we mapped it */
+   if (needs_unmap && buffer_map) {
+      anv_device_unmap_bo(cmd_buffer->device, src_buffer->address.bo,
+                         buffer_map, src_buffer->address.bo->size);
+      if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+         fprintf(stderr, "Unmapped bitstream buffer\n");
+      }
    }
 #undef HEADER_OFFSET
 }
