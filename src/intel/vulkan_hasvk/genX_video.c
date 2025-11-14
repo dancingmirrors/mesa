@@ -662,12 +662,20 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
                                        vid_dmv_top_surface).bo;
          }
 #if GFX_VERx10 == 70
+         /* IVB: MOCS fields are split into CacheabilityControl and GraphicsDataType */
+         uint32_t dmv_read_mocs = anv_mocs(cmd_buffer->device, ref_iv->image->bindings[0].address.bo, 0);
+         
          avc_directmode.DirectMVBufferAddress[idx * 2] =
             anv_image_address(ref_iv->image,
                               &ref_iv->image->vid_dmv_top_surface);
+         avc_directmode.DirectMVBufferCacheabilityControl[idx * 2] = dmv_read_mocs & 0x3;
+         avc_directmode.DirectMVBufferGraphicsDataType[idx * 2] = (dmv_read_mocs >> 2) & 0x1;
+         
          avc_directmode.DirectMVBufferAddress[idx * 2 + 1] =
             anv_image_address(ref_iv->image,
                               &ref_iv->image->vid_dmv_top_surface);
+         avc_directmode.DirectMVBufferCacheabilityControl[idx * 2 + 1] = dmv_read_mocs & 0x3;
+         avc_directmode.DirectMVBufferGraphicsDataType[idx * 2 + 1] = (dmv_read_mocs >> 2) & 0x1;
 #endif
 #if GFX_VERx10 == 75
          if (idx == 0)
@@ -684,10 +692,18 @@ anv_h264_decode_video(struct anv_cmd_buffer *cmd_buffer,
       }
 
 #if GFX_VERx10 == 70
+      /* IVB: MOCS fields are split into CacheabilityControl and GraphicsDataType */
+      uint32_t dmv_write_mocs = anv_mocs(cmd_buffer->device, img->bindings[0].address.bo, 0);
+      
       avc_directmode.DirectMVBufferWriteAddress[0] =
          anv_image_address(img, &img->vid_dmv_top_surface);
+      avc_directmode.DirectMVBufferWriteCacheabilityControl[0] = dmv_write_mocs & 0x3;
+      avc_directmode.DirectMVBufferWriteGraphicsDataType[0] = (dmv_write_mocs >> 2) & 0x1;
+      
       avc_directmode.DirectMVBufferWriteAddress[1] =
          anv_image_address(img, &img->vid_dmv_top_surface);
+      avc_directmode.DirectMVBufferWriteCacheabilityControl[1] = dmv_write_mocs & 0x3;
+      avc_directmode.DirectMVBufferWriteGraphicsDataType[1] = (dmv_write_mocs >> 2) & 0x1;
 #else
       avc_directmode.DirectMVBufferWriteAddress =
          anv_image_address(img, &img->vid_dmv_top_surface);
