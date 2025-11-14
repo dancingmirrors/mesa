@@ -801,10 +801,15 @@ blorp_emit_ps_config(struct blorp_batch *batch,
 
    const struct intel_device_info *devinfo = batch->blorp->compiler->brw->devinfo;
 
-   /* Gen7/8: Just emit an empty 3DSTATE_WM. HIZ operations are not supported
-    * on Gen7 when using the BRW compiler path.
+   /* Gen7/8: Emit an empty 3DSTATE_WM with all fields zeroed.
+    * HIZ operations are not supported on Gen7 when using the BRW compiler path.
+    * We must explicitly zero all fields to avoid assertion failures in
+    * util_bitpack_uint() when uninitialized values exceed field bit widths.
     */
-   blorp_emit(batch, GENX(3DSTATE_WM), wm);
+   struct GENX(3DSTATE_WM) wm = {
+      GENX(3DSTATE_WM_header),
+   };
+   GENX(3DSTATE_WM_pack)(batch, blorp_emit_dwords(batch, GENX(3DSTATE_WM_length)), &wm);
 
    blorp_emit(batch, GENX(3DSTATE_PS), ps) {
       if (params->src.enabled) {
