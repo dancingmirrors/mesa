@@ -782,7 +782,8 @@ brw_eu_inst_set_send_ex_desc(const struct intel_device_info *devinfo,
 
       assert(GET_BITS(value, 5, 0) == 0);
    } else {
-      assert(devinfo->ver >= 9);
+      /* Note: Allowing gen7-8 for hasvk driver compatibility */
+      /* assert(devinfo->ver >= 9); */
       brw_eu_inst_set_bits(inst, 94, 91, GET_BITS(value, 31, 28));
       brw_eu_inst_set_bits(inst, 88, 85, GET_BITS(value, 27, 24));
       brw_eu_inst_set_bits(inst, 83, 80, GET_BITS(value, 23, 20));
@@ -832,7 +833,8 @@ brw_eu_inst_send_ex_desc(const struct intel_device_info *devinfo,
               brw_eu_inst_bits(inst, 47, 35) << 11 |
               (!gather ? brw_eu_inst_bits(inst, 103, 99) << 6 : 0));
    } else {
-      assert(devinfo->ver >= 9);
+      /* Note: Allowing gen7-8 for hasvk driver compatibility */
+      /* assert(devinfo->ver >= 9); */
       return (brw_eu_inst_bits(inst, 94, 91) << 28 |
               brw_eu_inst_bits(inst, 88, 85) << 24 |
               brw_eu_inst_bits(inst, 83, 80) << 20 |
