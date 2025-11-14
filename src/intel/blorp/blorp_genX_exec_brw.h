@@ -801,46 +801,10 @@ blorp_emit_ps_config(struct blorp_batch *batch,
 
    const struct intel_device_info *devinfo = batch->blorp->compiler->brw->devinfo;
 
-#if GFX_VER >= 8
+   /* Gen7/8: Just emit an empty 3DSTATE_WM. HIZ operations are not supported
+    * on Gen7 when using the BRW compiler path.
+    */
    blorp_emit(batch, GENX(3DSTATE_WM), wm);
-#elif GFX_VER >= 7
-   /* Gen7: Need to properly initialize 3DSTATE_WM fields */
-   blorp_emit(batch, GENX(3DSTATE_WM), wm) {
-      switch (params->hiz_op) {
-      case ISL_AUX_OP_FAST_CLEAR:
-         wm.DepthBufferClear = true;
-         break;
-      case ISL_AUX_OP_FULL_RESOLVE:
-         wm.DepthBufferResolveEnable = true;
-         break;
-      case ISL_AUX_OP_AMBIGUATE:
-         wm.HierarchicalDepthBufferResolveEnable = true;
-         break;
-      case ISL_AUX_OP_NONE:
-         break;
-      default:
-         UNREACHABLE("not reached");
-      }
-
-      if (prog_data) {
-         wm.ThreadDispatchEnable = true;
-         wm.PixelShaderComputedDepthMode = prog_data->computed_depth_mode;
-      }
-
-      if (params->src.enabled)
-         wm.PixelShaderKillsPixel = true;
-
-      if (params->num_samples > 1) {
-         wm.MultisampleRasterizationMode = MSRASTMODE_ON_PATTERN;
-         wm.MultisampleDispatchMode =
-            (prog_data && prog_data->persample_dispatch) ?
-            MSDISPMODE_PERSAMPLE : MSDISPMODE_PERPIXEL;
-      } else {
-         wm.MultisampleRasterizationMode = MSRASTMODE_OFF_PIXEL;
-         wm.MultisampleDispatchMode = MSDISPMODE_PERSAMPLE;
-      }
-   }
-#endif
 
    blorp_emit(batch, GENX(3DSTATE_PS), ps) {
       if (params->src.enabled) {
