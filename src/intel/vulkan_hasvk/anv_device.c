@@ -2636,8 +2636,8 @@ anv_CreateDevice(VkPhysicalDevice physicalDevice,
             (INTEL_DEBUG(DEBUG_COLOR) ? INTEL_BATCH_DECODE_IN_COLOR : 0) |
             INTEL_BATCH_DECODE_OFFSETS | INTEL_BATCH_DECODE_FLOATS;
 
-         intel_batch_decode_ctx_init_elk(decoder,
-                                         (const struct elk_isa_info *)&physical_device->compiler->isa,
+         intel_batch_decode_ctx_init_brw(decoder,
+                                         &physical_device->compiler->isa,
                                          &physical_device->info,
                                          stderr, decode_flags, NULL,
                                          decode_get_bo, NULL, device);
