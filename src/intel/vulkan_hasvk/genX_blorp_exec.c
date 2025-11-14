@@ -32,7 +32,7 @@
 #undef __gen_combine_address
 
 #include "common/intel_l3_config.h"
-#include "blorp/blorp_genX_exec_hasvk.h"
+#include "blorp/blorp_genX_exec_brw.h"
 
 #include "ds/intel_tracepoints.h"
 
