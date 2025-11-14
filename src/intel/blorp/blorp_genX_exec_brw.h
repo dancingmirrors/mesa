@@ -579,6 +579,7 @@ blorp_emit_vertex_elements(struct blorp_batch *batch,
       vf.StatisticsEnable = false;
    }
 
+#if GFX_VER >= 8
    /* Overwrite Render Target Array Index (2nd dword) in the VUE header with
     * primitive instance identifier. This is used for layered clears.
     */
@@ -614,6 +615,7 @@ blorp_emit_vertex_elements(struct blorp_batch *batch,
    blorp_emit(batch, GENX(3DSTATE_VF_TOPOLOGY), topo) {
       topo.PrimitiveTopologyType = _3DPRIM_RECTLIST;
    }
+#endif /* GFX_VER >= 8 */
 }
 
 /* 3DSTATE_VIEWPORT_STATE_POINTERS */
@@ -711,7 +713,7 @@ blorp_emit_vs_config(struct blorp_batch *batch,
             batch->blorp->isl_dev->info->max_vs_threads - 1;
 
          assert(vs_prog_data->base.dispatch_mode == INTEL_DISPATCH_MODE_SIMD8);
-#if GFX_VER < 20
+#if GFX_VER >= 8 && GFX_VER < 20
          vs.SIMD8DispatchEnable = true;
 #endif
 
@@ -754,9 +756,11 @@ blorp_emit_sf_config(struct blorp_batch *batch,
 #endif
    }
 
+#if GFX_VER >= 8
    blorp_emit(batch, GENX(3DSTATE_RASTER), raster) {
       raster.CullMode = CULLMODE_NONE;
    }
+#endif
 
    blorp_emit(batch, GENX(3DSTATE_SBE), sbe) {
       sbe.VertexURBEntryReadOffset = 1;
@@ -768,8 +772,10 @@ blorp_emit_sf_config(struct blorp_batch *batch,
          sbe.NumberofSFOutputAttributes = 0;
          sbe.VertexURBEntryReadLength = 1;
       }
+#if GFX_VER >= 8
       sbe.ForceVertexURBEntryReadLength = true;
       sbe.ForceVertexURBEntryReadOffset = true;
+#endif
 
 #if GFX_VER >= 9
       for (unsigned i = 0; i < 32; i++)
@@ -814,7 +820,11 @@ blorp_emit_ps_config(struct blorp_batch *batch,
        * k, it implies 2(k+1) threads. It implicitly scales for different GT
        * levels (which have some # of PSDs).
        */
+#if GFX_VER >= 8
       ps.MaximumNumberofThreadsPerPSD = devinfo->max_threads_per_psd - 1;
+#else
+      ps.MaximumNumberofThreads = devinfo->max_threads_per_psd - 1;
+#endif
 
       switch (params->fast_clear_op) {
       case ISL_AUX_OP_NONE:
@@ -927,6 +937,7 @@ blorp_emit_ps_config(struct blorp_batch *batch,
       }
    }
 
+#if GFX_VER >= 8
    blorp_emit(batch, GENX(3DSTATE_PS_EXTRA), psx) {
       if (params->src.enabled)
          psx.PixelShaderKillsPixel = true;
@@ -974,6 +985,7 @@ blorp_emit_ps_config(struct blorp_batch *batch,
 #endif
       }
    }
+#endif /* GFX_VER >= 8 */
 }
 
 static void
@@ -1020,12 +1032,16 @@ blorp_emit_blend_state(struct blorp_batch *batch,
 
    blorp_emit(batch, GENX(3DSTATE_BLEND_STATE_POINTERS), sp) {
       sp.BlendStatePointer = offset;
+#if GFX_VER >= 8
       sp.BlendStatePointerValid = true;
+#endif
    }
 
+#if GFX_VER >= 8
    blorp_emit(batch, GENX(3DSTATE_PS_BLEND), ps_blend) {
       ps_blend.HasWriteableRT = true;
    }
+#endif
 }
 
 static void
@@ -1041,7 +1057,9 @@ blorp_emit_color_calc_state(struct blorp_batch *batch,
 
    blorp_emit(batch, GENX(3DSTATE_CC_STATE_POINTERS), sp) {
       sp.ColorCalcStatePointer = offset;
+#if GFX_VER >= 8
       sp.ColorCalcStatePointerValid = true;
+#endif
    }
 }
 
@@ -1049,6 +1067,7 @@ static void
 blorp_emit_depth_stencil_state(struct blorp_batch *batch,
                                const struct blorp_params *params)
 {
+#if GFX_VER >= 8
    blorp_emit(batch, GENX(3DSTATE_WM_DEPTH_STENCIL), ds) {
       if (params->depth.enabled) {
          ds.DepthBufferWriteEnable = true;
@@ -1088,6 +1107,7 @@ blorp_emit_depth_stencil_state(struct blorp_batch *batch,
 #endif
       }
    }
+#endif /* GFX_VER >= 8 */
 
 #if GFX_VER >= 12
    blorp_emit(batch, GENX(3DSTATE_DEPTH_BOUNDS), db) {
