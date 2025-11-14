@@ -1156,11 +1156,12 @@ blorp_emit_pipeline(struct blorp_batch *batch,
    blorp_emit(batch, GENX(3DSTATE_CONSTANT_GS), xs) { xs.MOCS = mocs; }
    blorp_emit(batch, GENX(3DSTATE_CONSTANT_PS), xs) { xs.MOCS = mocs; }
 #else
-   blorp_emit(batch, GENX(3DSTATE_CONSTANT_VS), xs) { }
-   blorp_emit(batch, GENX(3DSTATE_CONSTANT_HS), xs) { }
-   blorp_emit(batch, GENX(3DSTATE_CONSTANT_DS), xs) { }
-   blorp_emit(batch, GENX(3DSTATE_CONSTANT_GS), xs) { }
-   blorp_emit(batch, GENX(3DSTATE_CONSTANT_PS), xs) { }
+   /* Gen7/8: MOCS is in the ConstantBody sub-structure */
+   blorp_emit(batch, GENX(3DSTATE_CONSTANT_VS), xs) { xs.ConstantBody.MOCS = mocs; }
+   blorp_emit(batch, GENX(3DSTATE_CONSTANT_HS), xs) { xs.ConstantBody.MOCS = mocs; }
+   blorp_emit(batch, GENX(3DSTATE_CONSTANT_DS), xs) { xs.ConstantBody.MOCS = mocs; }
+   blorp_emit(batch, GENX(3DSTATE_CONSTANT_GS), xs) { xs.ConstantBody.MOCS = mocs; }
+   blorp_emit(batch, GENX(3DSTATE_CONSTANT_PS), xs) { xs.ConstantBody.MOCS = mocs; }
 #endif
 
    if (params->src.enabled)
