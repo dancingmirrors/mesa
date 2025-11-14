@@ -1842,9 +1842,7 @@ genX(graphics_pipeline_emit)(struct anv_graphics_pipeline *pipeline,
 
    emit_3dstate_clip(pipeline, state->ia, state->vp, state->rs);
 
-#if 0
-   /* From gfx7_vs_state.c */
-
+#if GFX_VERx10 == 70
    /**
     * From Graphics BSpec: 3D-Media-GPGPU Engine > 3D Pipeline Stages >
     * Geometry > Geometry Shader > State:
@@ -1857,8 +1855,11 @@ genX(graphics_pipeline_emit)(struct anv_graphics_pipeline *pipeline,
     * whole fixed function pipeline" means to emit a PIPE_CONTROL with the "CS
     * Stall" bit set.
     */
-   if (device->info->platform == INTEL_PLATFORM_IVB)
-      gfx7_emit_vs_workaround_flush(brw);
+   if (pipeline->base.device->info->platform == INTEL_PLATFORM_IVB) {
+      anv_batch_emit(&pipeline->base.batch, GFX7_PIPE_CONTROL, pc) {
+         pc.CommandStreamerStallEnable = true;
+      }
+   }
 #endif
 
    emit_vertex_input(pipeline, state->vi);
