@@ -65,6 +65,14 @@ INTEL_DEBUG=bat-stats vkcube
 - **`perf`** - ✅ ALREADY WORKED (custom hasvk addition) - Print performance warnings
   - Shows warnings about suboptimal usage patterns
   - Helps identify performance issues
+  - **Also enables VA-API bridge logging** (when video decode is used):
+    - VA display initialization status
+    - Video session creation/destruction
+    - Surface import/export operations
+    - Decode command recording and execution
+    - DPB (Decoded Picture Buffer) management
+    - Parameter translation details
+    - Synchronization operations
   
 - **`submit`** - ✅ ALREADY WORKED - Print batch buffer submission statistics
   - Shows information about each execbuf2 call
@@ -170,3 +178,71 @@ The hasvk driver now properly:
   - Only affects Ivy Bridge, Haswell, Cherryview (no soft-pinning)
 
 - **`INTEL_SIMD_DEBUG`** - Control SIMD width selection (separate from INTEL_DEBUG)
+
+## VA-API Bridge Debugging (Video Decode)
+
+When using Vulkan Video decode on hasvk (Gen7-8 hardware), the driver routes decode operations through VA-API for stability. The following environment variables are useful for debugging:
+
+### INTEL_DEBUG Flags for Video
+
+- **`INTEL_DEBUG=perf`** - Enables detailed VA-API bridge logging
+  - Video session lifecycle (create/destroy)
+  - Surface import/export via DMA-buf
+  - H.264 parameter translation (SPS/PPS/slice headers)
+  - DPB reference frame management
+  - Decode command recording and execution
+  - Synchronization points (GEM domain transitions)
+
+### VA-API Driver Debugging
+
+- **`LIBVA_MESSAGING_LEVEL`** - Control VA-API library logging
+  - `0` - No logging (default)
+  - `1` - Error messages only
+  - `2` - Error and info messages (recommended for debugging)
+  - `3` - Verbose logging
+
+- **`LIBVA_TRACE`** - Trace VA-API calls to a file
+  - `export LIBVA_TRACE=/tmp/vaapi.log`
+  - Logs all VA-API function calls with parameters
+  - Very verbose, use for detailed debugging
+
+- **`LIBVA_DRIVER_NAME`** - Force specific VA-API driver
+  - `crocus` - Use crocus driver (recommended for Gen7-8)
+  - `i965` - Use legacy i965 driver (fallback)
+  - Normally auto-detected, override only if needed
+
+### Example: Debug Video Decode
+
+```bash
+# Enable all video-related debugging
+export INTEL_DEBUG=perf
+export LIBVA_MESSAGING_LEVEL=2
+export LIBVA_TRACE=/tmp/vaapi-trace.log
+
+# Test with mpv
+mpv --hwdec=vulkan video.mp4
+
+# Check logs
+cat /tmp/vaapi-trace.log
+```
+
+### Common Video Decode Issues
+
+**Symptom:** Video decode fails or produces garbage output  
+**Debug:** Check `INTEL_DEBUG=perf` output for:
+- Failed surface import (DMA-buf issues)
+- Invalid SPS/PPS IDs in parameter translation
+- Missing reference frames in DPB
+- VA-API errors from `vaBeginPicture`/`vaEndPicture`
+
+**Symptom:** Video decode is very slow  
+**Debug:** Check for:
+- Excessive surface imports (should cache surfaces)
+- Missing GEM domain transitions causing CPU waits
+- VA-API driver issues (check `LIBVA_MESSAGING_LEVEL=2`)
+
+**Symptom:** Application crashes during video decode  
+**Debug:** 
+- Ensure VA-API driver is installed (`crocus` or `i965`)
+- Check for memory leaks with valgrind
+- Verify video content is valid H.264
