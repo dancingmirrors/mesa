@@ -2709,6 +2709,11 @@ struct anv_cmd_buffer
    {
       struct anv_video_session *vid;
       struct anv_video_session_params *params;
+      
+      /* Phase 4: Deferred VA-API decode commands
+       * These are recorded during CmdDecodeVideoKHR and executed at QueueSubmit time.
+       */
+      struct util_dynarray vaapi_decodes;  /* array of struct anv_vaapi_decode_cmd */
    } video;
 };
 
