@@ -84,18 +84,37 @@ get_va_profile(const VkVideoProfileInfoKHR *profile)
       if (h264_profile) {
          switch (h264_profile->stdProfileIdc) {
          case STD_VIDEO_H264_PROFILE_IDC_BASELINE:
+            if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+               fprintf(stderr, "VA-API: Parsed H.264 profile: Baseline (IDC=%d) -> VAProfileH264ConstrainedBaseline\n",
+                       h264_profile->stdProfileIdc);
+            }
             return VAProfileH264ConstrainedBaseline;
          case STD_VIDEO_H264_PROFILE_IDC_MAIN:
+            if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+               fprintf(stderr, "VA-API: Parsed H.264 profile: Main (IDC=%d) -> VAProfileH264Main\n",
+                       h264_profile->stdProfileIdc);
+            }
             return VAProfileH264Main;
          case STD_VIDEO_H264_PROFILE_IDC_HIGH:
+            if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+               fprintf(stderr, "VA-API: Parsed H.264 profile: High (IDC=%d) -> VAProfileH264High\n",
+                       h264_profile->stdProfileIdc);
+            }
             return VAProfileH264High;
          default:
             /* Unsupported H.264 profile, default to Main */
+            if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+               fprintf(stderr, "VA-API: Unsupported H.264 profile (IDC=%d), defaulting to VAProfileH264Main\n",
+                       h264_profile->stdProfileIdc);
+            }
             return VAProfileH264Main;
          }
       }
       
       /* No profile info provided, default to Main */
+      if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+         fprintf(stderr, "VA-API: No H.264 profile info provided, defaulting to VAProfileH264Main\n");
+      }
       return VAProfileH264Main;
    }
 
