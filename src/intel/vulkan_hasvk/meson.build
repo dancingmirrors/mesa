@@ -54,6 +54,11 @@ devenv.append('VK_DRIVER_FILES', _dev_icd.full_path())
 # Deprecated: replaced by VK_DRIVER_FILES above
 devenv.append('VK_ICD_FILENAMES', _dev_icd.full_path())
 
+# Check for VA-API early since we need it to determine which files to compile
+# VA-API is required for video decode bridge in hasvk
+_hasvk_va_name = host_machine.system() == 'windows' ? 'libva-win32' : 'libva'
+dep_hasvk_va = dependency(_hasvk_va_name, version : '>= 1.8.0', required : false)
+
 libanv_per_hw_ver_libs = []
 anv_per_hw_ver_files = files(
   'genX_blorp_exec.c',
@@ -62,8 +67,12 @@ anv_per_hw_ver_files = files(
   'genX_pipeline.c',
   'genX_query.c',
   'genX_state.c',
-  'genX_video.c'
 )
+
+# Add video decode files only when libva is available
+if dep_hasvk_va.found()
+  anv_per_hw_ver_files += files('genX_video.c')
+endif
 foreach g : [['70', ['gfx7_cmd_buffer.c']],
              ['75', ['gfx7_cmd_buffer.c']],
              ['80', ['gfx8_cmd_buffer.c']]]
@@ -116,10 +125,16 @@ libanv_files = files(
   'anv_util.c',
   'anv_utrace.c',
   'anv_wsi.c',
-  'anv_video.c',
-  'anv_video_vaapi_bridge.c',
-  'anv_video_vaapi_h264.c',
 )
+
+# Add video decode files only when libva is available
+if dep_hasvk_va.found()
+  libanv_files += files(
+    'anv_video.c',
+    'anv_video_vaapi_bridge.c',
+    'anv_video_vaapi_h264.c',
+  )
+endif
 
 anv_deps = [
   dep_libdrm,
@@ -132,10 +147,7 @@ anv_deps = [
   idep_vulkan_wsi_headers,
 ]
 
-# Add VA-API dependencies for video decode bridge
-# Check for VA-API separately for hasvk video decode support
-_hasvk_va_name = host_machine.system() == 'windows' ? 'libva-win32' : 'libva'
-dep_hasvk_va = dependency(_hasvk_va_name, version : '>= 1.8.0', required : false)
+# Add VA-API dependencies to anv_deps when found
 if dep_hasvk_va.found()
   anv_deps += dep_hasvk_va
   # Also need libva-drm for vaGetDisplayDRM and DRM-specific functions
@@ -150,6 +162,11 @@ anv_flags = [
   no_override_init_args,
   sse2_args,
 ]
+
+# Define HAVE_LIBVA when libva is available for video decode support
+if dep_hasvk_va.found()
+  anv_flags += '-DHAVE_LIBVA'
+endif
 
 anv_cpp_flags = []
 

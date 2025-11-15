@@ -64,7 +64,9 @@
 #include "genxml/hasvk_gen7_pack.h"
 #include "genxml/genX_bits.h"
 
+#ifdef HAVE_LIBVA
 #include <va/va.h>
+#endif
 
 static const driOptionDescription anv_dri_options[] = {
    DRI_CONF_SECTION_PERFORMANCE DRI_CONF_ADAPTIVE_SYNC(true)
@@ -197,7 +199,12 @@ get_device_extensions(const struct anv_physical_device *device,
    const bool has_syncobj_wait =
       (device->sync_syncobj_type.features & VK_SYNC_FEATURE_CPU_WAIT) != 0;
 
+   /* Video decode is only supported through VA-API with H.264 codec enabled */
+#if defined(HAVE_LIBVA) && VIDEO_CODEC_H264DEC
    const bool video_decode = true;
+#else
+   const bool video_decode = false;
+#endif
 
    *ext = (struct vk_device_extension_table) {
       .KHR_8bit_storage = device->info.ver >= 8,
@@ -273,7 +280,7 @@ get_device_extensions(const struct anv_physical_device *device,
       .KHR_variable_pointers = true,
       .KHR_video_queue = video_decode,
       .KHR_video_decode_queue = video_decode,
-      .KHR_video_decode_h264 = video_decode && VIDEO_CODEC_H264DEC,
+      .KHR_video_decode_h264 = video_decode,  /* H.264 is the only supported codec */
       .KHR_vulkan_memory_model = true,
       .KHR_workgroup_memory_explicit_layout = true,
       .KHR_zero_initialize_workgroup_memory = true,
@@ -2999,7 +3006,9 @@ anv_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
 
    /* Terminate VA-API display if it was initialized */
    if (device->va_display) {
+#ifdef HAVE_LIBVA
       vaTerminate((VADisplay) device->va_display);
+#endif
       device->va_display = NULL;
    }
 
