@@ -33,6 +33,7 @@
  * - VA-API session management
  * - Communication layer between Vulkan and VA-API
  * - Resource sharing via DMA-buf
+ * - Synchronization between VA-API and Vulkan using GEM set_domain
  */
 
 #include "anv_video_vaapi_bridge.h"
@@ -44,8 +45,11 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <string.h>
+#include <sys/ioctl.h>
 
 #include "vk_video/vulkan_video_codecs_common.h"
+#include "drm-uapi/i915_drm.h"
+#include "drm-uapi/drm_fourcc.h"
 
 /* Define VA-API constants and macros for compatibility with legacy intel-vaapi-driver */
 #ifndef VA_FOURCC
@@ -380,15 +384,48 @@ anv_vaapi_decode_frame(struct anv_cmd_buffer *cmd_buffer,
    }
    const struct anv_image *dst_image = dst_image_view->image;
    
-   /* Import destination surface to VA-API (or get cached surface) */
-   VASurfaceID dst_surface;
-   result = anv_vaapi_import_surface_from_image(device, (struct anv_image *)dst_image, &dst_surface);
-   if (result != VK_SUCCESS) {
-      return result;
+   /* Import destination surface to VA-API (or get cached surface)
+    * Check if this surface is already mapped to avoid creating duplicates
+    */
+   VASurfaceID dst_surface = anv_vaapi_lookup_surface(session, dst_image);
+   if (dst_surface == VA_INVALID_SURFACE) {
+      /* Not in cache, import it now */
+      result = anv_vaapi_import_surface_from_image(device, (struct anv_image *)dst_image, &dst_surface);
+      if (result != VK_SUCCESS) {
+         return result;
+      }
+      
+      /* Add destination surface to mapping for future use */
+      anv_vaapi_add_surface_mapping(session, dst_image, dst_surface);
+   } else if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+      fprintf(stderr, "VA-API decode: Reusing cached destination surface %u\n", dst_surface);
    }
    
-   /* Add destination surface to mapping for potential use as reference */
-   anv_vaapi_add_surface_mapping(session, dst_image, dst_surface);
+   /* CRITICAL SYNCHRONIZATION (Phase 3, Part 4 - Before VA-API decode):
+    * Before VA-API starts decoding to the surface, we need to ensure any
+    * previous Vulkan operations on the surface have completed.
+    * 
+    * Set the GEM domain to CPU to force a wait for any pending GPU operations.
+    * This ensures:
+    * 1. Any previous render/texture operations on this surface complete
+    * 2. Caches are flushed so VA-API sees the correct surface state
+    */
+   struct anv_image_binding *dst_binding = &((struct anv_image *)dst_image)->bindings[ANV_IMAGE_MEMORY_BINDING_MAIN];
+   if (dst_binding->address.bo) {
+      struct drm_i915_gem_set_domain set_domain = {
+         .handle = dst_binding->address.bo->gem_handle,
+         .read_domains = I915_GEM_DOMAIN_CPU,  /* Wait for GPU to finish */
+         .write_domain = I915_GEM_DOMAIN_CPU,  /* VA-API will write */
+      };
+      
+      int ret = intel_ioctl(device->fd, DRM_IOCTL_I915_GEM_SET_DOMAIN, &set_domain);
+      if (ret != 0) {
+         vk_logw(VK_LOG_OBJS(&device->vk.base),
+                 "Failed to set GEM domain before VA-API decode: %m");
+      } else if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+         fprintf(stderr, "VA-API decode: Synchronized surface before decode\n");
+      }
+   }
    
    /* Get video session parameters - already a pointer, no need for FROM_HANDLE */
    struct anv_video_session_params *params = cmd_buffer->video.params;
@@ -457,38 +494,102 @@ anv_vaapi_decode_frame(struct anv_cmd_buffer *cmd_buffer,
       return vk_error(device, VK_ERROR_MEMORY_MAP_FAILED);
    }
    
-   /* Create slice parameter buffer - build RefPicList from DPB */
-   VASliceParameterBufferH264 va_slice_param;
-   anv_vaapi_translate_h264_slice_params(device, frame_info, h264_pic_info,
-                                         session, &va_pic_param,
-                                         0, frame_info->srcBufferRange,
-                                         &va_slice_param);
-   
-   VABufferID slice_param_buf;
-   va_status = vaCreateBuffer(session->va_display, session->va_context,
-                              VASliceParameterBufferType,
-                              sizeof(VASliceParameterBufferH264), 1,
-                              &va_slice_param, &slice_param_buf);
-   if (va_status != VA_STATUS_SUCCESS) {
+   /* Process multiple slices - H.264 frames typically have multiple slices
+    * We need to create a slice parameter and slice data buffer for each slice.
+    */
+   uint32_t slice_count = h264_pic_info->sliceCount;
+   if (slice_count == 0) {
+      anv_gem_munmap(device, bitstream_data, frame_info->srcBufferRange);
       vaDestroyBuffer(session->va_display, pic_param_buf);
       vk_loge(VK_LOG_OBJS(&device->vk.base),
-              "Failed to create VA slice parameter buffer: %d", va_status);
-      return vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
+              "H.264 decode has no slices");
+      return vk_error(device, VK_ERROR_FORMAT_NOT_SUPPORTED);
    }
    
-   /* Create slice data buffer with the actual bitstream */
-   VABufferID slice_data_buf;
-   va_status = vaCreateBuffer(session->va_display, session->va_context,
-                              VASliceDataBufferType,
-                              frame_info->srcBufferRange, 1,
-                              bitstream_data + frame_info->srcBufferOffset,
-                              &slice_data_buf);
-   if (va_status != VA_STATUS_SUCCESS) {
-      vaDestroyBuffer(session->va_display, slice_param_buf);
+   if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+      fprintf(stderr, "VA-API H.264: Processing %u slices\n", slice_count);
+   }
+   
+   /* Allocate arrays for slice buffers */
+   VABufferID *slice_param_bufs = vk_alloc(&device->vk.alloc,
+                                           slice_count * sizeof(VABufferID),
+                                           8, VK_SYSTEM_ALLOCATION_SCOPE_COMMAND);
+   VABufferID *slice_data_bufs = vk_alloc(&device->vk.alloc,
+                                          slice_count * sizeof(VABufferID),
+                                          8, VK_SYSTEM_ALLOCATION_SCOPE_COMMAND);
+   if (!slice_param_bufs || !slice_data_bufs) {
+      anv_gem_munmap(device, bitstream_data, frame_info->srcBufferRange);
       vaDestroyBuffer(session->va_display, pic_param_buf);
-      vk_loge(VK_LOG_OBJS(&device->vk.base),
-              "Failed to create VA slice data buffer: %d", va_status);
-      return vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
+      vk_free(&device->vk.alloc, slice_param_bufs);
+      vk_free(&device->vk.alloc, slice_data_bufs);
+      return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
+   }
+   
+   /* Process each slice */
+   for (uint32_t s = 0; s < slice_count; s++) {
+      bool last_slice = (s == slice_count - 1);
+      uint32_t slice_offset = h264_pic_info->pSliceOffsets[s];
+      uint32_t slice_size;
+      
+      if (last_slice) {
+         /* Last slice goes to end of buffer */
+         slice_size = frame_info->srcBufferRange - slice_offset;
+      } else {
+         /* Slice size = next slice offset - current offset */
+         slice_size = h264_pic_info->pSliceOffsets[s + 1] - slice_offset;
+      }
+      
+      if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+         fprintf(stderr, "  Slice %u: offset=%u size=%u\n", s, slice_offset, slice_size);
+      }
+      
+      /* Create slice parameter buffer for this slice */
+      VASliceParameterBufferH264 va_slice_param;
+      anv_vaapi_translate_h264_slice_params(device, frame_info, h264_pic_info,
+                                            session, &va_pic_param,
+                                            slice_offset, slice_size,
+                                            &va_slice_param);
+      
+      va_status = vaCreateBuffer(session->va_display, session->va_context,
+                                 VASliceParameterBufferType,
+                                 sizeof(VASliceParameterBufferH264), 1,
+                                 &va_slice_param, &slice_param_bufs[s]);
+      if (va_status != VA_STATUS_SUCCESS) {
+         vk_loge(VK_LOG_OBJS(&device->vk.base),
+                 "Failed to create VA slice parameter buffer %u: %d", s, va_status);
+         /* Clean up previously created buffers */
+         for (uint32_t i = 0; i < s; i++) {
+            vaDestroyBuffer(session->va_display, slice_param_bufs[i]);
+            vaDestroyBuffer(session->va_display, slice_data_bufs[i]);
+         }
+         anv_gem_munmap(device, bitstream_data, frame_info->srcBufferRange);
+         vaDestroyBuffer(session->va_display, pic_param_buf);
+         vk_free(&device->vk.alloc, slice_param_bufs);
+         vk_free(&device->vk.alloc, slice_data_bufs);
+         return vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
+      }
+      
+      /* Create slice data buffer with the actual bitstream for this slice */
+      va_status = vaCreateBuffer(session->va_display, session->va_context,
+                                 VASliceDataBufferType,
+                                 slice_size, 1,
+                                 bitstream_data + frame_info->srcBufferOffset + slice_offset,
+                                 &slice_data_bufs[s]);
+      if (va_status != VA_STATUS_SUCCESS) {
+         vk_loge(VK_LOG_OBJS(&device->vk.base),
+                 "Failed to create VA slice data buffer %u: %d", s, va_status);
+         vaDestroyBuffer(session->va_display, slice_param_bufs[s]);
+         /* Clean up previously created buffers */
+         for (uint32_t i = 0; i < s; i++) {
+            vaDestroyBuffer(session->va_display, slice_param_bufs[i]);
+            vaDestroyBuffer(session->va_display, slice_data_bufs[i]);
+         }
+         anv_gem_munmap(device, bitstream_data, frame_info->srcBufferRange);
+         vaDestroyBuffer(session->va_display, pic_param_buf);
+         vk_free(&device->vk.alloc, slice_param_bufs);
+         vk_free(&device->vk.alloc, slice_data_bufs);
+         return vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
+      }
    }
    
    /* Submit decode operation to VA-API */
@@ -509,24 +610,27 @@ anv_vaapi_decode_frame(struct anv_cmd_buffer *cmd_buffer,
       goto cleanup_buffers;
    }
    
-   /* Render slice parameters */
-   va_status = vaRenderPicture(session->va_display, session->va_context,
-                               &slice_param_buf, 1);
-   if (va_status != VA_STATUS_SUCCESS) {
-      vk_loge(VK_LOG_OBJS(&device->vk.base),
-              "vaRenderPicture (slice params) failed: %d", va_status);
-      vaEndPicture(session->va_display, session->va_context);
-      goto cleanup_buffers;
-   }
-   
-   /* Render slice data */
-   va_status = vaRenderPicture(session->va_display, session->va_context,
-                               &slice_data_buf, 1);
-   if (va_status != VA_STATUS_SUCCESS) {
-      vk_loge(VK_LOG_OBJS(&device->vk.base),
-              "vaRenderPicture (slice data) failed: %d", va_status);
-      vaEndPicture(session->va_display, session->va_context);
-      goto cleanup_buffers;
+   /* Render all slices (slice parameters and slice data) */
+   for (uint32_t s = 0; s < slice_count; s++) {
+      /* Render slice parameters for this slice */
+      va_status = vaRenderPicture(session->va_display, session->va_context,
+                                  &slice_param_bufs[s], 1);
+      if (va_status != VA_STATUS_SUCCESS) {
+         vk_loge(VK_LOG_OBJS(&device->vk.base),
+                 "vaRenderPicture (slice %u params) failed: %d", s, va_status);
+         vaEndPicture(session->va_display, session->va_context);
+         goto cleanup_buffers;
+      }
+      
+      /* Render slice data for this slice */
+      va_status = vaRenderPicture(session->va_display, session->va_context,
+                                  &slice_data_bufs[s], 1);
+      if (va_status != VA_STATUS_SUCCESS) {
+         vk_loge(VK_LOG_OBJS(&device->vk.base),
+                 "vaRenderPicture (slice %u data) failed: %d", s, va_status);
+         vaEndPicture(session->va_display, session->va_context);
+         goto cleanup_buffers;
+      }
    }
    
    /* End picture and execute decode */
@@ -537,19 +641,60 @@ anv_vaapi_decode_frame(struct anv_cmd_buffer *cmd_buffer,
       goto cleanup_buffers;
    }
    
-   /* Sync - wait for decode to complete */
+   /* Sync - wait for decode to complete
+    * This is critical for Phase 3, Part 4: ensures VA-API decode finishes
+    * before Vulkan accesses the surface.
+    */
    va_status = vaSyncSurface(session->va_display, dst_surface);
    if (va_status != VA_STATUS_SUCCESS) {
       vk_loge(VK_LOG_OBJS(&device->vk.base),
               "vaSyncSurface failed: %d", va_status);
    }
    
+   /* CRITICAL SYNCHRONIZATION (Phase 3, Part 4):
+    * After VA-API decode completes, we need to ensure proper cache coherency
+    * between the VA-API driver (which used the video engine) and Vulkan.
+    * 
+    * The VA-API driver writes decoded data to the surface using the i915 GEM
+    * set_domain mechanism (I915_GEM_DOMAIN_RENDER). We need to transition the
+    * BO back to a state where Vulkan can safely read from it.
+    * 
+    * On Gen7/7.5/8, the video engine and render engine have separate caches,
+    * so we must ensure:
+    * 1. VA-API decode has completed (done via vaSyncSurface above)
+    * 2. Any pending writes from video engine are flushed
+    * 3. Vulkan render cache will be invalidated when accessing the surface
+    * 
+    * The i915 kernel driver handles this automatically when we set the domain,
+    * inserting the necessary flushes and invalidations.
+    */
+   if (dst_binding->address.bo) {
+      struct drm_i915_gem_set_domain set_domain = {
+         .handle = dst_binding->address.bo->gem_handle,
+         .read_domains = I915_GEM_DOMAIN_RENDER,  /* Vulkan will read from render domain */
+         .write_domain = 0,  /* No immediate write, just transitioning from VA-API */
+      };
+      
+      int ret = intel_ioctl(device->fd, DRM_IOCTL_I915_GEM_SET_DOMAIN, &set_domain);
+      if (ret != 0) {
+         vk_logw(VK_LOG_OBJS(&device->vk.base),
+                 "Failed to set GEM domain after VA-API decode: %m");
+      } else if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+         fprintf(stderr, "VA-API decode: Successfully transitioned BO to render domain\n");
+      }
+   }
+   
    vk_logi(VK_LOG_OBJS(&device->vk.base),
-           "Successfully decoded H.264 frame via VA-API");
+           "Successfully decoded H.264 frame via VA-API (%u slices)", slice_count);
    
 cleanup_buffers:
-   vaDestroyBuffer(session->va_display, slice_data_buf);
-   vaDestroyBuffer(session->va_display, slice_param_buf);
+   /* Clean up all slice buffers */
+   for (uint32_t s = 0; s < slice_count; s++) {
+      vaDestroyBuffer(session->va_display, slice_data_bufs[s]);
+      vaDestroyBuffer(session->va_display, slice_param_bufs[s]);
+   }
+   vk_free(&device->vk.alloc, slice_data_bufs);
+   vk_free(&device->vk.alloc, slice_param_bufs);
    vaDestroyBuffer(session->va_display, pic_param_buf);
    
    /* Unmap the bitstream buffer */
@@ -581,15 +726,27 @@ anv_vaapi_export_video_surface_dmabuf(struct anv_device *device,
    
    struct anv_bo *bo = binding->address.bo;
    
-   /* Ensure the BO is marked for external use */
+   /* For video images, we need to export them via DMA-buf for VA-API sharing.
+    * If the BO is not marked as external, mark it now. This is safe for video
+    * decode surfaces since they're not used in contexts where external flag
+    * would cause issues.
+    */
    if (!bo->is_external) {
-      vk_loge(VK_LOG_OBJS(&device->vk.base),
-              "Image memory is not marked as external");
-      return vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
+      vk_logd(VK_LOG_OBJS(&device->vk.base),
+              "Marking video BO as external for DMA-buf export");
+      bo->is_external = true;
    }
    
-   /* Export the BO as a DMA-buf file descriptor */
-   return anv_device_export_bo(device, bo, fd_out);
+   /* Export the BO as a DMA-buf file descriptor using GEM handle to fd */
+   int fd = anv_gem_handle_to_fd(device, bo->gem_handle);
+   if (fd < 0) {
+      vk_loge(VK_LOG_OBJS(&device->vk.base),
+              "Failed to export BO as DMA-buf: %m");
+      return vk_error(device, VK_ERROR_TOO_MANY_OBJECTS);
+   }
+   
+   *fd_out = fd;
+   return VK_SUCCESS;
 }
 
 /**
@@ -619,19 +776,29 @@ anv_vaapi_import_surface_from_image(struct anv_device *device,
    }
    
    /* Get image layout information for stride and offsets
-    * For NV12 (multi-planar format), use PLANE_0 aspect for the Y plane
+    * For NV12 (multi-planar format), we need both Y and UV plane information
     */
-   uint32_t plane = anv_image_aspect_to_plane(image, VK_IMAGE_ASPECT_PLANE_0_BIT);
-   const struct anv_surface *surface = &image->planes[plane].primary_surface;
+   uint32_t y_plane = anv_image_aspect_to_plane(image, VK_IMAGE_ASPECT_PLANE_0_BIT);
+   uint32_t uv_plane = anv_image_aspect_to_plane(image, VK_IMAGE_ASPECT_PLANE_1_BIT);
+   const struct anv_surface *y_surface = &image->planes[y_plane].primary_surface;
+   const struct anv_surface *uv_surface = &image->planes[uv_plane].primary_surface;
    
    /* Set up DMA-buf descriptor for VA-API
     * For NV12 format (YUV 4:2:0), we have 2 planes:
     * - Plane 0: Y (luma)
     * - Plane 1: UV (chroma, interleaved)
     * 
-    * Note: The VA-API driver (crocus/i965) will automatically handle Y-tiling
-    * for i915 DRM buffers on Gen7/7.5/8 hardware.
+    * CRITICAL: The UV plane offset must be calculated from the actual ISL
+    * surface layout, NOT just height*stride, because ISL may add padding
+    * for alignment requirements.
+    * 
+    * CRITICAL 2: Video surfaces on Gen7/7.5/8 MUST use Y-tiling per the PRM.
+    * The tiling information is now set on the GEM BO via anv_device_set_bo_tiling()
+    * in anv_device.c. When VA-API imports the DMA-buf, the i965/crocus driver
+    * queries the kernel to get the tiling mode from the BO. This is the standard
+    * mechanism for communicating tiling for legacy (non-modifier) DMA-buf imports.
     */
+   
    VASurfaceAttribExternalBuffers extbuf = {
       .pixel_format = VA_FOURCC_NV12,
       .width = image->vk.extent.width,
@@ -647,17 +814,29 @@ anv_vaapi_import_surface_from_image(struct anv_device *device,
     * - Y plane has full width stride
     * - UV plane has same stride (U and V are interleaved)
     */
-   extbuf.pitches[0] = surface->isl.row_pitch_B;
-   extbuf.pitches[1] = surface->isl.row_pitch_B;
+   extbuf.pitches[0] = y_surface->isl.row_pitch_B;
+   extbuf.pitches[1] = uv_surface->isl.row_pitch_B;
    
-   /* Set offsets for each plane
-    * For NV12:
-    * - Y plane starts at offset 0
-    * - UV plane starts after Y plane data
+   /* Set offsets for each plane using actual memory layout from ISL
+    * This is critical - we must use the ISL-calculated offset, not a
+    * simple height*stride calculation, because ISL adds alignment padding.
     */
-   extbuf.offsets[0] = 0;
-   /* UV plane offset = Y plane size = height * stride */
-   extbuf.offsets[1] = image->vk.extent.height * surface->isl.row_pitch_B;
+   extbuf.offsets[0] = 0;  /* Y plane starts at beginning */
+   extbuf.offsets[1] = uv_surface->memory_range.offset;  /* UV plane from ISL */
+   
+   if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+      fprintf(stderr, "VA-API surface import: %ux%u NV12\n", 
+              image->vk.extent.width, image->vk.extent.height);
+      fprintf(stderr, "  Y plane:  pitch=%u offset=%u\n", 
+              extbuf.pitches[0], extbuf.offsets[0]);
+      fprintf(stderr, "  UV plane: pitch=%u offset=%u\n", 
+              extbuf.pitches[1], extbuf.offsets[1]);
+      fprintf(stderr, "  Y surface:  row_pitch=%u size=%lu\n",
+              y_surface->isl.row_pitch_B, y_surface->memory_range.size);
+      fprintf(stderr, "  UV surface: row_pitch=%u offset=%lu size=%lu\n",
+              uv_surface->isl.row_pitch_B, uv_surface->memory_range.offset,
+              uv_surface->memory_range.size);
+   }
    
    /* Set up surface attributes for DRM PRIME import */
    VASurfaceAttrib attribs[2] = {
