@@ -92,9 +92,9 @@ translate_h264_pps(const StdVideoH264PictureParameterSet *vk_pps,
    va_pic->pic_fields.bits.reference_pic_flag = 1;
 
    /* Note: num_slice_groups_minus1 is deprecated in VA-API and doesn't exist in Vulkan std headers */
-   /* Note: num_ref_idx_l0/l1_active_minus1 are NOT in VAPictureParameterBufferH264 - they are 
+   /* Note: num_ref_idx_l0/l1_active_minus1 are NOT in VAPictureParameterBufferH264 - they are
     * per-slice parameters that go in VASliceParameterBufferH264 instead */
-   
+
    va_pic->pic_init_qp_minus26 = vk_pps->pic_init_qp_minus26;
    va_pic->chroma_qp_index_offset = vk_pps->chroma_qp_index_offset;
    va_pic->second_chroma_qp_index_offset = vk_pps->second_chroma_qp_index_offset;
@@ -134,16 +134,16 @@ anv_vaapi_translate_h264_picture_params(
    /* Get SPS and PPS from video session parameters by searching for matching IDs */
    const struct vk_video_h264_sps *sps = NULL;
    const struct vk_video_h264_pps *pps = NULL;
-   
+
    /* Find SPS with matching seq_parameter_set_id */
    for (unsigned i = 0; i < params->h264_dec.h264_sps_count; i++) {
-      if (params->h264_dec.h264_sps[i].base.seq_parameter_set_id == 
+      if (params->h264_dec.h264_sps[i].base.seq_parameter_set_id ==
           h264_pic_info->pStdPictureInfo->seq_parameter_set_id) {
          sps = &params->h264_dec.h264_sps[i];
          break;
       }
    }
-   
+
    /* Find PPS with matching pic_parameter_set_id */
    for (unsigned i = 0; i < params->h264_dec.h264_pps_count; i++) {
       if (params->h264_dec.h264_pps[i].base.pic_parameter_set_id == 
@@ -194,29 +194,29 @@ anv_vaapi_translate_h264_picture_params(
    }
 
    /* Add reference pictures from reference slots
-    * 
+    *
     * Important: Only add references that are:
     * 1. Valid (have valid slot index and picture resource)
     * 2. Have valid DPB slot info
     * 3. Have successfully imported VA surface
-    * 
+    *
     * Note about field flags in StdVideoDecodeH264ReferenceInfo:
     * - When both top_field_flag and bottom_field_flag are 0, this is a FRAME reference
     *   (both fields together form the reference, used in frame coding)
     * - When one or both flags are 1, specific fields are used as references (field coding)
     * This matches the interpretation in the legacy native implementation
     * (see docs/genX_video_short.c for reference).
-    * 
+    *
     * Use a separate dpb_idx counter to pack the ReferenceFrames array densely,
     * as the VA-API driver expects a contiguous array of valid references without gaps.
     */
    unsigned dpb_idx = 0;
-   
+
    if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
       fprintf(stderr, "VA-API H.264: Building DPB from %u reference slots\n",
               decode_info->referenceSlotCount);
    }
-   
+
    for (unsigned i = 0; i < decode_info->referenceSlotCount && dpb_idx < 16; i++) {
       const VkVideoReferenceSlotInfoKHR *ref_slot = &decode_info->pReferenceSlots[i];
       if (ref_slot->slotIndex < 0 || !ref_slot->pPictureResource) {
@@ -237,7 +237,7 @@ anv_vaapi_translate_h264_picture_params(
       }
 
       const StdVideoDecodeH264ReferenceInfo *ref_info = dpb_slot_info->pStdReferenceInfo;
-      
+
       if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
          fprintf(stderr, "  Slot %u (index %d): FrameNum=%u top_field=%u bottom_field=%u long_term=%u non_existing=%u POC=[%d,%d]\n",
                  i, ref_slot->slotIndex,
@@ -249,7 +249,7 @@ anv_vaapi_translate_h264_picture_params(
                  ref_info->PicOrderCnt[0],
                  ref_info->PicOrderCnt[1]);
       }
-      
+
       /* Get the image from the reference slot */
       if (!ref_slot->pPictureResource || !ref_slot->pPictureResource->imageViewBinding) {
          if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
@@ -257,7 +257,7 @@ anv_vaapi_translate_h264_picture_params(
          }
          continue;
       }
-      
+
       ANV_FROM_HANDLE(anv_image_view, ref_image_view, ref_slot->pPictureResource->imageViewBinding);
       if (!ref_image_view || !ref_image_view->image) {
          if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
@@ -265,7 +265,7 @@ anv_vaapi_translate_h264_picture_params(
          }
          continue;
       }
-      
+
       /* Lookup VA surface ID from session mapping */
       VASurfaceID ref_surface = anv_vaapi_lookup_surface(session, ref_image_view->image);
       if (ref_surface == VA_INVALID_SURFACE) {
@@ -279,7 +279,7 @@ anv_vaapi_translate_h264_picture_params(
          }
          continue;
       }
-      
+
       /* Add to DPB at the next available index */
       init_va_picture(&va_pic->ReferenceFrames[dpb_idx], ref_surface,
                      ref_info->FrameNum,
@@ -288,7 +288,7 @@ anv_vaapi_translate_h264_picture_params(
                      VA_PICTURE_H264_SHORT_TERM_REFERENCE);
       va_pic->ReferenceFrames[dpb_idx].TopFieldOrderCnt = ref_info->PicOrderCnt[0];
       va_pic->ReferenceFrames[dpb_idx].BottomFieldOrderCnt = ref_info->PicOrderCnt[1];
-      
+
       /* Set field flags for VA-API
        * Note: When both top_field_flag and bottom_field_flag are 0, this is a frame reference
        * and we don't set VA_PICTURE_H264_TOP_FIELD or VA_PICTURE_H264_BOTTOM_FIELD.
@@ -300,7 +300,7 @@ anv_vaapi_translate_h264_picture_params(
          va_pic->ReferenceFrames[dpb_idx].flags |= VA_PICTURE_H264_BOTTOM_FIELD;
       /* If both flags are set, both fields are used independently - don't set field flags */
       /* If neither flag is set, this is a frame reference - don't set field flags */
-      
+
       if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
          fprintf(stderr, "  Slot %u -> DPB[%u]: surface_id=%u frame_num=%u flags=0x%x POC=[%d,%d]\n",
                  i, dpb_idx,
@@ -310,10 +310,10 @@ anv_vaapi_translate_h264_picture_params(
                  ref_info->PicOrderCnt[0],
                  ref_info->PicOrderCnt[1]);
       }
-      
+
       dpb_idx++;
    }
-   
+
    if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
       fprintf(stderr, "VA-API H.264: Final DPB contains %u reference frames\n", dpb_idx);
    }
@@ -323,17 +323,17 @@ anv_vaapi_translate_h264_picture_params(
 
 /**
  * Translate Vulkan H.264 slice header to VA-API slice parameter buffer
- * 
+ *
  * IMPORTANT: On Intel Gen7/7.5/8, the VA-API driver does NOT parse the slice header
  * to build RefPicList0/RefPicList1. Instead, it expects the application to provide
  * these lists that map reference indices to DPB frame store indices.
- * 
+ *
  * According to Intel PRM, each RefPicList entry is a byte with:
  * - Bit 7: Non-Existing flag (should be 0 for valid entries, 1 for non-existing)
- * - Bit 6: Long term reference flag  
+ * - Bit 6: Long term reference flag
  * - Bit 5: Field picture flag (0=frame, 1=field)
  * - Bit 4:0: Frame store index/ID
- * 
+ *
  * The list should contain all 32 entries, with non-existing entries set to 0xFF.
  */
 void
@@ -363,11 +363,11 @@ anv_vaapi_translate_h264_slice_params(
    }
 
    /* Build RefPicList0 and RefPicList1 from the DPB ReferenceFrames array
-    * 
+    *
     * The VA-API driver on Intel Gen7/7.5/8 needs us to populate these lists.
     * We map each valid DPB entry to the RefPicList. The driver will use these
     * to resolve reference indices from the parsed slice header.
-    * 
+    *
     * For simplicity, we create an initial reference list by copying all valid
     * DPB entries in order. The slice header's ref_pic_list_modification commands
     * (if any) are parsed by the driver and applied to reorder this list.
@@ -377,13 +377,13 @@ anv_vaapi_translate_h264_slice_params(
       if (va_pic->ReferenceFrames[i].picture_id == VA_INVALID_SURFACE ||
           va_pic->ReferenceFrames[i].flags & VA_PICTURE_H264_INVALID)
          break;
-      
+
       if (ref_count < 32) {
          /* Copy reference to both L0 and L1 lists
           * The driver will determine which list(s) to actually use based on slice type */
          va_slice->RefPicList0[ref_count] = va_pic->ReferenceFrames[i];
          va_slice->RefPicList1[ref_count] = va_pic->ReferenceFrames[i];
-         
+
          if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
             fprintf(stderr, "  RefPicList[%u]: surface_id=%u frame_num=%u flags=0x%x POC=[%d,%d]\n",
                     ref_count,
@@ -393,11 +393,11 @@ anv_vaapi_translate_h264_slice_params(
                     va_pic->ReferenceFrames[i].TopFieldOrderCnt,
                     va_pic->ReferenceFrames[i].BottomFieldOrderCnt);
          }
-         
+
          ref_count++;
       }
    }
-   
+
    if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
       fprintf(stderr, "VA-API H.264: Built RefPicList with %u references from DPB\n", ref_count);
    }
