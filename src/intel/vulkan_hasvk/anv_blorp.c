@@ -1547,8 +1547,8 @@ anv_image_copy_to_shadow(struct anv_cmd_buffer *cmd_buffer,
                          * and don't want blorp to overwrite depth/stencil
                          * state
                          */
-                        cmd_buffer->state.
-                        gfx.samples ? BLORP_BATCH_NO_EMIT_DEPTH_STENCIL : 0);
+                        cmd_buffer->state.gfx.
+                        samples ? BLORP_BATCH_NO_EMIT_DEPTH_STENCIL : 0);
 
    /* We don't know who touched the main surface last so flush a bunch of
     * caches to ensure we get good data.

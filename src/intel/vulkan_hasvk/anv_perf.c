@@ -325,11 +325,10 @@ static const VkPerformanceCounterStorageKHR
 };
 
 VkResult
-anv_EnumeratePhysicalDeviceQueueFamilyPerformanceQueryCountersKHR
+   anv_EnumeratePhysicalDeviceQueueFamilyPerformanceQueryCountersKHR
    (VkPhysicalDevice physicalDevice, uint32_t queueFamilyIndex,
-    uint32_t *pCounterCount, VkPerformanceCounterKHR *pCounters,
-    VkPerformanceCounterDescriptionKHR *pCounterDescriptions)
-{
+    uint32_t * pCounterCount, VkPerformanceCounterKHR * pCounters,
+    VkPerformanceCounterDescriptionKHR * pCounterDescriptions) {
    ANV_FROM_HANDLE(anv_physical_device, pdevice, physicalDevice);
    struct intel_perf_config *perf = pdevice->perf;
 
@@ -358,8 +357,8 @@ anv_EnumeratePhysicalDeviceQueueFamilyPerformanceQueryCountersKHR
             intel_perf_counter_unit_to_vk_unit[intel_counter->units];
          counter->scope = VK_PERFORMANCE_COUNTER_SCOPE_COMMAND_KHR;
          counter->storage =
-            intel_perf_counter_data_type_to_vk_storage[intel_counter->
-                                                       data_type];
+            intel_perf_counter_data_type_to_vk_storage
+            [intel_counter->data_type];
 
          unsigned char sha1_result[20];
          _mesa_sha1_compute(intel_counter->symbol_name,
@@ -399,10 +398,9 @@ anv_GetPhysicalDeviceQueueFamilyPerformanceQueryPassesKHR(VkPhysicalDevice
    }
 
    *pNumPasses = intel_perf_get_n_passes(perf,
-                                         pPerformanceQueryCreateInfo->
-                                         pCounterIndices,
-                                         pPerformanceQueryCreateInfo->
-                                         counterIndexCount, NULL);
+                                         pPerformanceQueryCreateInfo->pCounterIndices,
+                                         pPerformanceQueryCreateInfo->counterIndexCount,
+                                         NULL);
 }
 
 VkResult
@@ -470,15 +468,13 @@ anv_perf_write_pass_results(struct intel_perf_config *perf,
          case INTEL_PERF_COUNTER_DATA_TYPE_UINT64:
             results[c].uint64 =
                counter_pass->counter->oa_counter_read_uint64(perf,
-                                                             counter_pass->
-                                                             query,
+                                                             counter_pass->query,
                                                              accumulated_results);
             break;
          case INTEL_PERF_COUNTER_DATA_TYPE_FLOAT:
             results[c].float32 =
                counter_pass->counter->oa_counter_read_float(perf,
-                                                            counter_pass->
-                                                            query,
+                                                            counter_pass->query,
                                                             accumulated_results);
             break;
          default:

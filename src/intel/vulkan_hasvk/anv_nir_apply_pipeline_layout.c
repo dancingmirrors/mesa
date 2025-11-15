@@ -295,8 +295,8 @@ build_res_index(nir_builder *b, uint32_t set, uint32_t binding,
          }
 
          const uint32_t packed =
-            (bind_layout->
-             descriptor_stride << 16) | (set_idx << 8) | dynamic_offset_index;
+            (bind_layout->descriptor_stride << 16) | (set_idx << 8) |
+            dynamic_offset_index;
 
          return nir_vec4(b, nir_imm_int(b, packed),
                          nir_imm_int(b, bind_layout->descriptor_offset),
@@ -469,9 +469,8 @@ build_buffer_addr_for_res_index(nir_builder *b,
 
       nir_def *dyn_load =
          nir_load_push_constant(b, 1, 32, nir_imul_imm(b, dyn_offset_idx, 4),
-                                .base =
-                                offsetof(struct anv_push_constants,
-                                         dynamic_offsets),
+                                .base = offsetof(struct anv_push_constants,
+                                                 dynamic_offsets),
                                 .range = MAX_DYNAMIC_BUFFERS * 4);
 
       nir_def *dynamic_offset =
@@ -946,9 +945,8 @@ lower_base_workgroup_id(nir_builder *b, nir_intrinsic_instr *intrin,
 
    nir_def *base_workgroup_id =
       nir_load_push_constant(b, 3, 32, nir_imm_int(b, 0),
-                             .base =
-                             offsetof(struct anv_push_constants,
-                                      cs.base_work_group_id),
+                             .base = offsetof(struct anv_push_constants,
+                                              cs.base_work_group_id),
                              .range = 3 * sizeof(uint32_t));
    nir_def_rewrite_uses(&intrin->def, base_workgroup_id);
 
@@ -1020,8 +1018,8 @@ lower_tex_deref(nir_builder *b, nir_tex_instr *tex,
             unsigned arr_index =
                MIN2(nir_src_as_uint(deref->arr.index), array_size - 1);
             struct anv_sampler **immutable_samplers =
-               state->layout->set[set].layout->binding[binding].
-               immutable_samplers;
+               state->layout->set[set].layout->
+               binding[binding].immutable_samplers;
             if (immutable_samplers) {
                /* Array of YCbCr samplers are tightly packed in the binding
                 * tables, compute the offset of an element in the array by

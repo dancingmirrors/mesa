@@ -640,8 +640,8 @@ set_layout_dynamic_binding(const struct anv_descriptor_set_layout *set_layout)
    const struct anv_descriptor_set_binding_layout *last_binding =
       &set_layout->binding[set_layout->binding_count - 1];
    if (!
-       (last_binding->
-        flags & VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT))
+       (last_binding->flags &
+        VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT))
       return NULL;
 
    return last_binding;
@@ -1286,8 +1286,8 @@ anv_descriptor_set_destroy(struct anv_device *device,
       for (uint32_t b = 0; b < set->buffer_view_count; b++) {
          if (set->buffer_views[b].surface_state.alloc_size)
             anv_descriptor_pool_free_state(pool,
-                                           set->buffer_views[b].
-                                           surface_state);
+                                           set->
+                                           buffer_views[b].surface_state);
       }
    }
 
@@ -1492,11 +1492,14 @@ anv_descriptor_set_write_image_view(struct anv_device *device,
       assert(image_view->n_planes == 1);
       struct anv_storage_image_descriptor desc_data = {
          .vanilla =
-            anv_surface_state_to_handle(image_view->planes[0].
-                                        storage_surface_state.state),
+            anv_surface_state_to_handle(image_view->
+                                        planes[0].storage_surface_state.
+                                        state),
          .lowered =
-            anv_surface_state_to_handle(image_view->planes[0].
-                                        lowered_storage_surface_state.state),
+            anv_surface_state_to_handle(image_view->
+                                        planes
+                                        [0].lowered_storage_surface_state.
+                                        state),
       };
       memcpy(desc_map, &desc_data, sizeof(desc_data));
    }
@@ -1580,16 +1583,15 @@ anv_descriptor_set_write_buffer_view(struct anv_device *device,
          .vanilla =
             anv_surface_state_to_handle(buffer_view->storage_surface_state),
          .lowered =
-            anv_surface_state_to_handle(buffer_view->
-                                        lowered_storage_surface_state),
+            anv_surface_state_to_handle
+            (buffer_view->lowered_storage_surface_state),
       };
       memcpy(desc_map, &desc_data, sizeof(desc_data));
    }
 
    if (data & ANV_DESCRIPTOR_IMAGE_PARAM) {
       anv_descriptor_set_write_image_param(desc_map,
-                                           &buffer_view->
-                                           lowered_storage_image_param);
+                                           &buffer_view->lowered_storage_image_param);
    }
 }
 
@@ -1770,10 +1772,8 @@ anv_UpdateDescriptorSets(VkDevice _device,
             anv_descriptor_set_write_inline_uniform_data(device, set,
                                                          write->dstBinding,
                                                          inline_write->pData,
-                                                         write->
-                                                         dstArrayElement,
-                                                         inline_write->
-                                                         dataSize);
+                                                         write->dstArrayElement,
+                                                         inline_write->dataSize);
             break;
          }
 
@@ -1797,9 +1797,8 @@ anv_UpdateDescriptorSets(VkDevice _device,
          anv_descriptor_set_write_inline_uniform_data(device, dst,
                                                       copy->dstBinding,
                                                       src->desc_mem.map +
-                                                      src_layout->
-                                                      descriptor_offset +
-                                                      copy->srcArrayElement,
+                                                      src_layout->descriptor_offset
+                                                      + copy->srcArrayElement,
                                                       copy->dstArrayElement,
                                                       copy->descriptorCount);
          continue;

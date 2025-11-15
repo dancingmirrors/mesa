@@ -997,8 +997,8 @@ get_properties(const struct anv_physical_device *pdevice,
       .apiVersion = ANV_API_VERSION,
 #else
       .apiVersion = (pdevice->use_softpin
-                     || pdevice->
-                     instance->report_vk_1_3) ? ANV_API_VERSION_1_3 :
+                     || pdevice->instance->
+                     report_vk_1_3) ? ANV_API_VERSION_1_3 :
          ANV_API_VERSION_1_2,
 #endif /* DETECT_OS_ANDROID */
       .driverVersion = vk_get_driver_version(),
@@ -1016,8 +1016,8 @@ get_properties(const struct anv_physical_device *pdevice,
       .maxImageArrayLayers = (1 << 11),
       .maxTexelBufferElements = 128 * 1024 * 1024,
       .maxUniformBufferRange =
-         pdevice->
-         compiler->indirect_ubos_use_sampler ? (1u << 27) : (1u << 30),
+         pdevice->compiler->
+         indirect_ubos_use_sampler ? (1u << 27) : (1u << 30),
       .maxStorageBufferRange =
          MIN2(pdevice->isl_dev.max_buffer_size, UINT32_MAX),
       .maxPushConstantsSize = MAX_PUSH_CONSTANTS_SIZE,
@@ -1907,8 +1907,8 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
    /* Check if we can read the GPU timestamp register from the CPU */
    uint64_t u64_ignore;
    device->has_reg_timestamp = intel_gem_read_render_timestamp(fd,
-                                                               device->
-                                                               info.kmd_type,
+                                                               device->info.
+                                                               kmd_type,
                                                                &u64_ignore);
 
    device->always_flush_cache = INTEL_DEBUG(DEBUG_STALL) ||
@@ -2208,7 +2208,8 @@ anv_GetPhysicalDeviceQueueFamilyProperties2(VkPhysicalDevice physicalDevice,
             case VK_STRUCTURE_TYPE_QUEUE_FAMILY_VIDEO_PROPERTIES_KHR:{
                   VkQueueFamilyVideoPropertiesKHR *prop =
                      (VkQueueFamilyVideoPropertiesKHR *) ext;
-                  if (queue_family->queueFlags & VK_QUEUE_VIDEO_DECODE_BIT_KHR)
+                  if (queue_family->
+                      queueFlags & VK_QUEUE_VIDEO_DECODE_BIT_KHR)
                      prop->videoCodecOperations =
                         VK_VIDEO_CODEC_OPERATION_DECODE_H264_BIT_KHR;
                   break;
@@ -2309,7 +2310,8 @@ anv_GetPhysicalDeviceMemoryProperties2(VkPhysicalDevice physicalDevice,
                                        *pMemoryProperties)
 {
    anv_GetPhysicalDeviceMemoryProperties(physicalDevice,
-                                         &pMemoryProperties->memoryProperties);
+                                         &pMemoryProperties->
+                                         memoryProperties);
 
    vk_foreach_struct(ext, pMemoryProperties->pNext) {
       switch (ext->sType) {
@@ -2515,8 +2517,8 @@ anv_device_setup_context(struct anv_device *device,
          assert(queueCreateInfo->queueFamilyIndex <
                 physical_device->queue.family_count);
          struct anv_queue_family *queue_family =
-            &physical_device->queue.
-            families[queueCreateInfo->queueFamilyIndex];
+            &physical_device->queue.families[queueCreateInfo->
+                                             queueFamilyIndex];
 
          for (uint32_t j = 0; j < queueCreateInfo->queueCount; j++)
             engine_classes[engine_count++] = queue_family->engine_class;
@@ -2997,7 +2999,7 @@ anv_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
 
    /* Terminate VA-API display if it was initialized */
    if (device->va_display) {
-      vaTerminate((VADisplay)device->va_display);
+      vaTerminate((VADisplay) device->va_display);
       device->va_display = NULL;
    }
 
@@ -3311,9 +3313,9 @@ anv_AllocateMemory(VkDevice _device,
 
       result = anv_device_import_bo_from_host_ptr(device,
                                                   host_ptr_info->pHostPointer,
-                                                  pAllocateInfo->allocationSize,
-                                                  alloc_flags, client_address,
-                                                  &mem->bo);
+                                                  pAllocateInfo->
+                                                  allocationSize, alloc_flags,
+                                                  client_address, &mem->bo);
       if (result != VK_SUCCESS)
          goto fail;
 
@@ -3341,7 +3343,7 @@ anv_AllocateMemory(VkDevice _device,
        * the tiling from the kernel. Without this, VA-API assumes linear
        * tiling and the decoded data will be garbled.
        */
-      if (image->vk.wsi_legacy_scanout || 
+      if (image->vk.wsi_legacy_scanout ||
           (image->vk.usage & VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR)) {
          const struct isl_surf *surf = &image->planes[0].primary_surface.isl;
          result = anv_device_set_bo_tiling(device, mem->bo,

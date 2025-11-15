@@ -111,7 +111,8 @@ anv_nir_compute_push_layout(nir_shader *nir,
    /* For vec4 our push data size needs to be aligned to a vec4 and for
     * scalar, it needs to be aligned to a DWORD.
     */
-   const unsigned alignment = compiler->scalar_stage[nir->info.stage] ? 4 : 16;
+   const unsigned alignment =
+      compiler->scalar_stage[nir->info.stage] ? 4 : 16;
    nir->num_uniforms = align(push_end - push_start, alignment);
    prog_data->nr_params = nir->num_uniforms / 4;
    prog_data->param = rzalloc_array(mem_ctx, uint32_t, prog_data->nr_params);
