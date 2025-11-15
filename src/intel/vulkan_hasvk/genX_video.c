@@ -85,7 +85,8 @@ genX(CmdDecodeVideoKHR) (VkCommandBuffer commandBuffer,
    VkResult result = anv_vaapi_decode_frame(cmd_buffer, frame_info);
    
    if (result != VK_SUCCESS) {
-      vk_loge(VK_LOG_OBJS(&cmd_buffer->device->vk.base),
-              "VA-API decode failed: %d", result);
+      if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+         fprintf(stderr, "VA-API decode failed: %d\n", result);
+      }
    }
 }
