@@ -1965,8 +1965,18 @@ anv_device_set_bo_tiling(struct anv_device *device,
    int ret = anv_gem_set_tiling(device, bo->gem_handle, row_pitch_B,
                                 isl_tiling_to_i915_tiling(tiling));
    if (ret) {
+      if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+         fprintf(stderr, "Failed to set BO tiling: gem_handle=%u, tiling=%s, pitch=%u, error=%m\n",
+                 bo->gem_handle, isl_tiling_to_name(tiling), row_pitch_B);
+      }
       return vk_errorf(device, VK_ERROR_OUT_OF_DEVICE_MEMORY,
                        "failed to set BO tiling: %m");
+   }
+
+   if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+      fprintf(stderr, "Successfully set BO tiling: gem_handle=%u, tiling=%s (i915=%d), pitch=%u\n",
+              bo->gem_handle, isl_tiling_to_name(tiling), 
+              isl_tiling_to_i915_tiling(tiling), row_pitch_B);
    }
 
    return VK_SUCCESS;
