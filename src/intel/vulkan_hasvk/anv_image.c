@@ -1855,6 +1855,42 @@ anv_bind_image_memory(struct anv_device *device,
       did_bind = true;
    }
 
+   /* For video images, we need to set tiling on the BO so that when
+    * we export them via DMA-buf for VA-API, the VA-API driver can query
+    * the tiling from the kernel. Without this, VA-API assumes linear
+    * tiling and the decoded data will be garbled.
+    * 
+    * Both decode destination (DST) and DPB (reference frame) images need
+    * tiling set, as both are shared with VA-API.
+    * 
+    * This is done here in BindImageMemory rather than AllocateMemory because
+    * not all video images use dedicated allocations.
+    */
+   if (image->vk.usage & (VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR |
+                          VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR)) {
+      const struct isl_surf *surf = &image->planes[0].primary_surface.isl;
+      struct anv_bo *bo = image->bindings[ANV_IMAGE_MEMORY_BINDING_MAIN].address.bo;
+      
+      if (bo && surf->tiling != ISL_TILING_LINEAR) {
+         if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+            const char *usage_type = 
+               (image->vk.usage & VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR) ? "DST" : "DPB";
+            fprintf(stderr, "BindImageMemory: Setting BO tiling for video %s image: %ux%u, tiling=%s, pitch=%u, gem_handle=%u\n",
+                    usage_type, image->vk.extent.width, image->vk.extent.height,
+                    isl_tiling_to_name(surf->tiling), surf->row_pitch_B, bo->gem_handle);
+         }
+         
+         VkResult result = anv_device_set_bo_tiling(device, bo,
+                                                    surf->row_pitch_B, surf->tiling);
+         if (result != VK_SUCCESS) {
+            if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+               fprintf(stderr, "BindImageMemory: Failed to set BO tiling for video image\n");
+            }
+            return result;
+         }
+      }
+   }
+
    if (bind_status)
       *bind_status->pResult = VK_SUCCESS;
 

@@ -3342,10 +3342,25 @@ anv_AllocateMemory(VkDevice _device,
        * we export them via DMA-buf for VA-API, the VA-API driver can query
        * the tiling from the kernel. Without this, VA-API assumes linear
        * tiling and the decoded data will be garbled.
+       * 
+       * Both decode destination (DST) and DPB (reference frame) images need
+       * tiling set, as both are shared with VA-API.
        */
       if (image->vk.wsi_legacy_scanout ||
-          (image->vk.usage & VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR)) {
+          (image->vk.usage & (VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR |
+                              VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR))) {
          const struct isl_surf *surf = &image->planes[0].primary_surface.isl;
+         
+         if (unlikely(INTEL_DEBUG(DEBUG_PERF)) &&
+             (image->vk.usage & (VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR |
+                                 VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR))) {
+            const char *usage_type = 
+               (image->vk.usage & VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR) ? "DST" : "DPB";
+            fprintf(stderr, "Setting BO tiling for video %s image: %ux%u, tiling=%s, pitch=%u\n",
+                    usage_type, image->vk.extent.width, image->vk.extent.height,
+                    isl_tiling_to_name(surf->tiling), surf->row_pitch_B);
+         }
+         
          result = anv_device_set_bo_tiling(device, mem->bo,
                                            surf->row_pitch_B, surf->tiling);
          if (result != VK_SUCCESS) {
