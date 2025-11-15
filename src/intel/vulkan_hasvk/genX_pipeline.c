@@ -849,7 +849,6 @@ emit_cb_state(struct anv_graphics_pipeline *pipeline,
               const struct vk_multisample_state *ms,
               const struct vk_render_pass_state *rp)
 {
-   struct anv_device *device = pipeline->base.device;
    const struct elk_wm_prog_data *wm_prog_data = get_wm_prog_data(pipeline);
 
    struct GENX(BLEND_STATE) blend_state = {
