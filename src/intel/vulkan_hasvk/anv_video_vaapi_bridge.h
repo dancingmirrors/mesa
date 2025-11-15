@@ -166,6 +166,34 @@ anv_vaapi_import_surface_from_image(struct anv_device *device,
                                     VASurfaceID *surface_id);
 
 /**
+ * Add surface mapping entry
+ * 
+ * Maps a Vulkan image to a VA-API surface for DPB management.
+ * 
+ * @param session    VA-API session
+ * @param image      Vulkan image
+ * @param va_surface VA surface ID
+ */
+void
+anv_vaapi_add_surface_mapping(struct anv_vaapi_session *session,
+                               const struct anv_image *image,
+                               VASurfaceID va_surface);
+
+/**
+ * Lookup VA surface from Vulkan image
+ * 
+ * Searches the surface mapping for a VA-API surface associated with
+ * the given Vulkan image.
+ * 
+ * @param session  VA-API session
+ * @param image    Vulkan image to lookup
+ * @return VA surface ID or VA_INVALID_SURFACE if not found
+ */
+VASurfaceID
+anv_vaapi_lookup_surface(struct anv_vaapi_session *session,
+                         const struct anv_image *image);
+
+/**
  * H.264-specific parameter translation functions
  */
 
