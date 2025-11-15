@@ -33,6 +33,7 @@
  * - VA-API session management
  * - Communication layer between Vulkan and VA-API
  * - Resource sharing via DMA-buf
+ * - Synchronization between VA-API and Vulkan using GEM set_domain
  */
 
 #include "anv_video_vaapi_bridge.h"
@@ -44,8 +45,10 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <string.h>
+#include <sys/ioctl.h>
 
 #include "vk_video/vulkan_video_codecs_common.h"
+#include "drm-uapi/i915_drm.h"
 
 /* Define VA-API constants and macros for compatibility with legacy intel-vaapi-driver */
 #ifndef VA_FOURCC
@@ -380,6 +383,32 @@ anv_vaapi_decode_frame(struct anv_cmd_buffer *cmd_buffer,
    }
    const struct anv_image *dst_image = dst_image_view->image;
    
+   /* CRITICAL SYNCHRONIZATION (Phase 3, Part 4 - Before VA-API decode):
+    * Before VA-API starts decoding to the surface, we need to ensure any
+    * previous Vulkan operations on the surface have completed.
+    * 
+    * Set the GEM domain to CPU to force a wait for any pending GPU operations.
+    * This ensures:
+    * 1. Any previous render/texture operations on this surface complete
+    * 2. Caches are flushed so VA-API sees the correct surface state
+    */
+   struct anv_image_binding *dst_binding = &((struct anv_image *)dst_image)->bindings[ANV_IMAGE_MEMORY_BINDING_MAIN];
+   if (dst_binding->address.bo) {
+      struct drm_i915_gem_set_domain set_domain = {
+         .handle = dst_binding->address.bo->gem_handle,
+         .read_domains = I915_GEM_DOMAIN_CPU,  /* Wait for GPU to finish */
+         .write_domain = I915_GEM_DOMAIN_CPU,  /* VA-API will write */
+      };
+      
+      int ret = intel_ioctl(device->fd, DRM_IOCTL_I915_GEM_SET_DOMAIN, &set_domain);
+      if (ret != 0) {
+         vk_logw(VK_LOG_OBJS(&device->vk.base),
+                 "Failed to set GEM domain before VA-API decode: %m");
+      } else if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+         fprintf(stderr, "VA-API decode: Synchronized surface before decode\n");
+      }
+   }
+   
    /* Import destination surface to VA-API (or get cached surface) */
    VASurfaceID dst_surface;
    result = anv_vaapi_import_surface_from_image(device, (struct anv_image *)dst_image, &dst_surface);
@@ -612,6 +641,40 @@ anv_vaapi_decode_frame(struct anv_cmd_buffer *cmd_buffer,
    if (va_status != VA_STATUS_SUCCESS) {
       vk_loge(VK_LOG_OBJS(&device->vk.base),
               "vaSyncSurface failed: %d", va_status);
+   }
+   
+   /* CRITICAL SYNCHRONIZATION (Phase 3, Part 4):
+    * After VA-API decode completes, we need to ensure proper cache coherency
+    * between the VA-API driver (which used the video engine) and Vulkan.
+    * 
+    * The VA-API driver writes decoded data to the surface using the i915 GEM
+    * set_domain mechanism (I915_GEM_DOMAIN_RENDER). We need to transition the
+    * BO back to a state where Vulkan can safely read from it.
+    * 
+    * On Gen7/7.5/8, the video engine and render engine have separate caches,
+    * so we must ensure:
+    * 1. VA-API decode has completed (done via vaSyncSurface above)
+    * 2. Any pending writes from video engine are flushed
+    * 3. Vulkan render cache will be invalidated when accessing the surface
+    * 
+    * The i915 kernel driver handles this automatically when we set the domain,
+    * inserting the necessary flushes and invalidations.
+    */
+   struct anv_image_binding *dst_binding = &((struct anv_image *)dst_image)->bindings[ANV_IMAGE_MEMORY_BINDING_MAIN];
+   if (dst_binding->address.bo) {
+      struct drm_i915_gem_set_domain set_domain = {
+         .handle = dst_binding->address.bo->gem_handle,
+         .read_domains = I915_GEM_DOMAIN_RENDER,  /* Vulkan will read from render domain */
+         .write_domain = 0,  /* No immediate write, just transitioning from VA-API */
+      };
+      
+      int ret = intel_ioctl(device->fd, DRM_IOCTL_I915_GEM_SET_DOMAIN, &set_domain);
+      if (ret != 0) {
+         vk_logw(VK_LOG_OBJS(&device->vk.base),
+                 "Failed to set GEM domain after VA-API decode: %m");
+      } else if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+         fprintf(stderr, "VA-API decode: Successfully transitioned BO to render domain\n");
+      }
    }
    
    vk_logi(VK_LOG_OBJS(&device->vk.base),
