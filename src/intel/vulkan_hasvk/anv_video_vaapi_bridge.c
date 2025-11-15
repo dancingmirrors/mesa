@@ -679,23 +679,23 @@ anv_vaapi_decode_frame(struct anv_cmd_buffer *cmd_buffer,
     * After VA-API decode completes, we need to ensure proper cache coherency
     * between the VA-API driver (which used the video engine) and Vulkan.
     * 
-    * The VA-API driver writes decoded data to the surface using the i915 GEM
-    * set_domain mechanism (I915_GEM_DOMAIN_RENDER). We need to transition the
-    * BO back to a state where Vulkan can safely read from it.
-    * 
     * On Gen7/7.5/8, the video engine and render engine have separate caches,
     * so we must ensure:
     * 1. VA-API decode has completed (done via vaSyncSurface above)
     * 2. Any pending writes from video engine are flushed
     * 3. Vulkan render cache will be invalidated when accessing the surface
     * 
-    * The i915 kernel driver handles this automatically when we set the domain,
-    * inserting the necessary flushes and invalidations.
+    * We use GTT domain because:
+    * - Modern kernels only support CPU, GTT, and WC domains for set_domain
+    * - I915_GEM_DOMAIN_RENDER is NOT valid and returns EINVAL
+    * - GTT ensures the surface is accessible for GPU operations (which Vulkan needs)
+    * - The kernel handles necessary cache flushes when transitioning to GTT
+    * - This matches the pattern used by crocus (Gen7/7.5/8 Gallium driver)
     */
    if (dst_binding->address.bo) {
       struct drm_i915_gem_set_domain set_domain = {
          .handle = dst_binding->address.bo->gem_handle,
-         .read_domains = I915_GEM_DOMAIN_RENDER,  /* Vulkan will read from render domain */
+         .read_domains = I915_GEM_DOMAIN_GTT,  /* GPU aperture access for Vulkan */
          .write_domain = 0,  /* No immediate write, just transitioning from VA-API */
       };
       
@@ -705,7 +705,7 @@ anv_vaapi_decode_frame(struct anv_cmd_buffer *cmd_buffer,
             fprintf(stderr, "Failed to set GEM domain after VA-API decode: %m\n");
          }
       } else if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
-         fprintf(stderr, "VA-API decode: Successfully transitioned BO to render domain\n");
+         fprintf(stderr, "VA-API decode: Successfully transitioned BO to GTT domain\n");
       }
    }
    
