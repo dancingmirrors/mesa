@@ -198,7 +198,8 @@ anv_vaapi_translate_h264_picture_params(
     * - When both top_field_flag and bottom_field_flag are 0, this is a FRAME reference
     *   (both fields together form the reference, used in frame coding)
     * - When one or both flags are 1, specific fields are used as references (field coding)
-    * This matches the interpretation in genX_video_short.c.
+    * This matches the interpretation in the legacy native implementation
+    * (see docs/genX_video_short.c for reference).
     * 
     * Use a separate dpb_idx counter to pack the ReferenceFrames array densely,
     * as the VA-API driver expects a contiguous array of valid references without gaps.
