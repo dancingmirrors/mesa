@@ -51,6 +51,23 @@ struct anv_vaapi_surface_map {
 };
 
 /**
+ * Deferred VA-API decode command
+ * 
+ * Stored in command buffer and executed at QueueSubmit time.
+ * This implements Phase 4 of the VA-API integration plan.
+ */
+struct anv_vaapi_decode_cmd {
+   VAContextID context;           /* VA context for this decode */
+   VASurfaceID target_surface;    /* Target surface to decode into */
+   struct anv_bo *target_bo;      /* BO for synchronization */
+   uint32_t target_gem_handle;    /* GEM handle for set_domain */
+   VABufferID pic_param_buf;      /* Picture parameter buffer */
+   VABufferID *slice_param_bufs;  /* Array of slice parameter buffers */
+   VABufferID *slice_data_bufs;   /* Array of slice data buffers */
+   uint32_t slice_count;          /* Number of slices */
+};
+
+/**
  * VA-API session state
  * 
  * Manages the VA-API objects associated with a Vulkan video session.
@@ -240,5 +257,23 @@ anv_vaapi_translate_h264_slice_params(
    uint32_t slice_offset,
    uint32_t slice_size,
    VASliceParameterBufferH264 *va_slice);
+
+/**
+ * Phase 4: Command Buffer Integration Functions
+ */
+
+/**
+ * Execute deferred VA-API decode commands
+ * 
+ * Called at QueueSubmit time to execute all VA-API decode operations
+ * that were recorded in the command buffer.
+ * 
+ * @param device      ANV device
+ * @param cmd_buffer  Command buffer containing deferred commands
+ * @return VK_SUCCESS on success, error code otherwise
+ */
+VkResult
+anv_vaapi_execute_deferred_decodes(struct anv_device *device,
+                                    struct anv_cmd_buffer *cmd_buffer);
 
 #endif /* ANV_VIDEO_VAAPI_BRIDGE_H */

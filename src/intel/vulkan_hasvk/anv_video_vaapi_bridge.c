@@ -356,9 +356,11 @@ anv_vaapi_lookup_surface(struct anv_vaapi_session *session,
 }
 
 /**
- * Decode a frame using VA-API
+ * Decode a frame using VA-API (Phase 4: Deferred Execution)
  * 
- * Translates Vulkan Video decode parameters to VA-API and submits the decode operation.
+ * Records VA-API decode command for later execution at QueueSubmit time.
+ * This implements the command buffer pattern correctly - operations are
+ * deferred until queue submission.
  */
 VkResult
 anv_vaapi_decode_frame(struct anv_cmd_buffer *cmd_buffer,
@@ -409,33 +411,6 @@ anv_vaapi_decode_frame(struct anv_cmd_buffer *cmd_buffer,
       anv_vaapi_add_surface_mapping(session, dst_image, dst_surface);
    } else if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
       fprintf(stderr, "VA-API decode: Reusing cached destination surface %u\n", dst_surface);
-   }
-   
-   /* CRITICAL SYNCHRONIZATION (Phase 3, Part 4 - Before VA-API decode):
-    * Before VA-API starts decoding to the surface, we need to ensure any
-    * previous Vulkan operations on the surface have completed.
-    * 
-    * Set the GEM domain to CPU to force a wait for any pending GPU operations.
-    * This ensures:
-    * 1. Any previous render/texture operations on this surface complete
-    * 2. Caches are flushed so VA-API sees the correct surface state
-    */
-   struct anv_image_binding *dst_binding = &((struct anv_image *)dst_image)->bindings[ANV_IMAGE_MEMORY_BINDING_MAIN];
-   if (dst_binding->address.bo) {
-      struct drm_i915_gem_set_domain set_domain = {
-         .handle = dst_binding->address.bo->gem_handle,
-         .read_domains = I915_GEM_DOMAIN_CPU,  /* Wait for GPU to finish */
-         .write_domain = I915_GEM_DOMAIN_CPU,  /* VA-API will write */
-      };
-      
-      int ret = intel_ioctl(device->fd, DRM_IOCTL_I915_GEM_SET_DOMAIN, &set_domain);
-      if (ret != 0) {
-         if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
-            fprintf(stderr, "Failed to set GEM domain before VA-API decode: %m\n");
-         }
-      } else if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
-         fprintf(stderr, "VA-API decode: Synchronized surface before decode\n");
-      }
    }
    
    /* Get video session parameters - already a pointer, no need for FROM_HANDLE */
@@ -610,124 +585,39 @@ anv_vaapi_decode_frame(struct anv_cmd_buffer *cmd_buffer,
       }
    }
    
-   /* Submit decode operation to VA-API */
-   va_status = vaBeginPicture(session->va_display, session->va_context, dst_surface);
-   if (va_status != VA_STATUS_SUCCESS) {
-      if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
-         fprintf(stderr, "vaBeginPicture failed: %d\n", va_status);
-      }
-      goto cleanup_buffers;
-   }
-   
-   /* Render picture parameters */
-   va_status = vaRenderPicture(session->va_display, session->va_context,
-                               &pic_param_buf, 1);
-   if (va_status != VA_STATUS_SUCCESS) {
-      if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
-         fprintf(stderr, "vaRenderPicture (picture params) failed: %d\n", va_status);
-      }
-      vaEndPicture(session->va_display, session->va_context);
-      goto cleanup_buffers;
-   }
-   
-   /* Render all slices (slice parameters and slice data) */
-   for (uint32_t s = 0; s < slice_count; s++) {
-      /* Render slice parameters for this slice */
-      va_status = vaRenderPicture(session->va_display, session->va_context,
-                                  &slice_param_bufs[s], 1);
-      if (va_status != VA_STATUS_SUCCESS) {
-         if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
-            fprintf(stderr, "vaRenderPicture (slice %u params) failed: %d\n", s, va_status);
-         }
-         vaEndPicture(session->va_display, session->va_context);
-         goto cleanup_buffers;
-      }
-      
-      /* Render slice data for this slice */
-      va_status = vaRenderPicture(session->va_display, session->va_context,
-                                  &slice_data_bufs[s], 1);
-      if (va_status != VA_STATUS_SUCCESS) {
-         if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
-            fprintf(stderr, "vaRenderPicture (slice %u data) failed: %d\n", s, va_status);
-         }
-         vaEndPicture(session->va_display, session->va_context);
-         goto cleanup_buffers;
-      }
-   }
-   
-   /* End picture and execute decode */
-   va_status = vaEndPicture(session->va_display, session->va_context);
-   if (va_status != VA_STATUS_SUCCESS) {
-      if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
-         fprintf(stderr, "vaEndPicture failed: %d\n", va_status);
-      }
-      goto cleanup_buffers;
-   }
-   
-   /* Sync - wait for decode to complete
-    * This is critical for Phase 3, Part 4: ensures VA-API decode finishes
-    * before Vulkan accesses the surface.
+   /* PHASE 4: Record decode command for deferred execution at QueueSubmit time
+    * Instead of executing VA-API decode immediately, we store the command
+    * in the command buffer's vaapi_decodes array.
     */
-   va_status = vaSyncSurface(session->va_display, dst_surface);
-   if (va_status != VA_STATUS_SUCCESS) {
-      if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
-         fprintf(stderr, "vaSyncSurface failed: %d\n", va_status);
-      }
-   }
    
-   /* CRITICAL SYNCHRONIZATION (Phase 3, Part 4):
-    * After VA-API decode completes, we need to ensure proper cache coherency
-    * between the VA-API driver (which used the video engine) and Vulkan.
-    * 
-    * On Gen7/7.5/8, the video engine and render engine have separate caches,
-    * so we must ensure:
-    * 1. VA-API decode has completed (done via vaSyncSurface above)
-    * 2. Any pending writes from video engine are flushed
-    * 3. Vulkan render cache will be invalidated when accessing the surface
-    * 
-    * We use GTT domain because:
-    * - Modern kernels only support CPU, GTT, and WC domains for set_domain
-    * - I915_GEM_DOMAIN_RENDER is NOT valid and returns EINVAL
-    * - GTT ensures the surface is accessible for GPU operations (which Vulkan needs)
-    * - The kernel handles necessary cache flushes when transitioning to GTT
-    * - This matches the pattern used by crocus (Gen7/7.5/8 Gallium driver)
+   /* Get target BO for synchronization */
+   struct anv_image_binding *dst_binding = &((struct anv_image *)dst_image)->bindings[ANV_IMAGE_MEMORY_BINDING_MAIN];
+   
+   /* Create deferred decode command */
+   struct anv_vaapi_decode_cmd decode_cmd = {
+      .context = session->va_context,
+      .target_surface = dst_surface,
+      .target_bo = dst_binding->address.bo,
+      .target_gem_handle = dst_binding->address.bo ? dst_binding->address.bo->gem_handle : 0,
+      .pic_param_buf = pic_param_buf,
+      .slice_param_bufs = slice_param_bufs,
+      .slice_data_bufs = slice_data_bufs,
+      .slice_count = slice_count,
+   };
+   
+   /* Add command to the deferred execution queue
+    * Note: util_dynarray_append is a macro that takes 2 args: buffer and value
     */
-   if (dst_binding->address.bo) {
-      struct drm_i915_gem_set_domain set_domain = {
-         .handle = dst_binding->address.bo->gem_handle,
-         .read_domains = I915_GEM_DOMAIN_GTT,  /* GPU aperture access for Vulkan */
-         .write_domain = 0,  /* No immediate write, just transitioning from VA-API */
-      };
-      
-      int ret = intel_ioctl(device->fd, DRM_IOCTL_I915_GEM_SET_DOMAIN, &set_domain);
-      if (ret != 0) {
-         if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
-            fprintf(stderr, "Failed to set GEM domain after VA-API decode: %m\n");
-         }
-      } else if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
-         fprintf(stderr, "VA-API decode: Successfully transitioned BO to GTT domain\n");
-      }
-   }
+   util_dynarray_append(&cmd_buffer->video.vaapi_decodes, decode_cmd);
    
-   if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
-      fprintf(stderr, "Successfully decoded H.264 frame via VA-API (%u slices)\n", slice_count);
-   }
-   
-cleanup_buffers:
-   /* Clean up all slice buffers */
-   for (uint32_t s = 0; s < slice_count; s++) {
-      vaDestroyBuffer(session->va_display, slice_data_bufs[s]);
-      vaDestroyBuffer(session->va_display, slice_param_bufs[s]);
-   }
-   vk_free(&device->vk.alloc, slice_data_bufs);
-   vk_free(&device->vk.alloc, slice_param_bufs);
-   vaDestroyBuffer(session->va_display, pic_param_buf);
-   
-   /* Unmap the bitstream buffer */
+   /* Unmap the bitstream buffer - the VA-API slice data buffers have copied the data */
    anv_gem_munmap(device, bitstream_data, frame_info->srcBufferRange);
    
-   return va_status == VA_STATUS_SUCCESS ? VK_SUCCESS : 
-          vk_error(device, VK_ERROR_UNKNOWN);
+   if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+      fprintf(stderr, "VA-API decode: Recorded deferred decode command (%u slices)\n", slice_count);
+   }
+   
+   return VK_SUCCESS;
 }
 
 /**
@@ -911,4 +801,164 @@ anv_vaapi_import_surface_from_image(struct anv_device *device,
    }
    
    return VK_SUCCESS;
+}
+
+/**
+ * Execute deferred VA-API decode commands (Phase 4)
+ * 
+ * Called at QueueSubmit time to execute all VA-API decode operations
+ * that were recorded in the command buffer during CmdDecodeVideoKHR.
+ * 
+ * This implements the proper command buffer pattern where operations
+ * are deferred until submission.
+ */
+VkResult
+anv_vaapi_execute_deferred_decodes(struct anv_device *device,
+                                    struct anv_cmd_buffer *cmd_buffer)
+{
+   VAStatus va_status = VA_STATUS_SUCCESS;
+   VkResult result = VK_SUCCESS;
+   
+   /* Get VA display */
+   VADisplay va_display = anv_vaapi_get_display(device);
+   if (!va_display) {
+      return vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
+   }
+   
+   /* Execute each deferred decode command */
+   util_dynarray_foreach(&cmd_buffer->video.vaapi_decodes,
+                         struct anv_vaapi_decode_cmd, decode_cmd) {
+      if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+         fprintf(stderr, "Executing deferred VA-API decode: surface=%u, %u slices\n",
+                 decode_cmd->target_surface, decode_cmd->slice_count);
+      }
+      
+      /* CRITICAL SYNCHRONIZATION (Before VA-API decode):
+       * Before VA-API starts decoding to the surface, we need to ensure any
+       * previous Vulkan operations on the surface have completed.
+       * 
+       * Set the GEM domain to CPU to force a wait for any pending GPU operations.
+       */
+      if (decode_cmd->target_bo && decode_cmd->target_gem_handle) {
+         struct drm_i915_gem_set_domain set_domain = {
+            .handle = decode_cmd->target_gem_handle,
+            .read_domains = I915_GEM_DOMAIN_CPU,  /* Wait for GPU to finish */
+            .write_domain = I915_GEM_DOMAIN_CPU,  /* VA-API will write */
+         };
+         
+         int ret = intel_ioctl(device->fd, DRM_IOCTL_I915_GEM_SET_DOMAIN, &set_domain);
+         if (ret != 0 && unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+            fprintf(stderr, "Failed to set GEM domain before VA-API decode: %m\n");
+         }
+      }
+      
+      /* Begin picture */
+      va_status = vaBeginPicture(va_display, decode_cmd->context, decode_cmd->target_surface);
+      if (va_status != VA_STATUS_SUCCESS) {
+         if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+            fprintf(stderr, "vaBeginPicture failed: %d\n", va_status);
+         }
+         result = vk_error(device, VK_ERROR_UNKNOWN);
+         goto cleanup_cmd;
+      }
+      
+      /* Render picture parameters */
+      va_status = vaRenderPicture(va_display, decode_cmd->context,
+                                  &decode_cmd->pic_param_buf, 1);
+      if (va_status != VA_STATUS_SUCCESS) {
+         if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+            fprintf(stderr, "vaRenderPicture (picture params) failed: %d\n", va_status);
+         }
+         vaEndPicture(va_display, decode_cmd->context);
+         result = vk_error(device, VK_ERROR_UNKNOWN);
+         goto cleanup_cmd;
+      }
+      
+      /* Render all slices */
+      for (uint32_t s = 0; s < decode_cmd->slice_count; s++) {
+         /* Render slice parameters */
+         va_status = vaRenderPicture(va_display, decode_cmd->context,
+                                     &decode_cmd->slice_param_bufs[s], 1);
+         if (va_status != VA_STATUS_SUCCESS) {
+            if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+               fprintf(stderr, "vaRenderPicture (slice %u params) failed: %d\n", s, va_status);
+            }
+            vaEndPicture(va_display, decode_cmd->context);
+            result = vk_error(device, VK_ERROR_UNKNOWN);
+            goto cleanup_cmd;
+         }
+         
+         /* Render slice data */
+         va_status = vaRenderPicture(va_display, decode_cmd->context,
+                                     &decode_cmd->slice_data_bufs[s], 1);
+         if (va_status != VA_STATUS_SUCCESS) {
+            if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+               fprintf(stderr, "vaRenderPicture (slice %u data) failed: %d\n", s, va_status);
+            }
+            vaEndPicture(va_display, decode_cmd->context);
+            result = vk_error(device, VK_ERROR_UNKNOWN);
+            goto cleanup_cmd;
+         }
+      }
+      
+      /* End picture and execute decode */
+      va_status = vaEndPicture(va_display, decode_cmd->context);
+      if (va_status != VA_STATUS_SUCCESS) {
+         if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+            fprintf(stderr, "vaEndPicture failed: %d\n", va_status);
+         }
+         result = vk_error(device, VK_ERROR_UNKNOWN);
+         goto cleanup_cmd;
+      }
+      
+      /* Sync - wait for decode to complete */
+      va_status = vaSyncSurface(va_display, decode_cmd->target_surface);
+      if (va_status != VA_STATUS_SUCCESS) {
+         if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+            fprintf(stderr, "vaSyncSurface failed: %d\n", va_status);
+         }
+      }
+      
+      /* CRITICAL SYNCHRONIZATION (After VA-API decode):
+       * After VA-API decode completes, ensure proper cache coherency
+       * between the VA-API driver (video engine) and Vulkan (render engine).
+       * 
+       * Use GTT domain for GPU aperture access - kernel handles cache flushes.
+       */
+      if (decode_cmd->target_bo && decode_cmd->target_gem_handle) {
+         struct drm_i915_gem_set_domain set_domain = {
+            .handle = decode_cmd->target_gem_handle,
+            .read_domains = I915_GEM_DOMAIN_GTT,  /* GPU aperture access for Vulkan */
+            .write_domain = 0,  /* No immediate write, just transitioning from VA-API */
+         };
+         
+         int ret = intel_ioctl(device->fd, DRM_IOCTL_I915_GEM_SET_DOMAIN, &set_domain);
+         if (ret != 0 && unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+            fprintf(stderr, "Failed to set GEM domain after VA-API decode: %m\n");
+         }
+      }
+      
+cleanup_cmd:
+      /* Clean up VA-API buffers for this decode command */
+      for (uint32_t s = 0; s < decode_cmd->slice_count; s++) {
+         vaDestroyBuffer(va_display, decode_cmd->slice_data_bufs[s]);
+         vaDestroyBuffer(va_display, decode_cmd->slice_param_bufs[s]);
+      }
+      vk_free(&device->vk.alloc, decode_cmd->slice_data_bufs);
+      vk_free(&device->vk.alloc, decode_cmd->slice_param_bufs);
+      vaDestroyBuffer(va_display, decode_cmd->pic_param_buf);
+      
+      if (result != VK_SUCCESS) {
+         break;  /* Stop on first error */
+      }
+   }
+   
+   /* Clear the deferred commands after execution */
+   util_dynarray_clear(&cmd_buffer->video.vaapi_decodes);
+   
+   if (unlikely(INTEL_DEBUG(DEBUG_PERF)) && result == VK_SUCCESS) {
+      fprintf(stderr, "All deferred VA-API decodes executed successfully\n");
+   }
+   
+   return result;
 }
