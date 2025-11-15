@@ -383,6 +383,16 @@ anv_vaapi_decode_frame(struct anv_cmd_buffer *cmd_buffer,
    }
    const struct anv_image *dst_image = dst_image_view->image;
    
+   /* Import destination surface to VA-API (or get cached surface) */
+   VASurfaceID dst_surface;
+   result = anv_vaapi_import_surface_from_image(device, (struct anv_image *)dst_image, &dst_surface);
+   if (result != VK_SUCCESS) {
+      return result;
+   }
+   
+   /* Add destination surface to mapping for potential use as reference */
+   anv_vaapi_add_surface_mapping(session, dst_image, dst_surface);
+   
    /* CRITICAL SYNCHRONIZATION (Phase 3, Part 4 - Before VA-API decode):
     * Before VA-API starts decoding to the surface, we need to ensure any
     * previous Vulkan operations on the surface have completed.
@@ -408,16 +418,6 @@ anv_vaapi_decode_frame(struct anv_cmd_buffer *cmd_buffer,
          fprintf(stderr, "VA-API decode: Synchronized surface before decode\n");
       }
    }
-   
-   /* Import destination surface to VA-API (or get cached surface) */
-   VASurfaceID dst_surface;
-   result = anv_vaapi_import_surface_from_image(device, (struct anv_image *)dst_image, &dst_surface);
-   if (result != VK_SUCCESS) {
-      return result;
-   }
-   
-   /* Add destination surface to mapping for potential use as reference */
-   anv_vaapi_add_surface_mapping(session, dst_image, dst_surface);
    
    /* Get video session parameters - already a pointer, no need for FROM_HANDLE */
    struct anv_video_session_params *params = cmd_buffer->video.params;
@@ -660,7 +660,6 @@ anv_vaapi_decode_frame(struct anv_cmd_buffer *cmd_buffer,
     * The i915 kernel driver handles this automatically when we set the domain,
     * inserting the necessary flushes and invalidations.
     */
-   struct anv_image_binding *dst_binding = &((struct anv_image *)dst_image)->bindings[ANV_IMAGE_MEMORY_BINDING_MAIN];
    if (dst_binding->address.bo) {
       struct drm_i915_gem_set_domain set_domain = {
          .handle = dst_binding->address.bo->gem_handle,
