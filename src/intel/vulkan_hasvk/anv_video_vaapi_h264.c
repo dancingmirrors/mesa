@@ -199,58 +199,66 @@ anv_vaapi_translate_h264_picture_params(
     */
    unsigned dpb_idx = 0;
    
-   vk_logi(VK_LOG_OBJS(&device->vk.base),
-           "Building DPB from %u reference slots", decode_info->referenceSlotCount);
+   if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+      fprintf(stderr, "VA-API H.264: Building DPB from %u reference slots\n",
+              decode_info->referenceSlotCount);
+   }
    
    for (unsigned i = 0; i < decode_info->referenceSlotCount && dpb_idx < 16; i++) {
       const VkVideoReferenceSlotInfoKHR *ref_slot = &decode_info->pReferenceSlots[i];
       if (ref_slot->slotIndex < 0 || !ref_slot->pPictureResource) {
-         vk_logi(VK_LOG_OBJS(&device->vk.base),
-                 "  Slot %u: invalid slot index or no picture resource", i);
+         if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+            fprintf(stderr, "  Slot %u: invalid slot index or no picture resource\n", i);
+         }
          continue;
       }
 
       const VkVideoDecodeH264DpbSlotInfoKHR *dpb_slot_info =
          vk_find_struct_const(ref_slot->pNext, VIDEO_DECODE_H264_DPB_SLOT_INFO_KHR);
       if (!dpb_slot_info || !dpb_slot_info->pStdReferenceInfo) {
-         vk_logi(VK_LOG_OBJS(&device->vk.base),
-                 "  Slot %u (index %d): no DPB slot info or StdReferenceInfo",
-                 i, ref_slot->slotIndex);
+         if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+            fprintf(stderr, "  Slot %u (index %d): no DPB slot info or StdReferenceInfo\n",
+                    i, ref_slot->slotIndex);
+         }
          continue;
       }
 
       const StdVideoDecodeH264ReferenceInfo *ref_info = dpb_slot_info->pStdReferenceInfo;
       
-      vk_logi(VK_LOG_OBJS(&device->vk.base),
-              "  Slot %u (index %d): FrameNum=%u top_field=%u bottom_field=%u long_term=%u non_existing=%u POC=[%d,%d]",
-              i, ref_slot->slotIndex,
-              ref_info->FrameNum,
-              ref_info->flags.top_field_flag,
-              ref_info->flags.bottom_field_flag,
-              ref_info->flags.used_for_long_term_reference,
-              ref_info->flags.is_non_existing,
-              ref_info->PicOrderCnt[0],
-              ref_info->PicOrderCnt[1]);
+      if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+         fprintf(stderr, "  Slot %u (index %d): FrameNum=%u top_field=%u bottom_field=%u long_term=%u non_existing=%u POC=[%d,%d]\n",
+                 i, ref_slot->slotIndex,
+                 ref_info->FrameNum,
+                 ref_info->flags.top_field_flag,
+                 ref_info->flags.bottom_field_flag,
+                 ref_info->flags.used_for_long_term_reference,
+                 ref_info->flags.is_non_existing,
+                 ref_info->PicOrderCnt[0],
+                 ref_info->PicOrderCnt[1]);
+      }
       
       /* Skip if this reference frame is not actually used
        * (neither top nor bottom field is marked as reference) */
       if (!ref_info->flags.top_field_flag && !ref_info->flags.bottom_field_flag) {
-         vk_logi(VK_LOG_OBJS(&device->vk.base),
-                 "  Slot %u: skipping - no field flags set", i);
+         if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+            fprintf(stderr, "  Slot %u: skipping - no field flags set\n", i);
+         }
          continue;
       }
       
       /* Get the image from the reference slot */
       if (!ref_slot->pPictureResource || !ref_slot->pPictureResource->imageViewBinding) {
-         vk_logi(VK_LOG_OBJS(&device->vk.base),
-                 "  Slot %u: no picture resource or image view binding", i);
+         if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+            fprintf(stderr, "  Slot %u: no picture resource or image view binding\n", i);
+         }
          continue;
       }
       
       ANV_FROM_HANDLE(anv_image_view, ref_image_view, ref_slot->pPictureResource->imageViewBinding);
       if (!ref_image_view || !ref_image_view->image) {
-         vk_logi(VK_LOG_OBJS(&device->vk.base),
-                 "  Slot %u: no image view or image", i);
+         if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+            fprintf(stderr, "  Slot %u: no image view or image\n", i);
+         }
          continue;
       }
       
@@ -260,8 +268,9 @@ anv_vaapi_translate_h264_picture_params(
          /* Reference surface not yet imported - skip it
           * The VA-API driver can still decode if some references are missing,
           * though quality may be degraded */
-         vk_logi(VK_LOG_OBJS(&device->vk.base),
-                 "  Slot %u: surface not found in VA mapping", i);
+         if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+            fprintf(stderr, "  Slot %u: surface not found in VA mapping\n", i);
+         }
          vk_logd(VK_LOG_OBJS(&device->vk.base),
                  "Reference frame at slot %d not found in VA surface mapping, skipping",
                  ref_slot->slotIndex);
@@ -283,20 +292,22 @@ anv_vaapi_translate_h264_picture_params(
       else if (!ref_info->flags.top_field_flag && ref_info->flags.bottom_field_flag)
          va_pic->ReferenceFrames[dpb_idx].flags |= VA_PICTURE_H264_BOTTOM_FIELD;
       
-      vk_logi(VK_LOG_OBJS(&device->vk.base),
-              "  Slot %u -> DPB[%u]: surface_id=%u frame_num=%u flags=0x%x POC=[%d,%d]",
-              i, dpb_idx,
-              ref_surface,
-              ref_info->FrameNum,
-              va_pic->ReferenceFrames[dpb_idx].flags,
-              ref_info->PicOrderCnt[0],
-              ref_info->PicOrderCnt[1]);
+      if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+         fprintf(stderr, "  Slot %u -> DPB[%u]: surface_id=%u frame_num=%u flags=0x%x POC=[%d,%d]\n",
+                 i, dpb_idx,
+                 ref_surface,
+                 ref_info->FrameNum,
+                 va_pic->ReferenceFrames[dpb_idx].flags,
+                 ref_info->PicOrderCnt[0],
+                 ref_info->PicOrderCnt[1]);
+      }
       
       dpb_idx++;
    }
    
-   vk_logi(VK_LOG_OBJS(&device->vk.base),
-           "Final DPB contains %u reference frames", dpb_idx);
+   if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+      fprintf(stderr, "VA-API H.264: Final DPB contains %u reference frames\n", dpb_idx);
+   }
 
    va_pic->frame_num = h264_pic_info->pStdPictureInfo->frame_num;
 }
@@ -364,21 +375,23 @@ anv_vaapi_translate_h264_slice_params(
          va_slice->RefPicList0[ref_count] = va_pic->ReferenceFrames[i];
          va_slice->RefPicList1[ref_count] = va_pic->ReferenceFrames[i];
          
-         vk_logi(VK_LOG_OBJS(&device->vk.base),
-                 "RefPicList[%u]: surface_id=%u frame_num=%u flags=0x%x POC=[%d,%d]",
-                 ref_count,
-                 va_pic->ReferenceFrames[i].picture_id,
-                 va_pic->ReferenceFrames[i].frame_idx,
-                 va_pic->ReferenceFrames[i].flags,
-                 va_pic->ReferenceFrames[i].TopFieldOrderCnt,
-                 va_pic->ReferenceFrames[i].BottomFieldOrderCnt);
+         if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+            fprintf(stderr, "  RefPicList[%u]: surface_id=%u frame_num=%u flags=0x%x POC=[%d,%d]\n",
+                    ref_count,
+                    va_pic->ReferenceFrames[i].picture_id,
+                    va_pic->ReferenceFrames[i].frame_idx,
+                    va_pic->ReferenceFrames[i].flags,
+                    va_pic->ReferenceFrames[i].TopFieldOrderCnt,
+                    va_pic->ReferenceFrames[i].BottomFieldOrderCnt);
+         }
          
          ref_count++;
       }
    }
    
-   vk_logi(VK_LOG_OBJS(&device->vk.base),
-           "Built RefPicList with %u references from DPB", ref_count);
+   if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+      fprintf(stderr, "VA-API H.264: Built RefPicList with %u references from DPB\n", ref_count);
+   }
 
    /* The VA-API driver will now:
     * - Parse the slice header from the bitstream
