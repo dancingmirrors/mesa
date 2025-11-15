@@ -48,6 +48,7 @@
 #include <sys/ioctl.h>
 
 #include "vk_video/vulkan_video_codecs_common.h"
+#include "vk_video/vulkan_video_codec_h264std.h"
 #include "drm-uapi/i915_drm.h"
 #include "drm-uapi/drm_fourcc.h"
 
@@ -76,9 +77,25 @@ get_va_profile(const VkVideoProfileInfoKHR *profile)
 {
    if (profile->videoCodecOperation ==
        VK_VIDEO_CODEC_OPERATION_DECODE_H264_BIT_KHR) {
-      /* For now, default to H.264 Main profile
-       * TODO: Parse profile info to determine Baseline/Main/High
-       */
+      /* Parse H.264 profile info to determine Baseline/Main/High */
+      const VkVideoDecodeH264ProfileInfoKHR *h264_profile =
+         vk_find_struct_const(profile->pNext, VIDEO_DECODE_H264_PROFILE_INFO_KHR);
+      
+      if (h264_profile) {
+         switch (h264_profile->stdProfileIdc) {
+         case STD_VIDEO_H264_PROFILE_IDC_BASELINE:
+            return VAProfileH264ConstrainedBaseline;
+         case STD_VIDEO_H264_PROFILE_IDC_MAIN:
+            return VAProfileH264Main;
+         case STD_VIDEO_H264_PROFILE_IDC_HIGH:
+            return VAProfileH264High;
+         default:
+            /* Unsupported H.264 profile, default to Main */
+            return VAProfileH264Main;
+         }
+      }
+      
+      /* No profile info provided, default to Main */
       return VAProfileH264Main;
    }
 
