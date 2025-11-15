@@ -307,7 +307,7 @@ anv_vaapi_session_destroy(struct anv_device *device,
 /**
  * Add or update a surface mapping in the session
  */
-static void
+void
 anv_vaapi_add_surface_mapping(struct anv_vaapi_session *session,
                                const struct anv_image *image,
                                VASurfaceID va_surface)
@@ -331,7 +331,7 @@ anv_vaapi_add_surface_mapping(struct anv_vaapi_session *session,
 /**
  * Lookup VA surface ID for a given image
  */
-static VASurfaceID
+VASurfaceID
 anv_vaapi_lookup_surface(struct anv_vaapi_session *session,
                           const struct anv_image *image)
 {
