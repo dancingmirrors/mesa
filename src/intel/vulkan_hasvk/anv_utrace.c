@@ -39,8 +39,8 @@ command_buffers_count_utraces(struct anv_device *device,
       if (u_trace_has_points(&cmd_buffers[i]->trace)) {
          utraces++;
          if (!
-             (cmd_buffers[i]->
-              usage_flags & VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT))
+             (cmd_buffers[i]->usage_flags &
+              VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT))
             *utrace_copies +=
                list_length(&cmd_buffers[i]->trace.trace_chunks);
       }
@@ -150,8 +150,8 @@ anv_device_utrace_flush_cmd_buffers(struct anv_queue *queue,
       anv_genX(device->info, emit_so_memcpy_init) (&flush->memcpy_state,
                                                    device, &flush->batch);
       for (uint32_t i = 0; i < cmd_buffer_count; i++) {
-         if (cmd_buffers[i]->
-             usage_flags & VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT) {
+         if (cmd_buffers[i]->usage_flags &
+             VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT) {
             intel_ds_queue_flush_data(&queue->ds, &cmd_buffers[i]->trace,
                                       &flush->ds, device->vk.current_frame,
                                       false);
@@ -176,8 +176,8 @@ anv_device_utrace_flush_cmd_buffers(struct anv_queue *queue,
    }
    else {
       for (uint32_t i = 0; i < cmd_buffer_count; i++) {
-         assert(cmd_buffers[i]->
-                usage_flags & VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+         assert(cmd_buffers[i]->usage_flags &
+                VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
          intel_ds_queue_flush_data(&queue->ds, &cmd_buffers[i]->trace,
                                    &flush->ds, device->vk.current_frame,
                                    i == (cmd_buffer_count - 1));
@@ -335,8 +335,8 @@ anv_device_utrace_init(struct anv_device *device)
       struct anv_queue *queue = &device->queues[q];
 
       intel_ds_device_init_queue(&device->ds, &queue->ds, "%s%u",
-                                 intel_engines_class_to_string(queue->family->
-                                                               engine_class),
+                                 intel_engines_class_to_string(queue->
+                                                               family->engine_class),
                                  queue->vk.index_in_family);
    }
 }

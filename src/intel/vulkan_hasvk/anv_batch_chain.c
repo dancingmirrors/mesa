@@ -2125,8 +2125,10 @@ anv_queue_exec_locked(struct anv_queue *queue,
     */
    for (uint32_t i = 0; i < cmd_buffer_count; i++) {
       if (util_dynarray_num_elements(&cmd_buffers[i]->video.vaapi_decodes,
-                                      struct anv_vaapi_decode_cmd) > 0) {
-         VkResult result = anv_vaapi_execute_deferred_decodes(device, cmd_buffers[i]);
+                                     struct anv_vaapi_decode_cmd) > 0)
+      {
+         VkResult result =
+            anv_vaapi_execute_deferred_decodes(device, cmd_buffers[i]);
          if (result != VK_SUCCESS) {
             return result;
          }
@@ -2302,7 +2304,8 @@ anv_queue_exec_locked(struct anv_queue *queue,
                                                     device->fd,
                                                     device->perf_fd,
                                                     -1, /* this parameter, exec_queue is not used in i915 */
-                                                    query_info->oa_metrics_set_id,
+                                                    query_info->
+                                                    oa_metrics_set_id,
                                                     NULL);
          if (ret < 0) {
             result = vk_device_set_lost(&device->vk,

@@ -556,7 +556,8 @@ anv_pipeline_lower_nir(struct anv_pipeline *pipeline,
           * used by the shader to chunk_size -- which does simplify the logic.
           */
          const unsigned chunk_size = 16;
-         const unsigned shared_size = align(nir->info.shared_size, chunk_size);
+         const unsigned shared_size =
+            align(nir->info.shared_size, chunk_size);
          assert(shared_size <=
                 intel_compute_slm_calculate_size(compiler->devinfo->ver,
                                                  nir->info.shared_size));
@@ -1241,8 +1242,9 @@ anv_graphics_pipeline_compile(struct anv_graphics_pipeline *pipeline,
    }
 
    const bool skip_cache_lookup =
-      (pipeline->base.
-       flags & VK_PIPELINE_CREATE_2_CAPTURE_INTERNAL_REPRESENTATIONS_BIT_KHR);
+      (pipeline->
+       base.flags &
+       VK_PIPELINE_CREATE_2_CAPTURE_INTERNAL_REPRESENTATIONS_BIT_KHR);
    if (!skip_cache_lookup) {
       bool found_all_shaders =
          anv_graphics_pipeline_load_cached_shaders(pipeline, cache, stages,
@@ -1251,8 +1253,9 @@ anv_graphics_pipeline_compile(struct anv_graphics_pipeline *pipeline,
          goto done;
    }
 
-   if (pipeline->base.
-       flags & VK_PIPELINE_CREATE_2_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT_KHR)
+   if (pipeline->
+       base.flags &
+       VK_PIPELINE_CREATE_2_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT_KHR)
       return VK_PIPELINE_COMPILE_REQUIRED;
 
    void *pipeline_ctx = ralloc_context(NULL);
@@ -1306,13 +1309,12 @@ anv_graphics_pipeline_compile(struct anv_graphics_pipeline *pipeline,
 
       if (prev_stage && s < MESA_SHADER_FRAGMENT) {
          prev_stage->nir->info.outputs_written |=
-            stages[s].nir->info.
-            inputs_read & ~(VARYING_BIT_TESS_LEVEL_INNER |
-                            VARYING_BIT_TESS_LEVEL_OUTER);
+            stages[s].nir->info.inputs_read & ~(VARYING_BIT_TESS_LEVEL_INNER |
+                                                VARYING_BIT_TESS_LEVEL_OUTER);
          stages[s].nir->info.inputs_read |=
-            prev_stage->nir->info.
-            outputs_written & ~(VARYING_BIT_TESS_LEVEL_INNER |
-                                VARYING_BIT_TESS_LEVEL_OUTER);
+            prev_stage->nir->
+            info.outputs_written & ~(VARYING_BIT_TESS_LEVEL_INNER |
+                                     VARYING_BIT_TESS_LEVEL_OUTER);
          prev_stage->nir->info.patch_outputs_written |=
             stages[s].nir->info.patch_inputs_read;
          stages[s].nir->info.patch_inputs_read |=
@@ -1470,8 +1472,9 @@ anv_pipeline_compile_cs(struct anv_compute_pipeline *pipeline,
    ANV_FROM_HANDLE(anv_pipeline_layout, layout, info->layout);
 
    const bool skip_cache_lookup =
-      (pipeline->base.
-       flags & VK_PIPELINE_CREATE_CAPTURE_INTERNAL_REPRESENTATIONS_BIT_KHR);
+      (pipeline->
+       base.flags &
+       VK_PIPELINE_CREATE_CAPTURE_INTERNAL_REPRESENTATIONS_BIT_KHR);
 
    anv_pipeline_hash_compute(pipeline, layout, &stage, stage.cache_key.sha1);
 
@@ -1483,8 +1486,8 @@ anv_pipeline_compile_cs(struct anv_compute_pipeline *pipeline,
    }
 
    if (bin == NULL &&
-       (info->
-        flags & VK_PIPELINE_CREATE_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT))
+       (info->flags &
+        VK_PIPELINE_CREATE_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT))
       return VK_PIPELINE_COMPILE_REQUIRED;
 
    void *mem_ctx = ralloc_context(NULL);
@@ -1975,8 +1978,8 @@ anv_GetPipelineExecutableStatisticsKHR(VkDevice device,
    switch (pipeline->type) {
    case ANV_PIPELINE_GRAPHICS:{
          prog_data =
-            anv_pipeline_to_graphics(pipeline)->shaders[exe->stage]->
-            prog_data;
+            anv_pipeline_to_graphics(pipeline)->shaders[exe->
+                                                        stage]->prog_data;
          break;
       }
    case ANV_PIPELINE_COMPUTE:{
