@@ -155,8 +155,14 @@ anv_vaapi_translate_h264_picture_params(
 
    if (!sps || !pps) {
       if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
-         fprintf(stderr, "Invalid SPS/PPS IDs in H.264 decode\n");
+         fprintf(stderr, "Invalid SPS/PPS IDs in H.264 decode: sps_id=%u pps_id=%u (sps=%p pps=%p)\n",
+                 h264_pic_info->pStdPictureInfo->seq_parameter_set_id,
+                 h264_pic_info->pStdPictureInfo->pic_parameter_set_id,
+                 (void*)sps, (void*)pps);
       }
+      /* Initialize with safe defaults to prevent crashes downstream */
+      va_pic->CurrPic.picture_id = dst_surface_id;
+      va_pic->CurrPic.flags = VA_PICTURE_H264_INVALID;
       return;
    }
 

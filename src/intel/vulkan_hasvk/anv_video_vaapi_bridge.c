@@ -450,6 +450,15 @@ anv_vaapi_decode_frame(struct anv_cmd_buffer *cmd_buffer,
    anv_vaapi_translate_h264_picture_params(device, frame_info, h264_pic_info,
                                            &params->vk, session, dst_surface, &va_pic_param);
    
+   /* Validate that critical picture parameters were set */
+   if (va_pic_param.CurrPic.picture_id == VA_INVALID_SURFACE ||
+       va_pic_param.CurrPic.flags & VA_PICTURE_H264_INVALID) {
+      if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+         fprintf(stderr, "VA-API: Picture parameter translation failed - invalid current picture\n");
+      }
+      return vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
+   }
+   
    /* Create picture parameter buffer */
    VABufferID pic_param_buf;
    va_status = vaCreateBuffer(session->va_display, session->va_context,
