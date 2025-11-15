@@ -1,5 +1,20 @@
 # HasVK H.264 Video Decoding Analysis and Recommendations
 
+**IMPORTANT NOTE (December 2024):** This document is now **HISTORICAL**. The native direct hardware decode implementations described here (`genX_video_long.c` and `genX_video_short.c`) caused GPU hangs on Gen7/7.5/8 hardware and have been **superseded by the VA-API bridge**.
+
+**Current Implementation:** HasVK now uses a VA-API bridge that routes Vulkan Video decode operations through the stable VA-API implementation. See:
+- [VA_API_BRIDGE_STATUS.md](VA_API_BRIDGE_STATUS.md) - Current implementation status
+- [VA_API_BRIDGE_ARCHITECTURE.md](VA_API_BRIDGE_ARCHITECTURE.md) - Detailed architecture
+- [VA_API_INTEGRATION_PLAN.md](VA_API_INTEGRATION_PLAN.md) - Implementation plan and history
+
+The VA-API bridge provides **stable, working video decode** without GPU hangs by leveraging the mature crocus/i965 VA-API drivers.
+
+---
+
+## Historical Analysis: Native Implementation Issues
+
+The content below documents the analysis of the **legacy native implementations** that were attempted before adopting the VA-API bridge approach. This is preserved for historical reference and to explain why the VA-API bridge was necessary.
+
 ## Problem Statement
 
 Both `genX_video_long.c` and `genX_video_short.c` have issues:
@@ -262,7 +277,7 @@ The problem statement mentions hasvk hardware also uses crocus. This is importan
 - Better performance
 - Same format limitations
 
-## Conclusion
+## Conclusion (Historical)
 
 **Yes, it is highly feasible to use ideas from the zink patch to fix hasvk video decoding.**
 
@@ -272,6 +287,29 @@ The key insights are:
 3. **Don't stub zink code** - learn patterns, implement natively
 
 The fixes are relatively straightforward and don't require major architectural changes. The estimated effort is reasonable (1-2 weeks) and the risk is low since the changes are localized to video decoding paths.
+
+---
+
+## 2024 UPDATE: VA-API Bridge Approach Adopted
+
+Instead of fixing the native implementations, hasvk adopted a **VA-API bridge approach**:
+
+**Why this decision was made:**
+1. **GPU hangs proved difficult to debug** - Root cause in native implementations unclear
+2. **VA-API is proven stable** - crocus/i965 drivers work reliably for video on Gen7-8
+3. **Faster time to working solution** - VA-API bridge implemented in 4-6 weeks
+4. **Lower risk** - Leverages existing, tested code paths
+5. **Maintenance advantage** - Let VA-API driver maintainers handle hardware quirks
+
+**Result:** The VA-API bridge is now fully implemented and provides stable video decode without GPU hangs. The native implementations (genX_video_long.c, genX_video_short.c) are preserved in the docs/ directory for historical reference only.
+
+**Lessons learned:**
+- When hardware behavior is unpredictable, using a proven API layer is often better than direct hardware programming
+- The zink patch's key insight (use VA-API for video) was correct - just applied at the Vulkan driver level instead of Gallium level
+- DMA-buf resource sharing enables zero-copy integration between APIs
+- Proper synchronization (GEM domains) is critical when mixing APIs
+
+See [VA_API_BRIDGE_STATUS.md](VA_API_BRIDGE_STATUS.md) for current status.
 
 ## Next Steps
 
