@@ -21,13 +21,16 @@
  * IN THE SOFTWARE.
  */
 
-/* This file acts as a dispatcher between short and long mode implementations
- * of video decoding. The short mode is the default and stable implementation.
- * The long mode is WIP and can be activated by setting the environment
- * variable INTEL_HASVK_VIDEO_DECODE_LONG=1.
+/* This file acts as a dispatcher for video decoding. It now routes all decode
+ * operations through the VA-API bridge instead of using native hardware decode.
+ * 
+ * The VA-API bridge provides stable video decode by leveraging the proven
+ * VA-API implementation on Gen7/7.5/8 hardware through the crocus driver,
+ * avoiding the GPU hangs that occur with direct hardware programming.
  */
 
 #include "anv_private.h"
+#include "anv_video_vaapi_bridge.h"
 
 #include <stdlib.h>
 #include <inttypes.h>
@@ -35,54 +38,21 @@
 #include "genxml/hasvk_genX_pack.h"
 #include "genxml/hasvk_genX_video_pack.h"
 
-/* Forward declarations for _short functions */
-void genX(CmdBeginVideoCodingKHR_short) (VkCommandBuffer commandBuffer,
-                                         const VkVideoBeginCodingInfoKHR * pBeginInfo);
-void genX(CmdControlVideoCodingKHR_short) (VkCommandBuffer commandBuffer,
-                                           const VkVideoCodingControlInfoKHR * pCodingControlInfo);
-void genX(CmdEndVideoCodingKHR_short) (VkCommandBuffer commandBuffer,
-                                       const VkVideoEndCodingInfoKHR * pEndCodingInfo);
-void genX(CmdDecodeVideoKHR_short) (VkCommandBuffer commandBuffer,
-                                    const VkVideoDecodeInfoKHR * frame_info);
-
-/* Forward declarations for _long functions */
-void genX(CmdBeginVideoCodingKHR_long) (VkCommandBuffer commandBuffer,
-                                        const VkVideoBeginCodingInfoKHR * pBeginInfo);
-void genX(CmdControlVideoCodingKHR_long) (VkCommandBuffer commandBuffer,
-                                          const VkVideoCodingControlInfoKHR * pCodingControlInfo);
-void genX(CmdEndVideoCodingKHR_long) (VkCommandBuffer commandBuffer,
-                                      const VkVideoEndCodingInfoKHR * pEndCodingInfo);
-void genX(CmdDecodeVideoKHR_long) (VkCommandBuffer commandBuffer,
-                                   const VkVideoDecodeInfoKHR * frame_info);
-
-/* Include the short mode implementation (default) */
-#include "genX_video_short.c"
-
-/* Include the long mode implementation (WIP, broken) */
-#include "genX_video_long.c"
-
-/* Helper to check if long mode is enabled */
-static inline bool
-anv_video_use_long_mode(void)
-{
-   static int long_mode = -1;
-   if (long_mode == -1) {
-      const char *env = getenv("INTEL_HASVK_VIDEO_DECODE_LONG");
-      long_mode = (env && env[0] == '1') ? 1 : 0;
-   }
-   return long_mode == 1;
-}
-
-/* Dispatcher functions that delegate to the appropriate implementation */
+/* Use VA-API bridge for all video decode operations */
 
 void
 genX(CmdBeginVideoCodingKHR) (VkCommandBuffer commandBuffer,
                               const VkVideoBeginCodingInfoKHR * pBeginInfo)
 {
-   if (anv_video_use_long_mode())
-      genX(CmdBeginVideoCodingKHR_long)(commandBuffer, pBeginInfo);
-   else
-      genX(CmdBeginVideoCodingKHR_short)(commandBuffer, pBeginInfo);
+   ANV_FROM_HANDLE(anv_cmd_buffer, cmd_buffer, commandBuffer);
+   ANV_FROM_HANDLE(anv_video_session, vid, pBeginInfo->videoSession);
+   ANV_FROM_HANDLE(anv_video_session_params, params, pBeginInfo->videoSessionParameters);
+
+   /* Bind the video session and parameters to the command buffer.
+    * The VA-API session is already initialized during vkCreateVideoSessionKHR.
+    */
+   cmd_buffer->video.vid = vid;
+   cmd_buffer->video.params = params;
 }
 
 void
@@ -90,10 +60,9 @@ genX(CmdControlVideoCodingKHR) (VkCommandBuffer commandBuffer,
                                 const VkVideoCodingControlInfoKHR *
                                 pCodingControlInfo)
 {
-   if (anv_video_use_long_mode())
-      genX(CmdControlVideoCodingKHR_long)(commandBuffer, pCodingControlInfo);
-   else
-      genX(CmdControlVideoCodingKHR_short)(commandBuffer, pCodingControlInfo);
+   /* Control operations (reset, etc.) are handled by VA-API internally.
+    * No explicit action needed here.
+    */
 }
 
 void
@@ -101,18 +70,22 @@ genX(CmdEndVideoCodingKHR) (VkCommandBuffer commandBuffer,
                             const VkVideoEndCodingInfoKHR *
                             pEndCodingInfo)
 {
-   if (anv_video_use_long_mode())
-      genX(CmdEndVideoCodingKHR_long)(commandBuffer, pEndCodingInfo);
-   else
-      genX(CmdEndVideoCodingKHR_short)(commandBuffer, pEndCodingInfo);
+   /* End coding - no cleanup needed as VA-API manages its own state.
+    * Resources are cleaned up when the video session is destroyed.
+    */
 }
 
 void
 genX(CmdDecodeVideoKHR) (VkCommandBuffer commandBuffer,
                          const VkVideoDecodeInfoKHR * frame_info)
 {
-   if (anv_video_use_long_mode())
-      genX(CmdDecodeVideoKHR_long)(commandBuffer, frame_info);
-   else
-      genX(CmdDecodeVideoKHR_short)(commandBuffer, frame_info);
+   ANV_FROM_HANDLE(anv_cmd_buffer, cmd_buffer, commandBuffer);
+   
+   /* Route all decode operations through VA-API bridge */
+   VkResult result = anv_vaapi_decode_frame(cmd_buffer, frame_info);
+   
+   if (result != VK_SUCCESS) {
+      vk_loge(VK_LOG_OBJS(&cmd_buffer->device->vk.base),
+              "VA-API decode failed: %d", result);
+   }
 }

@@ -42,6 +42,15 @@
  */
 
 /**
+ * Surface mapping entry for DPB management
+ * Maps Vulkan images to VA-API surfaces
+ */
+struct anv_vaapi_surface_map {
+   const struct anv_image *image;  /* Vulkan image */
+   VASurfaceID va_surface;         /* Corresponding VA surface */
+};
+
+/**
  * VA-API session state
  * 
  * Manages the VA-API objects associated with a Vulkan video session.
@@ -54,6 +63,11 @@ struct anv_vaapi_session {
    /* DPB (Decoded Picture Buffer) surfaces */
    VASurfaceID *va_surfaces;      /* Array of VA surfaces for reference frames */
    uint32_t num_surfaces;         /* Number of surfaces allocated */
+   
+   /* Surface mapping for reference frames */
+   struct anv_vaapi_surface_map *surface_map;  /* Image to VA surface mapping */
+   uint32_t surface_map_size;     /* Current number of mapped surfaces */
+   uint32_t surface_map_capacity; /* Maximum capacity of surface map */
    
    /* Parameter buffers for decode operations */
    VABufferID va_picture_param;   /* Picture parameter buffer */
@@ -150,5 +164,75 @@ VkResult
 anv_vaapi_import_surface_from_image(struct anv_device *device,
                                     struct anv_image *image,
                                     VASurfaceID *surface_id);
+
+/**
+ * Add surface mapping entry
+ * 
+ * Maps a Vulkan image to a VA-API surface for DPB management.
+ * 
+ * @param session    VA-API session
+ * @param image      Vulkan image
+ * @param va_surface VA surface ID
+ */
+void
+anv_vaapi_add_surface_mapping(struct anv_vaapi_session *session,
+                               const struct anv_image *image,
+                               VASurfaceID va_surface);
+
+/**
+ * Lookup VA surface from Vulkan image
+ * 
+ * Searches the surface mapping for a VA-API surface associated with
+ * the given Vulkan image.
+ * 
+ * @param session  VA-API session
+ * @param image    Vulkan image to lookup
+ * @return VA surface ID or VA_INVALID_SURFACE if not found
+ */
+VASurfaceID
+anv_vaapi_lookup_surface(struct anv_vaapi_session *session,
+                         const struct anv_image *image);
+
+/**
+ * H.264-specific parameter translation functions
+ */
+
+/**
+ * Translate Vulkan H.264 picture parameters to VA-API format
+ * 
+ * @param device         ANV device
+ * @param decode_info    Vulkan decode info
+ * @param h264_pic_info  H.264-specific picture info
+ * @param params         Video session parameters (contains SPS/PPS)
+ * @param session        VA-API session (for DPB surface lookup)
+ * @param dst_surface_id VA surface ID for decode destination
+ * @param va_pic         Output VA-API picture parameter buffer
+ */
+void
+anv_vaapi_translate_h264_picture_params(
+   struct anv_device *device,
+   const VkVideoDecodeInfoKHR *decode_info,
+   const VkVideoDecodeH264PictureInfoKHR *h264_pic_info,
+   const struct vk_video_session_parameters *params,
+   struct anv_vaapi_session *session,
+   VASurfaceID dst_surface_id,
+   VAPictureParameterBufferH264 *va_pic);
+
+/**
+ * Translate Vulkan H.264 slice parameters to VA-API format
+ * 
+ * @param decode_info    Vulkan decode info
+ * @param h264_pic_info  H.264-specific picture info
+ * @param slice_offset   Offset of slice data in bitstream buffer
+ * @param slice_size     Size of slice data
+ * @param va_slice       Output VA-API slice parameter buffer
+ */
+void
+anv_vaapi_translate_h264_slice_params(
+   const VkVideoDecodeInfoKHR *decode_info,
+   const VkVideoDecodeH264PictureInfoKHR *h264_pic_info,
+   uint32_t slice_offset,
+   uint32_t slice_size,
+   VASliceParameterBufferH264 *va_slice);
 
 #endif /* ANV_VIDEO_VAAPI_BRIDGE_H */
