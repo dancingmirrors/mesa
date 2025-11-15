@@ -197,7 +197,11 @@ get_device_extensions(const struct anv_physical_device *device,
    const bool has_syncobj_wait =
       (device->sync_syncobj_type.features & VK_SYNC_FEATURE_CPU_WAIT) != 0;
 
+#ifdef HAVE_LIBVA
    const bool video_decode = true;
+#else
+   const bool video_decode = false;
+#endif
 
    *ext = (struct vk_device_extension_table) {
       .KHR_8bit_storage = device->info.ver >= 8,

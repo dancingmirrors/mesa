@@ -151,6 +151,11 @@ anv_flags = [
   sse2_args,
 ]
 
+# Define HAVE_LIBVA when libva is available for video decode support
+if dep_hasvk_va.found()
+  anv_flags += '-DHAVE_LIBVA'
+endif
+
 anv_cpp_flags = []
 
 if with_platform_x11
