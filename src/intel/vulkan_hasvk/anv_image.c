@@ -1255,6 +1255,7 @@ anv_image_init(struct anv_device *device, struct anv_image *image,
          vk_find_struct_const(pCreateInfo->pNext,
                               IMAGE_DRM_FORMAT_MODIFIER_EXPLICIT_CREATE_INFO_EXT);
       if (mod_explicit_info) {
+         assert(mod_explicit_info->drmFormatModifier == I915_FORMAT_MOD_Y_TILED);
          isl_mod_info =
             isl_drm_modifier_get_info(mod_explicit_info->drmFormatModifier);
       }
