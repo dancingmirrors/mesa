@@ -192,7 +192,12 @@ anv_vaapi_translate_h264_picture_params(
     * 1. Valid (have valid slot index and picture resource)
     * 2. Have valid DPB slot info
     * 3. Have successfully imported VA surface
-    * 4. Are marked as reference frames (top_field or bottom_field)
+    * 
+    * Note about field flags in StdVideoDecodeH264ReferenceInfo:
+    * - When both top_field_flag and bottom_field_flag are 0, this is a FRAME reference
+    *   (both fields together form the reference, used in frame coding)
+    * - When one or both flags are 1, specific fields are used as references (field coding)
+    * This matches the interpretation in genX_video_short.c.
     * 
     * Use a separate dpb_idx counter to pack the ReferenceFrames array densely,
     * as the VA-API driver expects a contiguous array of valid references without gaps.
@@ -237,15 +242,6 @@ anv_vaapi_translate_h264_picture_params(
                  ref_info->PicOrderCnt[1]);
       }
       
-      /* Skip if this reference frame is not actually used
-       * (neither top nor bottom field is marked as reference) */
-      if (!ref_info->flags.top_field_flag && !ref_info->flags.bottom_field_flag) {
-         if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
-            fprintf(stderr, "  Slot %u: skipping - no field flags set\n", i);
-         }
-         continue;
-      }
-      
       /* Get the image from the reference slot */
       if (!ref_slot->pPictureResource || !ref_slot->pPictureResource->imageViewBinding) {
          if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
@@ -286,11 +282,17 @@ anv_vaapi_translate_h264_picture_params(
       va_pic->ReferenceFrames[dpb_idx].TopFieldOrderCnt = ref_info->PicOrderCnt[0];
       va_pic->ReferenceFrames[dpb_idx].BottomFieldOrderCnt = ref_info->PicOrderCnt[1];
       
-      /* Set field flags if this is a field picture */
+      /* Set field flags for VA-API
+       * Note: When both top_field_flag and bottom_field_flag are 0, this is a frame reference
+       * and we don't set VA_PICTURE_H264_TOP_FIELD or VA_PICTURE_H264_BOTTOM_FIELD.
+       * The reference type (short-term vs long-term) was already set by init_va_picture above.
+       */
       if (ref_info->flags.top_field_flag && !ref_info->flags.bottom_field_flag)
          va_pic->ReferenceFrames[dpb_idx].flags |= VA_PICTURE_H264_TOP_FIELD;
       else if (!ref_info->flags.top_field_flag && ref_info->flags.bottom_field_flag)
          va_pic->ReferenceFrames[dpb_idx].flags |= VA_PICTURE_H264_BOTTOM_FIELD;
+      /* If both flags are set, both fields are used independently - don't set field flags */
+      /* If neither flag is set, this is a frame reference - don't set field flags */
       
       if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
          fprintf(stderr, "  Slot %u -> DPB[%u]: surface_id=%u frame_num=%u flags=0x%x POC=[%d,%d]\n",
