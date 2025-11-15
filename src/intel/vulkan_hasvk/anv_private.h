@@ -347,10 +347,8 @@ anv_printflike(5, 6);
    do { \
       static bool reported = false; \
       if (!reported && INTEL_DEBUG(DEBUG_PERF)) { \
-         __vk_log(VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT,      \
-                  VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT,      \
-                  objects_macro, __FILE__, __LINE__,                    \
-                  format, ## __VA_ARGS__);                              \
+         fprintf(stderr, "%s:%d: PERF: " format "\n", __FILE__, __LINE__, \
+                 ## __VA_ARGS__);                                         \
          reported = true; \
       } \
    } while (0)
