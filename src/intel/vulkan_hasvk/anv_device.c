@@ -199,7 +199,8 @@ get_device_extensions(const struct anv_physical_device *device,
    const bool has_syncobj_wait =
       (device->sync_syncobj_type.features & VK_SYNC_FEATURE_CPU_WAIT) != 0;
 
-#ifdef HAVE_LIBVA
+   /* Video decode is only supported through VA-API with H.264 codec enabled */
+#if defined(HAVE_LIBVA) && VIDEO_CODEC_H264DEC
    const bool video_decode = true;
 #else
    const bool video_decode = false;
@@ -279,7 +280,7 @@ get_device_extensions(const struct anv_physical_device *device,
       .KHR_variable_pointers = true,
       .KHR_video_queue = video_decode,
       .KHR_video_decode_queue = video_decode,
-      .KHR_video_decode_h264 = video_decode && VIDEO_CODEC_H264DEC,
+      .KHR_video_decode_h264 = video_decode,  /* H.264 is the only supported codec */
       .KHR_vulkan_memory_model = true,
       .KHR_workgroup_memory_explicit_layout = true,
       .KHR_zero_initialize_workgroup_memory = true,
