@@ -725,7 +725,8 @@ anv_vaapi_export_video_surface_dmabuf(struct anv_device *device,
     */
    if (!bo->is_external) {
       if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
-         fprintf(stderr, "Marking video BO as external for DMA-buf export\n");
+         fprintf(stderr, "Marking video BO (gem_handle=%u) as external for DMA-buf export\n",
+                 bo->gem_handle);
       }
       bo->is_external = true;
    }
@@ -734,9 +735,15 @@ anv_vaapi_export_video_surface_dmabuf(struct anv_device *device,
    int fd = anv_gem_handle_to_fd(device, bo->gem_handle);
    if (fd < 0) {
       if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
-         fprintf(stderr, "Failed to export BO as DMA-buf: %m\n");
+         fprintf(stderr, "Failed to export BO (gem_handle=%u) as DMA-buf: %m\n",
+                 bo->gem_handle);
       }
       return vk_error(device, VK_ERROR_TOO_MANY_OBJECTS);
+   }
+
+   if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+      fprintf(stderr, "Exported BO (gem_handle=%u) as DMA-buf fd=%d\n",
+              bo->gem_handle, fd);
    }
 
    *fd_out = fd;
