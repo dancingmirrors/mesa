@@ -186,18 +186,34 @@ anv_vaapi_translate_h264_picture_params(
       }
    }
 
-   /* Add reference pictures from reference slots */
-   for (unsigned i = 0; i < decode_info->referenceSlotCount && i < 16; i++) {
+   /* Add reference pictures from reference slots
+    * 
+    * Important: Only add references that are:
+    * 1. Valid (have valid slot index and picture resource)
+    * 2. Have valid DPB slot info
+    * 3. Have successfully imported VA surface
+    * 4. Are marked as reference frames (top_field or bottom_field)
+    * 
+    * Use a separate dpb_idx counter to pack the ReferenceFrames array densely,
+    * as the VA-API driver expects a contiguous array of valid references without gaps.
+    */
+   unsigned dpb_idx = 0;
+   for (unsigned i = 0; i < decode_info->referenceSlotCount && dpb_idx < 16; i++) {
       const VkVideoReferenceSlotInfoKHR *ref_slot = &decode_info->pReferenceSlots[i];
       if (ref_slot->slotIndex < 0 || !ref_slot->pPictureResource)
          continue;
 
       const VkVideoDecodeH264DpbSlotInfoKHR *dpb_slot_info =
          vk_find_struct_const(ref_slot->pNext, VIDEO_DECODE_H264_DPB_SLOT_INFO_KHR);
-      if (!dpb_slot_info)
+      if (!dpb_slot_info || !dpb_slot_info->pStdReferenceInfo)
          continue;
 
       const StdVideoDecodeH264ReferenceInfo *ref_info = dpb_slot_info->pStdReferenceInfo;
+      
+      /* Skip if this reference frame is not actually used
+       * (neither top nor bottom field is marked as reference) */
+      if (!ref_info->flags.top_field_flag && !ref_info->flags.bottom_field_flag)
+         continue;
       
       /* Get the image from the reference slot */
       if (!ref_slot->pPictureResource || !ref_slot->pPictureResource->imageViewBinding)
@@ -210,18 +226,31 @@ anv_vaapi_translate_h264_picture_params(
       /* Lookup VA surface ID from session mapping */
       VASurfaceID ref_surface = anv_vaapi_lookup_surface(session, ref_image_view->image);
       if (ref_surface == VA_INVALID_SURFACE) {
-         /* Reference surface not yet imported - this shouldn't happen if decode_frame
-          * properly imported all reference surfaces before calling this function */
+         /* Reference surface not yet imported - skip it
+          * The VA-API driver can still decode if some references are missing,
+          * though quality may be degraded */
+         vk_logd(VK_LOG_OBJS(&device->vk.base),
+                 "Reference frame at slot %d not found in VA surface mapping, skipping",
+                 ref_slot->slotIndex);
          continue;
       }
       
-      init_va_picture(&va_pic->ReferenceFrames[i], ref_surface,
+      /* Add to DPB at the next available index */
+      init_va_picture(&va_pic->ReferenceFrames[dpb_idx], ref_surface,
                      ref_info->FrameNum,
                      ref_info->flags.used_for_long_term_reference ?
                      VA_PICTURE_H264_LONG_TERM_REFERENCE :
                      VA_PICTURE_H264_SHORT_TERM_REFERENCE);
-      va_pic->ReferenceFrames[i].TopFieldOrderCnt = ref_info->PicOrderCnt[0];
-      va_pic->ReferenceFrames[i].BottomFieldOrderCnt = ref_info->PicOrderCnt[1];
+      va_pic->ReferenceFrames[dpb_idx].TopFieldOrderCnt = ref_info->PicOrderCnt[0];
+      va_pic->ReferenceFrames[dpb_idx].BottomFieldOrderCnt = ref_info->PicOrderCnt[1];
+      
+      /* Set field flags if this is a field picture */
+      if (ref_info->flags.top_field_flag && !ref_info->flags.bottom_field_flag)
+         va_pic->ReferenceFrames[dpb_idx].flags |= VA_PICTURE_H264_TOP_FIELD;
+      else if (!ref_info->flags.top_field_flag && ref_info->flags.bottom_field_flag)
+         va_pic->ReferenceFrames[dpb_idx].flags |= VA_PICTURE_H264_BOTTOM_FIELD;
+      
+      dpb_idx++;
    }
 
    va_pic->frame_num = h264_pic_info->pStdPictureInfo->frame_num;
