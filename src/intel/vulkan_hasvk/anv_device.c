@@ -64,7 +64,9 @@
 #include "genxml/hasvk_gen7_pack.h"
 #include "genxml/genX_bits.h"
 
+#ifdef HAVE_LIBVA
 #include <va/va.h>
+#endif
 
 static const driOptionDescription anv_dri_options[] = {
    DRI_CONF_SECTION_PERFORMANCE DRI_CONF_ADAPTIVE_SYNC(true)
@@ -3003,7 +3005,9 @@ anv_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
 
    /* Terminate VA-API display if it was initialized */
    if (device->va_display) {
+#ifdef HAVE_LIBVA
       vaTerminate((VADisplay) device->va_display);
+#endif
       device->va_display = NULL;
    }
 

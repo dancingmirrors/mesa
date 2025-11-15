@@ -62,8 +62,12 @@ anv_per_hw_ver_files = files(
   'genX_pipeline.c',
   'genX_query.c',
   'genX_state.c',
-  'genX_video.c'
 )
+
+# Add video decode files only when libva is available
+if dep_hasvk_va.found()
+  anv_per_hw_ver_files += files('genX_video.c')
+endif
 foreach g : [['70', ['gfx7_cmd_buffer.c']],
              ['75', ['gfx7_cmd_buffer.c']],
              ['80', ['gfx8_cmd_buffer.c']]]
@@ -116,10 +120,16 @@ libanv_files = files(
   'anv_util.c',
   'anv_utrace.c',
   'anv_wsi.c',
-  'anv_video.c',
-  'anv_video_vaapi_bridge.c',
-  'anv_video_vaapi_h264.c',
 )
+
+# Add video decode files only when libva is available
+if dep_hasvk_va.found()
+  libanv_files += files(
+    'anv_video.c',
+    'anv_video_vaapi_bridge.c',
+    'anv_video_vaapi_h264.c',
+  )
+endif
 
 anv_deps = [
   dep_libdrm,

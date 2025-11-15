@@ -31,7 +31,9 @@
 
 #include "anv_private.h"
 #include "anv_measure.h"
+#ifdef HAVE_LIBVA
 #include "anv_video_vaapi_bridge.h"
+#endif
 
 #include "common/intel_debug_identifier.h"
 
@@ -2123,6 +2125,7 @@ anv_queue_exec_locked(struct anv_queue *queue,
     * Before submitting GPU commands, execute all deferred VA-API decode
     * operations that were recorded during CmdDecodeVideoKHR.
     */
+#ifdef HAVE_LIBVA
    for (uint32_t i = 0; i < cmd_buffer_count; i++) {
       if (util_dynarray_num_elements(&cmd_buffers[i]->video.vaapi_decodes,
                                      struct anv_vaapi_decode_cmd) > 0)
@@ -2134,6 +2137,7 @@ anv_queue_exec_locked(struct anv_queue *queue,
          }
       }
    }
+#endif
 
    /* Flush the trace points first, they need to be moved */
    VkResult result = anv_device_utrace_flush_cmd_buffers(queue,
