@@ -457,9 +457,10 @@ anv_vaapi_decode_frame(struct anv_cmd_buffer *cmd_buffer,
       return vk_error(device, VK_ERROR_MEMORY_MAP_FAILED);
    }
    
-   /* Create slice parameter buffer - simplified version */
+   /* Create slice parameter buffer - build RefPicList from DPB */
    VASliceParameterBufferH264 va_slice_param;
-   anv_vaapi_translate_h264_slice_params(frame_info, h264_pic_info,
+   anv_vaapi_translate_h264_slice_params(device, frame_info, h264_pic_info,
+                                         session, &va_pic_param,
                                          0, frame_info->srcBufferRange,
                                          &va_slice_param);
    
