@@ -74,7 +74,8 @@ doom64_CmdPipelineBarrier(VkCommandBuffer commandBuffer,
 
       if (!_mesa_set_search(defined_images, image)) {
          _mesa_set_add(defined_images, image);
-      } else {
+      }
+      else {
          memcpy(&fixed_barrier, pImageMemoryBarriers,
                 sizeof(VkImageMemoryBarrier));
 

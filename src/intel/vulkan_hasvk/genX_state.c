@@ -471,14 +471,18 @@ VkResult genX(CreateSampler) (VkDevice _device,
                break;
 
             union isl_color_value color = {.u32 = {
-                                                   custom_border_color->customBorderColor.uint32
-                                                   [0],
-                                                   custom_border_color->customBorderColor.uint32
-                                                   [1],
-                                                   custom_border_color->customBorderColor.uint32
-                                                   [2],
-                                                   custom_border_color->customBorderColor.uint32
-                                                   [3],
+                                                   custom_border_color->
+                                                   customBorderColor.
+                                                   uint32[0],
+                                                   custom_border_color->
+                                                   customBorderColor.
+                                                   uint32[1],
+                                                   custom_border_color->
+                                                   customBorderColor.
+                                                   uint32[2],
+                                                   custom_border_color->
+                                                   customBorderColor.
+                                                   uint32[3],
                                                    }
             };
 
@@ -532,11 +536,11 @@ VkResult genX(CreateSampler) (VkDevice _device,
       const bool plane_has_chroma =
          ycbcr_info && ycbcr_info->planes[p].has_chroma;
       const VkFilter min_filter =
-         plane_has_chroma ? sampler->conversion->
-         state.chroma_filter : pCreateInfo->minFilter;
+         plane_has_chroma ? sampler->conversion->state.
+         chroma_filter : pCreateInfo->minFilter;
       const VkFilter mag_filter =
-         plane_has_chroma ? sampler->conversion->
-         state.chroma_filter : pCreateInfo->magFilter;
+         plane_has_chroma ? sampler->conversion->state.
+         chroma_filter : pCreateInfo->magFilter;
       const bool enable_min_filter_addr_rounding =
          min_filter != VK_FILTER_NEAREST;
       const bool enable_mag_filter_addr_rounding =
@@ -545,8 +549,8 @@ VkResult genX(CreateSampler) (VkDevice _device,
        *   "Mip Mode Filter must be set to MIPFILTER_NONE for Planar YUV surfaces."
        */
       enum isl_format plane0_isl_format = sampler->conversion ?
-         anv_get_format(sampler->conversion->state.format)->
-         planes[0].isl_format : ISL_FORMAT_UNSUPPORTED;
+         anv_get_format(sampler->conversion->state.format)->planes[0].
+         isl_format : ISL_FORMAT_UNSUPPORTED;
       const bool isl_format_is_planar_yuv =
          plane0_isl_format != ISL_FORMAT_UNSUPPORTED
          && isl_format_is_yuv(plane0_isl_format)

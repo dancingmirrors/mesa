@@ -107,10 +107,10 @@ lower_ubo_load_instr(nir_builder *b, nir_intrinsic_instr *load,
       else {
          val = nir_load_global_constant(b, load->def.num_components,
                                         load->def.bit_size, addr,.access =
-                                        nir_intrinsic_access(load),.
-                                        align_mul =
-                                        nir_intrinsic_align_mul(load),.
-                                        align_offset =
+                                        nir_intrinsic_access(load),.align_mul
+                                        =
+                                        nir_intrinsic_align_mul
+                                        (load),.align_offset =
                                         nir_intrinsic_align_offset(load));
       }
    }

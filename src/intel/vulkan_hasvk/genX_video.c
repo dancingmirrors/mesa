@@ -49,7 +49,8 @@ genX(CmdBeginVideoCodingKHR) (VkCommandBuffer commandBuffer,
 {
    ANV_FROM_HANDLE(anv_cmd_buffer, cmd_buffer, commandBuffer);
    ANV_FROM_HANDLE(anv_video_session, vid, pBeginInfo->videoSession);
-   ANV_FROM_HANDLE(anv_video_session_params, params, pBeginInfo->videoSessionParameters);
+   ANV_FROM_HANDLE(anv_video_session_params, params,
+                   pBeginInfo->videoSessionParameters);
 
    /* Bind the video session and parameters to the command buffer.
     * The VA-API session is already initialized during vkCreateVideoSessionKHR.
@@ -68,25 +69,23 @@ genX(CmdControlVideoCodingKHR) (VkCommandBuffer commandBuffer,
     */
 }
 
-void
-genX(CmdEndVideoCodingKHR) (VkCommandBuffer commandBuffer,
-                            const VkVideoEndCodingInfoKHR *
-                            pEndCodingInfo)
+void genX(CmdEndVideoCodingKHR) (VkCommandBuffer commandBuffer,
+                                 const VkVideoEndCodingInfoKHR *
+                                 pEndCodingInfo)
 {
    /* End coding - no cleanup needed as VA-API manages its own state.
     * Resources are cleaned up when the video session is destroyed.
     */
 }
 
-void
-genX(CmdDecodeVideoKHR) (VkCommandBuffer commandBuffer,
-                         const VkVideoDecodeInfoKHR * frame_info)
+void genX(CmdDecodeVideoKHR) (VkCommandBuffer commandBuffer,
+                              const VkVideoDecodeInfoKHR * frame_info)
 {
    ANV_FROM_HANDLE(anv_cmd_buffer, cmd_buffer, commandBuffer);
-   
+
    /* Route all decode operations through VA-API bridge */
    VkResult result = anv_vaapi_decode_frame(cmd_buffer, frame_info);
-   
+
    if (result != VK_SUCCESS) {
       if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
          fprintf(stderr, "VA-API decode failed: %d\n", result);

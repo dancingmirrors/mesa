@@ -49,8 +49,8 @@ anv_init_wsi(struct anv_physical_device *physical_device)
                             &physical_device->instance->vk.alloc,
                             physical_device->master_fd,
                             &physical_device->instance->dri_options,
-                            &(struct wsi_device_options) {.sw_device =
-                            false });
+                            &(struct wsi_device_options) {.sw_device = false
+                            });
    if (result != VK_SUCCESS)
       return result;
 

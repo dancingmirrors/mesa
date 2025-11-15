@@ -60,8 +60,8 @@ anv_cmd_pipeline_state_finish(struct anv_cmd_buffer *cmd_buffer,
    for (uint32_t i = 0; i < ARRAY_SIZE(pipe_state->push_descriptors); i++) {
       if (pipe_state->push_descriptors[i]) {
          anv_descriptor_set_layout_unref(cmd_buffer->device,
-                                         pipe_state->push_descriptors[i]->set.
-                                         layout);
+                                         pipe_state->push_descriptors[i]->
+                                         set.layout);
          vk_free(&cmd_buffer->vk.pool->alloc,
                  pipe_state->push_descriptors[i]);
       }
