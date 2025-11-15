@@ -54,6 +54,11 @@ devenv.append('VK_DRIVER_FILES', _dev_icd.full_path())
 # Deprecated: replaced by VK_DRIVER_FILES above
 devenv.append('VK_ICD_FILENAMES', _dev_icd.full_path())
 
+# Check for VA-API early since we need it to determine which files to compile
+# VA-API is required for video decode bridge in hasvk
+_hasvk_va_name = host_machine.system() == 'windows' ? 'libva-win32' : 'libva'
+dep_hasvk_va = dependency(_hasvk_va_name, version : '>= 1.8.0', required : false)
+
 libanv_per_hw_ver_libs = []
 anv_per_hw_ver_files = files(
   'genX_blorp_exec.c',
@@ -142,10 +147,7 @@ anv_deps = [
   idep_vulkan_wsi_headers,
 ]
 
-# Add VA-API dependencies for video decode bridge
-# Check for VA-API separately for hasvk video decode support
-_hasvk_va_name = host_machine.system() == 'windows' ? 'libva-win32' : 'libva'
-dep_hasvk_va = dependency(_hasvk_va_name, version : '>= 1.8.0', required : false)
+# Add VA-API dependencies to anv_deps when found
 if dep_hasvk_va.found()
   anv_deps += dep_hasvk_va
   # Also need libva-drm for vaGetDisplayDRM and DRM-specific functions
