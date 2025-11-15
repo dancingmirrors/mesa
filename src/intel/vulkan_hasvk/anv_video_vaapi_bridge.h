@@ -221,16 +221,22 @@ anv_vaapi_translate_h264_picture_params(
 /**
  * Translate Vulkan H.264 slice parameters to VA-API format
  * 
+ * @param device         ANV device
  * @param decode_info    Vulkan decode info
  * @param h264_pic_info  H.264-specific picture info
+ * @param session        VA-API session (for DPB to RefPicList mapping)
+ * @param va_pic         VA-API picture parameters (contains ReferenceFrames DPB)
  * @param slice_offset   Offset of slice data in bitstream buffer
  * @param slice_size     Size of slice data
  * @param va_slice       Output VA-API slice parameter buffer
  */
 void
 anv_vaapi_translate_h264_slice_params(
+   struct anv_device *device,
    const VkVideoDecodeInfoKHR *decode_info,
    const VkVideoDecodeH264PictureInfoKHR *h264_pic_info,
+   struct anv_vaapi_session *session,
+   const VAPictureParameterBufferH264 *va_pic,
    uint32_t slice_offset,
    uint32_t slice_size,
    VASliceParameterBufferH264 *va_slice);
