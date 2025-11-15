@@ -383,15 +383,22 @@ anv_vaapi_decode_frame(struct anv_cmd_buffer *cmd_buffer,
    }
    const struct anv_image *dst_image = dst_image_view->image;
    
-   /* Import destination surface to VA-API (or get cached surface) */
-   VASurfaceID dst_surface;
-   result = anv_vaapi_import_surface_from_image(device, (struct anv_image *)dst_image, &dst_surface);
-   if (result != VK_SUCCESS) {
-      return result;
+   /* Import destination surface to VA-API (or get cached surface)
+    * Check if this surface is already mapped to avoid creating duplicates
+    */
+   VASurfaceID dst_surface = anv_vaapi_lookup_surface(session, dst_image);
+   if (dst_surface == VA_INVALID_SURFACE) {
+      /* Not in cache, import it now */
+      result = anv_vaapi_import_surface_from_image(device, (struct anv_image *)dst_image, &dst_surface);
+      if (result != VK_SUCCESS) {
+         return result;
+      }
+      
+      /* Add destination surface to mapping for future use */
+      anv_vaapi_add_surface_mapping(session, dst_image, dst_surface);
+   } else if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+      fprintf(stderr, "VA-API decode: Reusing cached destination surface %u\n", dst_surface);
    }
-   
-   /* Add destination surface to mapping for potential use as reference */
-   anv_vaapi_add_surface_mapping(session, dst_image, dst_surface);
    
    /* CRITICAL SYNCHRONIZATION (Phase 3, Part 4 - Before VA-API decode):
     * Before VA-API starts decoding to the surface, we need to ensure any
