@@ -27,16 +27,13 @@
  * The VA-API bridge provides stable video decode by leveraging the proven
  * VA-API implementation on Gen7/7.5/8 hardware through the crocus driver,
  * avoiding the GPU hangs that occur with direct hardware programming.
+ * 
+ * The legacy native implementations have been moved to the docs directory
+ * for reference: docs/genX_video_short.c and docs/genX_video_long.c
  */
 
 #include "anv_private.h"
 #include "anv_video_vaapi_bridge.h"
-
-#include <stdlib.h>
-#include <inttypes.h>
-#include "genxml/gen_macros.h"
-#include "genxml/hasvk_genX_pack.h"
-#include "genxml/hasvk_genX_video_pack.h"
 
 /* Use VA-API bridge for all video decode operations */
 
