@@ -49,6 +49,7 @@
 
 #include "vk_video/vulkan_video_codecs_common.h"
 #include "drm-uapi/i915_drm.h"
+#include "drm-uapi/drm_fourcc.h"
 
 /* Define VA-API constants and macros for compatibility with legacy intel-vaapi-driver */
 #ifndef VA_FOURCC
@@ -790,7 +791,31 @@ anv_vaapi_import_surface_from_image(struct anv_device *device,
     * CRITICAL: The UV plane offset must be calculated from the actual ISL
     * surface layout, NOT just height*stride, because ISL may add padding
     * for alignment requirements.
+    * 
+    * CRITICAL 2: Video surfaces on Gen7/7.5/8 MUST use Y-tiling per the PRM.
+    * We specify this via the DRM format modifier in the external buffer descriptor.
     */
+   uint64_t drm_modifier = DRM_FORMAT_MOD_LINEAR;  /* Default to linear */
+   
+   /* Check the actual tiling from ISL */
+   if (y_surface->isl.tiling == ISL_TILING_Y0) {
+      /* Y-tiled - required for video decode on Gen7/7.5/8 */
+      drm_modifier = I915_FORMAT_MOD_Y_TILED;
+      if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+         fprintf(stderr, "  Video surface using Y-tiling (modifier 0x%lx)\n", drm_modifier);
+      }
+   } else if (y_surface->isl.tiling == ISL_TILING_LINEAR) {
+      drm_modifier = DRM_FORMAT_MOD_LINEAR;
+      if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+         fprintf(stderr, "  Video surface using linear tiling\n");
+      }
+   } else {
+      vk_logw(VK_LOG_OBJS(&device->vk.base),
+              "Unexpected tiling mode %d for video surface, assuming Y-tiled",
+              y_surface->isl.tiling);
+      drm_modifier = I915_FORMAT_MOD_Y_TILED;
+   }
+   
    VASurfaceAttribExternalBuffers extbuf = {
       .pixel_format = VA_FOURCC_NV12,
       .width = image->vk.extent.width,
@@ -799,6 +824,7 @@ anv_vaapi_import_surface_from_image(struct anv_device *device,
       .buffers = (uintptr_t *)&fd,
       .flags = 0,
       .num_planes = 2,  /* Y and UV for NV12 */
+      .private_data = (void *)(uintptr_t)drm_modifier,  /* Pass DRM modifier via private_data */
    };
    
    /* Set stride (row pitch) for both planes
