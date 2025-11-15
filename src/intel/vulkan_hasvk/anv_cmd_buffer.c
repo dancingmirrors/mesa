@@ -134,6 +134,9 @@ anv_create_cmd_buffer(struct vk_command_pool *pool,
 
    u_trace_init(&cmd_buffer->trace, &device->ds.trace_context);
 
+   /* Initialize VA-API deferred decode commands array */
+   util_dynarray_init(&cmd_buffer->video.vaapi_decodes, NULL);
+
    *cmd_buffer_out = &cmd_buffer->vk;
 
    return VK_SUCCESS;
@@ -163,6 +166,9 @@ anv_cmd_buffer_destroy(struct vk_command_buffer *vk_cmd_buffer)
    anv_state_stream_finish(&cmd_buffer->general_state_stream);
 
    anv_cmd_state_finish(cmd_buffer);
+
+   /* Clean up VA-API deferred decode commands */
+   util_dynarray_fini(&cmd_buffer->video.vaapi_decodes);
 
    vk_free(&cmd_buffer->vk.pool->alloc, cmd_buffer->self_mod_locations);
 
@@ -197,6 +203,9 @@ anv_cmd_buffer_reset(struct vk_command_buffer *vk_cmd_buffer,
                          &cmd_buffer->device->general_state_pool, 16384);
 
    anv_measure_reset(cmd_buffer);
+
+   /* Clear VA-API deferred decode commands on reset */
+   util_dynarray_clear(&cmd_buffer->video.vaapi_decodes);
 
    u_trace_fini(&cmd_buffer->trace);
    u_trace_init(&cmd_buffer->trace, &cmd_buffer->device->ds.trace_context);
