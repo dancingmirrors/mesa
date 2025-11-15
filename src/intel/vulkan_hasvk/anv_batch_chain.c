@@ -31,6 +31,7 @@
 
 #include "anv_private.h"
 #include "anv_measure.h"
+#include "anv_video_vaapi_bridge.h"
 
 #include "common/intel_debug_identifier.h"
 
@@ -2117,6 +2118,20 @@ anv_queue_exec_locked(struct anv_queue *queue,
       .alloc_scope = VK_SYSTEM_ALLOCATION_SCOPE_DEVICE,
       .perf_query_pass = perf_query_pass,
    };
+
+   /* PHASE 4: Execute deferred VA-API decode commands
+    * Before submitting GPU commands, execute all deferred VA-API decode
+    * operations that were recorded during CmdDecodeVideoKHR.
+    */
+   for (uint32_t i = 0; i < cmd_buffer_count; i++) {
+      if (util_dynarray_num_elements(&cmd_buffers[i]->video.vaapi_decodes,
+                                      struct anv_vaapi_decode_cmd) > 0) {
+         VkResult result = anv_vaapi_execute_deferred_decodes(device, cmd_buffers[i]);
+         if (result != VK_SUCCESS) {
+            return result;
+         }
+      }
+   }
 
    /* Flush the trace points first, they need to be moved */
    VkResult result = anv_device_utrace_flush_cmd_buffers(queue,
