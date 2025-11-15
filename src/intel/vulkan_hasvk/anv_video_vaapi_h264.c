@@ -259,35 +259,73 @@ anv_vaapi_translate_h264_picture_params(
 /**
  * Translate Vulkan H.264 slice header to VA-API slice parameter buffer
  * 
- * Note: VA-API drivers parse slice headers directly from the bitstream,
- * so we only need to provide minimal information here. The driver will
- * extract slice_type, reference lists, and other parameters automatically.
- * This is much more reliable than trying to parse the slice header ourselves.
+ * IMPORTANT: On Intel Gen7/7.5/8, the VA-API driver does NOT parse the slice header
+ * to build RefPicList0/RefPicList1. Instead, it expects the application to provide
+ * these lists that map reference indices to DPB frame store indices.
+ * 
+ * According to Intel PRM, each RefPicList entry is a byte with:
+ * - Bit 7: Non-Existing flag (should be 0 for valid entries, 1 for non-existing)
+ * - Bit 6: Long term reference flag  
+ * - Bit 5: Field picture flag (0=frame, 1=field)
+ * - Bit 4:0: Frame store index/ID
+ * 
+ * The list should contain all 32 entries, with non-existing entries set to 0xFF.
  */
 void
 anv_vaapi_translate_h264_slice_params(
+   struct anv_device *device,
    const VkVideoDecodeInfoKHR *decode_info,
    const VkVideoDecodeH264PictureInfoKHR *h264_pic_info,
+   struct anv_vaapi_session *session,
+   const VAPictureParameterBufferH264 *va_pic,
    uint32_t slice_offset,
    uint32_t slice_size,
    VASliceParameterBufferH264 *va_slice)
 {
    memset(va_slice, 0, sizeof(*va_slice));
 
-   /* Provide slice data location in the bitstream buffer.
-    * VA-API will parse the slice header from the bitstream automatically.
-    */
-   
+   /* Provide slice data location in the bitstream buffer */
    va_slice->slice_data_size = slice_size;
    va_slice->slice_data_offset = slice_offset;
    va_slice->slice_data_flag = VA_SLICE_DATA_FLAG_ALL;
 
-   /* The VA-API driver will parse and extract:
-    * - slice_type
-    * - num_ref_idx_l0_active_minus1 / num_ref_idx_l1_active_minus1
-    * - reference picture lists
-    * - quantization parameters
-    * - deblocking filter parameters
-    * All from the bitstream automatically, avoiding complex manual parsing.
+   /* Initialize all RefPicList entries to non-existing (0xFF per Intel PRM) */
+   for (unsigned i = 0; i < 32; i++) {
+      va_slice->RefPicList0[i].picture_id = VA_INVALID_SURFACE;
+      va_slice->RefPicList0[i].flags = VA_PICTURE_H264_INVALID;
+      va_slice->RefPicList1[i].picture_id = VA_INVALID_SURFACE;
+      va_slice->RefPicList1[i].flags = VA_PICTURE_H264_INVALID;
+   }
+
+   /* Build RefPicList0 and RefPicList1 from the DPB ReferenceFrames array
+    * 
+    * The VA-API driver on Intel Gen7/7.5/8 needs us to populate these lists.
+    * We map each valid DPB entry to the RefPicList. The driver will use these
+    * to resolve reference indices from the parsed slice header.
+    * 
+    * For simplicity, we create an initial reference list by copying all valid
+    * DPB entries in order. The slice header's ref_pic_list_modification commands
+    * (if any) are parsed by the driver and applied to reorder this list.
+    */
+   unsigned ref_count = 0;
+   for (unsigned i = 0; i < 16; i++) {
+      if (va_pic->ReferenceFrames[i].picture_id == VA_INVALID_SURFACE ||
+          va_pic->ReferenceFrames[i].flags & VA_PICTURE_H264_INVALID)
+         break;
+      
+      if (ref_count < 32) {
+         /* Copy reference to both L0 and L1 lists
+          * The driver will determine which list(s) to actually use based on slice type */
+         va_slice->RefPicList0[ref_count] = va_pic->ReferenceFrames[i];
+         va_slice->RefPicList1[ref_count] = va_pic->ReferenceFrames[i];
+         ref_count++;
+      }
+   }
+
+   /* The VA-API driver will now:
+    * - Parse the slice header from the bitstream
+    * - Extract slice_type, num_ref_idx_l0/l1_active_minus1, etc.
+    * - Apply any ref_pic_list_modification commands to reorder the lists
+    * - Use the final lists for motion compensation
     */
 }
