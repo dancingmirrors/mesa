@@ -206,6 +206,20 @@ anv_vaapi_session_create(struct anv_device *device,
       session->va_surfaces[i] = VA_INVALID_SURFACE;
    }
    
+   /* Allocate surface mapping for DPB management */
+   session->surface_map_capacity = session->num_surfaces;
+   session->surface_map_size = 0;
+   session->surface_map = vk_alloc(&device->vk.alloc,
+                                   session->surface_map_capacity * sizeof(struct anv_vaapi_surface_map),
+                                   8, VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
+   if (!session->surface_map) {
+      vk_free(&device->vk.alloc, session->va_surfaces);
+      vaDestroyConfig(session->va_display, session->va_config);
+      vk_free(&device->vk.alloc, vid->vaapi_session);
+      vid->vaapi_session = NULL;
+      return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
+   }
+   
    /* Create VA context
     * Pass NULL for render_targets since surfaces will be created dynamically
     * when images are bound during decode operations.
@@ -270,6 +284,11 @@ anv_vaapi_session_destroy(struct anv_device *device,
       vk_free(&device->vk.alloc, session->va_surfaces);
    }
    
+   /* Free surface mapping */
+   if (session->surface_map) {
+      vk_free(&device->vk.alloc, session->surface_map);
+   }
+   
    /* Destroy context and config */
    if (session->va_context)
       vaDestroyContext(session->va_display, session->va_context);
@@ -283,6 +302,45 @@ anv_vaapi_session_destroy(struct anv_device *device,
    
    vk_logi(VK_LOG_OBJS(&device->vk.base),
            "VA-API session destroyed");
+}
+
+/**
+ * Add or update a surface mapping in the session
+ */
+static void
+anv_vaapi_add_surface_mapping(struct anv_vaapi_session *session,
+                               const struct anv_image *image,
+                               VASurfaceID va_surface)
+{
+   /* Check if already mapped */
+   for (uint32_t i = 0; i < session->surface_map_size; i++) {
+      if (session->surface_map[i].image == image) {
+         session->surface_map[i].va_surface = va_surface;
+         return;
+      }
+   }
+   
+   /* Add new mapping if space available */
+   if (session->surface_map_size < session->surface_map_capacity) {
+      session->surface_map[session->surface_map_size].image = image;
+      session->surface_map[session->surface_map_size].va_surface = va_surface;
+      session->surface_map_size++;
+   }
+}
+
+/**
+ * Lookup VA surface ID for a given image
+ */
+static VASurfaceID
+anv_vaapi_lookup_surface(struct anv_vaapi_session *session,
+                          const struct anv_image *image)
+{
+   for (uint32_t i = 0; i < session->surface_map_size; i++) {
+      if (session->surface_map[i].image == image) {
+         return session->surface_map[i].va_surface;
+      }
+   }
+   return VA_INVALID_SURFACE;
 }
 
 /**
@@ -329,6 +387,9 @@ anv_vaapi_decode_frame(struct anv_cmd_buffer *cmd_buffer,
       return result;
    }
    
+   /* Add destination surface to mapping for potential use as reference */
+   anv_vaapi_add_surface_mapping(session, dst_image, dst_surface);
+   
    /* Get video session parameters - already a pointer, no need for FROM_HANDLE */
    struct anv_video_session_params *params = cmd_buffer->video.params;
    if (!params) {
@@ -337,10 +398,33 @@ anv_vaapi_decode_frame(struct anv_cmd_buffer *cmd_buffer,
       return vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
    }
    
+   /* Import reference frame surfaces and add to mapping for DPB */
+   for (unsigned i = 0; i < frame_info->referenceSlotCount; i++) {
+      const VkVideoReferenceSlotInfoKHR *ref_slot = &frame_info->pReferenceSlots[i];
+      if (ref_slot->slotIndex < 0 || !ref_slot->pPictureResource)
+         continue;
+      
+      ANV_FROM_HANDLE(anv_image_view, ref_image_view, ref_slot->pPictureResource->imageViewBinding);
+      if (!ref_image_view || !ref_image_view->image)
+         continue;
+      
+      const struct anv_image *ref_image = ref_image_view->image;
+      
+      /* Check if already mapped */
+      VASurfaceID ref_surface = anv_vaapi_lookup_surface(session, ref_image);
+      if (ref_surface == VA_INVALID_SURFACE) {
+         /* Import and add to mapping */
+         result = anv_vaapi_import_surface_from_image(device, (struct anv_image *)ref_image, &ref_surface);
+         if (result == VK_SUCCESS) {
+            anv_vaapi_add_surface_mapping(session, ref_image, ref_surface);
+         }
+      }
+   }
+   
    /* Translate picture parameters */
    VAPictureParameterBufferH264 va_pic_param;
    anv_vaapi_translate_h264_picture_params(device, frame_info, h264_pic_info,
-                                           &params->vk, dst_surface, &va_pic_param);
+                                           &params->vk, session, dst_surface, &va_pic_param);
    
    /* Create picture parameter buffer */
    VABufferID pic_param_buf;

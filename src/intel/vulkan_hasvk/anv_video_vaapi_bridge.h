@@ -42,6 +42,15 @@
  */
 
 /**
+ * Surface mapping entry for DPB management
+ * Maps Vulkan images to VA-API surfaces
+ */
+struct anv_vaapi_surface_map {
+   const struct anv_image *image;  /* Vulkan image */
+   VASurfaceID va_surface;         /* Corresponding VA surface */
+};
+
+/**
  * VA-API session state
  * 
  * Manages the VA-API objects associated with a Vulkan video session.
@@ -54,6 +63,11 @@ struct anv_vaapi_session {
    /* DPB (Decoded Picture Buffer) surfaces */
    VASurfaceID *va_surfaces;      /* Array of VA surfaces for reference frames */
    uint32_t num_surfaces;         /* Number of surfaces allocated */
+   
+   /* Surface mapping for reference frames */
+   struct anv_vaapi_surface_map *surface_map;  /* Image to VA surface mapping */
+   uint32_t surface_map_size;     /* Current number of mapped surfaces */
+   uint32_t surface_map_capacity; /* Maximum capacity of surface map */
    
    /* Parameter buffers for decode operations */
    VABufferID va_picture_param;   /* Picture parameter buffer */
@@ -162,6 +176,7 @@ anv_vaapi_import_surface_from_image(struct anv_device *device,
  * @param decode_info    Vulkan decode info
  * @param h264_pic_info  H.264-specific picture info
  * @param params         Video session parameters (contains SPS/PPS)
+ * @param session        VA-API session (for DPB surface lookup)
  * @param dst_surface_id VA surface ID for decode destination
  * @param va_pic         Output VA-API picture parameter buffer
  */
@@ -171,6 +186,7 @@ anv_vaapi_translate_h264_picture_params(
    const VkVideoDecodeInfoKHR *decode_info,
    const VkVideoDecodeH264PictureInfoKHR *h264_pic_info,
    const struct vk_video_session_parameters *params,
+   struct anv_vaapi_session *session,
    VASurfaceID dst_surface_id,
    VAPictureParameterBufferH264 *va_pic);
 

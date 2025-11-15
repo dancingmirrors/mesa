@@ -125,6 +125,7 @@ anv_vaapi_translate_h264_picture_params(
    const VkVideoDecodeInfoKHR *decode_info,
    const VkVideoDecodeH264PictureInfoKHR *h264_pic_info,
    const struct vk_video_session_parameters *params,
+   struct anv_vaapi_session *session,
    VASurfaceID dst_surface_id,
    VAPictureParameterBufferH264 *va_pic)
 {
@@ -198,9 +199,21 @@ anv_vaapi_translate_h264_picture_params(
 
       const StdVideoDecodeH264ReferenceInfo *ref_info = dpb_slot_info->pStdReferenceInfo;
       
-      /* Get the surface ID for this reference (would need to be tracked) */
-      VASurfaceID ref_surface = VA_INVALID_SURFACE;
-      /* TODO: Map ref_slot->slotIndex to actual VA surface ID */
+      /* Get the image from the reference slot */
+      if (!ref_slot->pPictureResource || !ref_slot->pPictureResource->imageViewBinding)
+         continue;
+      
+      ANV_FROM_HANDLE(anv_image_view, ref_image_view, ref_slot->pPictureResource->imageViewBinding);
+      if (!ref_image_view || !ref_image_view->image)
+         continue;
+      
+      /* Lookup VA surface ID from session mapping */
+      VASurfaceID ref_surface = anv_vaapi_lookup_surface(session, ref_image_view->image);
+      if (ref_surface == VA_INVALID_SURFACE) {
+         /* Reference surface not yet imported - this shouldn't happen if decode_frame
+          * properly imported all reference surfaces before calling this function */
+         continue;
+      }
       
       init_va_picture(&va_pic->ReferenceFrames[i], ref_surface,
                      ref_info->FrameNum,
