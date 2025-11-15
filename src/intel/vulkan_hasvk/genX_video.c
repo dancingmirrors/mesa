@@ -35,6 +35,12 @@
 #include "anv_private.h"
 #include "anv_video_vaapi_bridge.h"
 
+#include <stdlib.h>
+#include <inttypes.h>
+#include "genxml/gen_macros.h"
+#include "genxml/hasvk_genX_pack.h"
+#include "genxml/hasvk_genX_video_pack.h"
+
 /* Use VA-API bridge for all video decode operations */
 
 void
