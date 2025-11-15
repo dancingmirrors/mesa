@@ -3335,8 +3335,14 @@ anv_AllocateMemory(VkDevice _device,
 
       /* Some legacy (non-modifiers) consumers need the tiling to be set on
        * the BO.  In this case, we have a dedicated allocation.
+       * 
+       * CRITICAL: Video images also need tiling set on the BO so that when
+       * we export them via DMA-buf for VA-API, the VA-API driver can query
+       * the tiling from the kernel. Without this, VA-API assumes linear
+       * tiling and the decoded data will be garbled.
        */
-      if (image->vk.wsi_legacy_scanout) {
+      if (image->vk.wsi_legacy_scanout || 
+          (image->vk.usage & VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR)) {
          const struct isl_surf *surf = &image->planes[0].primary_surface.isl;
          result = anv_device_set_bo_tiling(device, mem->bo,
                                            surf->row_pitch_B, surf->tiling);
