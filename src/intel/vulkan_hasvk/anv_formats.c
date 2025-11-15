@@ -958,6 +958,96 @@ get_drm_format_modifier_properties_list_2(const struct anv_physical_device
    }
 }
 
+static void
+get_image_drm_format_modifier_properties_list(
+   const struct anv_physical_device *physical_device,
+   const VkPhysicalDeviceImageFormatInfo2 *base_info,
+   VkDrmFormatModifierPropertiesListEXT *list)
+{
+   const struct intel_device_info *devinfo = &physical_device->info;
+   const struct anv_format *anv_format = anv_get_format(base_info->format);
+
+   VK_OUTARRAY_MAKE_TYPED(VkDrmFormatModifierPropertiesEXT, out,
+                          list->pDrmFormatModifierProperties,
+                          &list->drmFormatModifierCount);
+
+   /* Only advertise modifiers for tiling mode VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT */
+   if (base_info->tiling != VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT)
+      return;
+
+   isl_drm_modifier_info_for_each(isl_mod_info) {
+      /* Check if this modifier is supported for this specific image configuration */
+      VkFormatFeatureFlags2 features2 =
+         anv_get_image_format_features2(devinfo, base_info->format, anv_format,
+                                        VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT,
+                                        isl_mod_info);
+      VkFormatFeatureFlags features =
+         vk_format_features2_to_features(features2);
+      if (!features)
+         continue;
+
+      /* Additional filtering based on image usage for video decode */
+      if (base_info->usage & VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR) {
+         /* Only allow Y tiling for video decode */
+         if (isl_mod_info->tiling != ISL_TILING_Y0)
+            continue;
+      }
+
+      vk_outarray_append_typed(VkDrmFormatModifierPropertiesEXT, &out,
+                               out_props) {
+         *out_props = (VkDrmFormatModifierPropertiesEXT) {
+         .drmFormatModifier =
+               isl_mod_info->modifier,.drmFormatModifierPlaneCount =
+               anv_format->n_planes,.drmFormatModifierTilingFeatures =
+               features,};
+      };
+   }
+}
+
+static void
+get_image_drm_format_modifier_properties_list_2(
+   const struct anv_physical_device *physical_device,
+   const VkPhysicalDeviceImageFormatInfo2 *base_info,
+   VkDrmFormatModifierPropertiesList2EXT *list)
+{
+   const struct intel_device_info *devinfo = &physical_device->info;
+   const struct anv_format *anv_format = anv_get_format(base_info->format);
+
+   VK_OUTARRAY_MAKE_TYPED(VkDrmFormatModifierProperties2EXT, out,
+                          list->pDrmFormatModifierProperties,
+                          &list->drmFormatModifierCount);
+
+   /* Only advertise modifiers for tiling mode VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT */
+   if (base_info->tiling != VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT)
+      return;
+
+   isl_drm_modifier_info_for_each(isl_mod_info) {
+      /* Check if this modifier is supported for this specific image configuration */
+      VkFormatFeatureFlags2 features2 =
+         anv_get_image_format_features2(devinfo, base_info->format, anv_format,
+                                        VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT,
+                                        isl_mod_info);
+      if (!features2)
+         continue;
+
+      /* Additional filtering based on image usage for video decode */
+      if (base_info->usage & VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR) {
+         /* Only allow Y tiling for video decode */
+         if (isl_mod_info->tiling != ISL_TILING_Y0)
+            continue;
+      }
+
+      vk_outarray_append_typed(VkDrmFormatModifierProperties2EXT, &out,
+                               out_props) {
+         *out_props = (VkDrmFormatModifierProperties2EXT) {
+         .drmFormatModifier =
+               isl_mod_info->modifier,.drmFormatModifierPlaneCount =
+               anv_format->n_planes,.drmFormatModifierTilingFeatures =
+               features2,};
+      };
+   }
+}
+
 void
 anv_GetPhysicalDeviceFormatProperties2(VkPhysicalDevice physicalDevice,
                                        VkFormat vk_format,
@@ -1441,6 +1531,9 @@ anv_GetPhysicalDeviceImageFormatProperties2(VkPhysicalDevice physicalDevice,
    }
 
    /* Extract output structs */
+   VkDrmFormatModifierPropertiesListEXT *modifier_props = NULL;
+   VkDrmFormatModifierPropertiesList2EXT *modifier_props_2 = NULL;
+   
    vk_foreach_struct(s, base_props->pNext) {
       switch (s->sType) {
       case VK_STRUCTURE_TYPE_EXTERNAL_IMAGE_FORMAT_PROPERTIES:
@@ -1452,6 +1545,12 @@ anv_GetPhysicalDeviceImageFormatProperties2(VkPhysicalDevice physicalDevice,
          break;
       case VK_STRUCTURE_TYPE_ANDROID_HARDWARE_BUFFER_USAGE_ANDROID:
          android_usage = (void *) s;
+         break;
+      case VK_STRUCTURE_TYPE_DRM_FORMAT_MODIFIER_PROPERTIES_LIST_EXT:
+         modifier_props = (void *) s;
+         break;
+      case VK_STRUCTURE_TYPE_DRM_FORMAT_MODIFIER_PROPERTIES_LIST_2_EXT:
+         modifier_props_2 = (void *) s;
          break;
       default:
          vk_debug_ignored_stype(s->sType);
@@ -1617,6 +1716,17 @@ anv_GetPhysicalDeviceImageFormatProperties2(VkPhysicalDevice physicalDevice,
                             external_info->handleType);
          goto fail;
       }
+   }
+
+   /* Fill DRM format modifier properties if requested */
+   if (modifier_props) {
+      get_image_drm_format_modifier_properties_list(physical_device, base_info,
+                                                     modifier_props);
+   }
+   
+   if (modifier_props_2) {
+      get_image_drm_format_modifier_properties_list_2(physical_device, base_info,
+                                                       modifier_props_2);
    }
 
    return VK_SUCCESS;
