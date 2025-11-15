@@ -773,19 +773,19 @@ add_primary_surface(struct anv_device *device,
    struct anv_surface *anv_surf = &image->planes[plane].primary_surface;
    bool ok;
 
-   ok = isl_surf_init(&device->isl_dev, &anv_surf->isl,.dim =
-                      vk_to_isl_surf_dim[image->vk.image_type],.format =
-                      plane_format.isl_format,.width =
-                      image->vk.extent.width /
-                      plane_format.denominator_scales[0],.height =
-                      image->vk.extent.height /
-                      plane_format.denominator_scales[1],.depth =
-                      image->vk.extent.depth,.levels =
-                      image->vk.mip_levels,.array_len =
-                      image->vk.array_layers,.samples =
-                      image->vk.samples,.min_alignment_B = 0,.row_pitch_B =
-                      stride,.usage = isl_usage,.tiling_flags =
-                      isl_tiling_flags);
+   ok = isl_surf_init(&device->isl_dev, &anv_surf->isl,
+      .dim = vk_to_isl_surf_dim[image->vk.image_type],
+      .format = plane_format.isl_format,
+      .width = image->vk.extent.width / plane_format.denominator_scales[0],
+      .height = image->vk.extent.height / plane_format.denominator_scales[1],
+      .depth = image->vk.extent.depth,
+      .levels = image->vk.mip_levels,
+      .array_len = image->vk.array_layers,
+      .samples = image->vk.samples,
+      .min_alignment_B = 0,
+      .row_pitch_B = stride,
+      .usage = isl_usage,
+      .tiling_flags = isl_tiling_flags);
 
    if (!ok) {
       /* TODO: Should return
