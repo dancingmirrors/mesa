@@ -154,8 +154,9 @@ anv_vaapi_translate_h264_picture_params(
    }
 
    if (!sps || !pps) {
-      vk_loge(VK_LOG_OBJS(&device->vk.base),
-              "Invalid SPS/PPS IDs in H.264 decode");
+      if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+         fprintf(stderr, "Invalid SPS/PPS IDs in H.264 decode\n");
+      }
       return;
    }
 
@@ -266,10 +267,9 @@ anv_vaapi_translate_h264_picture_params(
           * though quality may be degraded */
          if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
             fprintf(stderr, "  Slot %u: surface not found in VA mapping\n", i);
+            fprintf(stderr, "Reference frame at slot %d not found in VA surface mapping, skipping\n",
+                    ref_slot->slotIndex);
          }
-         vk_logd(VK_LOG_OBJS(&device->vk.base),
-                 "Reference frame at slot %d not found in VA surface mapping, skipping",
-                 ref_slot->slotIndex);
          continue;
       }
       

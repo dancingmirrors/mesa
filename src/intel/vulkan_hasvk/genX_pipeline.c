@@ -957,9 +957,10 @@ emit_cb_state(struct anv_graphics_pipeline *pipeline,
            is_dual_src_blend_factor(a->dst_color_blend_factor) ||
            is_dual_src_blend_factor(a->src_alpha_blend_factor) ||
            is_dual_src_blend_factor(a->dst_alpha_blend_factor))) {
-         vk_logw(VK_LOG_OBJS(&device->vk.base),
-                 "Enabled dual-src blend factors without writing both targets "
-                 "in the shader.  Disabling blending to avoid GPU hangs.");
+         if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+            fprintf(stderr, "Enabled dual-src blend factors without writing both targets "
+                    "in the shader.  Disabling blending to avoid GPU hangs.\n");
+         }
          entry.ColorBufferBlendEnable = false;
       }
 
