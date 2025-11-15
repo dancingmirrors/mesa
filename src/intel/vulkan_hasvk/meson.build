@@ -118,6 +118,7 @@ libanv_files = files(
   'anv_wsi.c',
   'anv_video.c',
   'anv_video_vaapi_bridge.c',
+  'anv_video_vaapi_h264.c',
 )
 
 anv_deps = [
