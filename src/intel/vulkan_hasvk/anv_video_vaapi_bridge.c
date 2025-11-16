@@ -846,9 +846,12 @@ anv_vaapi_import_surface_from_image(struct anv_device *device,
    extbuf.pitches[0] = y_surface->isl.row_pitch_B;
    extbuf.pitches[1] = uv_surface->isl.row_pitch_B;
 
-   /* CRITICAL ASSUMPTION CHECK: For compatibility with intel-vaapi-driver
-    * which has a y_cb_offset calculation bug, we need to pass offsets relative
-    * to the Y plane. This only works if the Y plane starts at offset 0 of the BO.
+   /* CRITICAL ASSUMPTION CHECK: The intel-vaapi-driver for NV12 format ignores
+    * the offsets[] array we pass and instead hardcodes y_cb_offset = height,
+    * assuming the UV plane is at offset (height * pitch) from the BO start.
+    * 
+    * This means the driver REQUIRES that the Y plane starts at BO offset 0.
+    * If not, the driver will read from the wrong memory location.
     * 
     * For non-disjoint video images (which is the normal case), y_surface->memory_range.offset
     * is always 0 (plane 0 is first). The binding->address.offset should also be 0 for
@@ -859,7 +862,7 @@ anv_vaapi_import_surface_from_image(struct anv_device *device,
       if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
          fprintf(stderr, "WARNING: Video image Y plane not at BO offset 0 (binding_offset=%" PRId64 " + y_offset=%" PRIu64 ")\n",
                  binding->address.offset, y_surface->memory_range.offset);
-         fprintf(stderr, "This may cause incorrect decoding due to intel-vaapi-driver offset bug.\n");
+         fprintf(stderr, "This will cause incorrect decoding - intel-vaapi-driver assumes Y plane at BO offset 0.\n");
          fprintf(stderr, "Use dedicated memory allocation with offset=0 for video images.\n");
       }
    }
@@ -868,21 +871,17 @@ anv_vaapi_import_surface_from_image(struct anv_device *device,
     * This is critical - we must use the ISL-calculated offset, not a
     * simple height*stride calculation, because ISL adds alignment padding.
     * 
-    * CRITICAL WORKAROUND: The intel-vaapi-driver has a bug where it calculates
-    * y_cb_offset = offsets[1] / width instead of (offsets[1] - offsets[0]) / width.
-    * This means it expects offsets[1] to be the absolute offset of the UV plane,
-    * and it will incorrectly calculate the row offset when offsets[0] != 0.
+    * CRITICAL: For DMA-buf sharing, offsets must be relative to the start of the BO,
+    * not the start of the binding. If the binding has a non-zero offset within the BO
+    * (binding->address.offset), we must add that to each plane's offset.
     * 
-    * To work around this bug, we pass offsets relative to the Y plane:
-    * - offsets[0] = 0 (Y plane at offset 0 relative to itself)
-    * - offsets[1] = distance from Y plane to UV plane (in bytes)
-    * 
-    * This works ONLY if the Y plane actually starts at offset 0 of the BO,
-    * which is checked above. For video images with dedicated allocations
-    * (recommended), this is always the case.
+    * NOTE: For NV12 format, intel-vaapi-driver currently ignores these offsets and
+    * hardcodes y_cb_offset = height, assuming UV is at (height * pitch) from BO start.
+    * However, we pass correct offsets for compatibility with other drivers and in case
+    * the intel-vaapi-driver is fixed in the future.
     */
-   extbuf.offsets[0] = 0;  /* Y plane at offset 0 (relative to Y plane start) */
-   extbuf.offsets[1] = uv_surface->memory_range.offset - y_surface->memory_range.offset;  /* UV relative to Y */
+   extbuf.offsets[0] = binding->address.offset + y_surface->memory_range.offset;
+   extbuf.offsets[1] = binding->address.offset + uv_surface->memory_range.offset;
 
    /* Set total data size for the DMA-buf
     * CRITICAL: VA-API needs to know the total size of data in the buffer.
@@ -897,15 +896,16 @@ anv_vaapi_import_surface_from_image(struct anv_device *device,
               binding->address.offset);
       fprintf(stderr, "  Total data size: %u\n",
               extbuf.data_size);
-      fprintf(stderr, "  Y plane:  pitch=%u offset=%u (relative to Y plane start)\n",
+      fprintf(stderr, "  Y plane:  pitch=%u offset=%u (BO absolute)\n",
               extbuf.pitches[0], extbuf.offsets[0]);
-      fprintf(stderr, "  UV plane: pitch=%u offset=%u (relative to Y plane start)\n",
+      fprintf(stderr, "  UV plane: pitch=%u offset=%u (BO absolute)\n",
               extbuf.pitches[1], extbuf.offsets[1]);
       fprintf(stderr, "  Y surface:  row_pitch=%u memory_offset=%" PRIu64 " size=%" PRIu64 "\n",
               y_surface->isl.row_pitch_B, y_surface->memory_range.offset, y_surface->memory_range.size);
       fprintf(stderr, "  UV surface: row_pitch=%u memory_offset=%" PRIu64 " size=%" PRIu64 "\n",
               uv_surface->isl.row_pitch_B, uv_surface->memory_range.offset,
               uv_surface->memory_range.size);
+      fprintf(stderr, "  NOTE: intel-vaapi-driver ignores offsets[] for NV12, assumes UV at height*pitch\n");
    }
 
    /* Set up surface attributes for DRM PRIME import */

@@ -1,79 +1,67 @@
-# VA-API Bridge Fix: Plane Offset Workaround for intel-vaapi-driver Bug
+# VA-API Bridge Fix: Y Plane Offset Requirement for intel-vaapi-driver
 
 **Date:** November 2024  
-**Issue:** Incorrect y_cb_offset calculation in intel-vaapi-driver  
-**Status:** FIXED (workaround implemented)
+**Issue:** intel-vaapi-driver assumes Y plane at BO offset 0 for NV12  
+**Status:** FIXED (validation check added)
 
 ## Problem Description
 
-The intel-vaapi-driver (i965 VA-API driver) has a bug where it incorrectly calculates the Y-to-Cb plane offset (`y_cb_offset`) from absolute buffer addresses instead of relative to the Y plane. This breaks video decoding compatibility when surfaces have non-zero binding offsets.
+The intel-vaapi-driver (i965 VA-API driver) for NV12 format has a limitation where it ignores the `offsets[]` array in `VASurfaceAttribExternalBuffers` and instead hardcodes the assumption that:
+- Y plane starts at buffer object (BO) offset 0
+- UV plane starts at offset `height * pitch` from BO start
 
-### The Bug in intel-vaapi-driver
+This breaks video decoding when surfaces have non-zero binding offsets.
 
-When importing a surface via DMA-buf with external buffers, the VA-API driver receives an `offsets` array specifying where each plane (Y, UV) is located in the buffer:
-- `offsets[0]` = offset of Y plane in the DMA-buf
-- `offsets[1]` = offset of UV plane in the DMA-buf
+### The Driver Behavior for NV12
 
-The driver then needs to calculate `y_cb_offset`, which is the **row offset** from the Y plane to the Cb (U) plane. This should be:
+When importing a surface via DMA-buf with external buffers for NV12 format, the VA-API driver:
 
+1. Receives the `offsets[]` array: `offsets[0]` for Y plane, `offsets[1]` for UV plane
+2. **Ignores these offsets** for NV12
+3. Hardcodes: `obj_surface->y_cb_offset = obj_surface->height;`
+4. Assumes UV plane is at `height * pitch` bytes from the **start of the BO**
+
+From `intel-vaapi-driver/src/i965_drv_video.c`:
 ```c
-// CORRECT calculation
-y_cb_offset = (offsets[1] - offsets[0]) / width;
+case VA_FOURCC_NV12:
+case VA_FOURCC_P010:
+    // ...
+    obj_surface->y_cb_offset = obj_surface->height;  // HARDCODED, ignores offsets[1]!
+    obj_surface->y_cr_offset = obj_surface->height;
+    // ...
 ```
 
-However, the intel-vaapi-driver does:
+### When It Breaks
 
-```c
-// BUGGY calculation
-y_cb_offset = offsets[1] / width;
-```
-
-This only works when `offsets[0] == 0`. If the Y plane doesn't start at offset 0 of the DMA-buf, the calculation is wrong.
+If the Y plane doesn't start at BO offset 0 (e.g., due to non-zero binding offset or suballocation), the driver will:
+- Read Y plane data from the wrong location
+- Read UV plane data from the wrong location
+- Produce corrupted/garbage video output
 
 ### Example
 
-Consider a 1920x1088 NV12 image with:
+Consider a video image with:
 - Binding offset within BO: 0x1000 (4096 bytes)
-- Y plane at binding offset 0 → absolute BO offset = 0x1000
-- UV plane at binding offset 0x1FE000 → absolute BO offset = 0x1000 + 0x1FE000 = 0x1FF000
-- Row pitch: 512 bytes (example value from problem statement, though realistic pitch would be 1920)
+- Y plane at binding offset 0 → **absolute BO offset = 0x1000** ❌
+- UV plane follows Y → absolute BO offset = 0x1000 + (height * pitch)
 
-If we pass absolute offsets:
-- `offsets[0] = 0x1000` (4096)
-- `offsets[1] = 0x1FF000` (2093056)
+The driver will:
+- Look for Y at BO offset 0 (wrong - actual is at 0x1000)
+- Look for UV at BO offset (height * pitch) (wrong - actual is at 0x1000 + height * pitch)
+- Result: Corrupted video
 
-Then the driver calculates:
-- **With bug**: `y_cb_offset = 0x1FF000 / 512 = 16368 rows` ❌ WRONG
-- **Correct**: `y_cb_offset = (0x1FF000 - 0x1000) / 512 = 0x1FE000 / 512 = 16352 rows` ✓
+## The Fix
 
-## The Workaround
+Since the intel-vaapi-driver ignores our `offsets[]` values for NV12, we cannot work around this in hasvk by changing what we pass. Instead, we:
 
-Rather than fixing the intel-vaapi-driver (which would require changes to a separate project), we work around the bug in hasvk by passing **relative offsets** instead of absolute offsets:
+1. **Keep passing correct absolute BO offsets** (as per DMA-buf API specification)
+2. **Add validation check** that warns if Y plane is not at BO offset 0
+3. **Document the requirement** that video images must use dedicated allocations
 
-```c
-extbuf.offsets[0] = 0;  // Y plane at offset 0 (relative to Y plane start)
-extbuf.offsets[1] = uv_surface->memory_range.offset - y_surface->memory_range.offset;  // UV relative to Y
-```
-
-### Critical Assumption
-
-This workaround **only works** if the Y plane actually starts at offset 0 of the DMA-buf (which represents the entire BO). This requires:
-
-1. `binding->address.offset == 0` (image bound at start of device memory)
-2. `y_surface->memory_range.offset == 0` (Y plane at start of binding)
-
-For video images:
-- **Non-disjoint images**: `y_surface->memory_range.offset` is always 0 (plane 0 is first) ✓
-- **Dedicated allocations**: `binding->address.offset` is typically 0 ✓
-
-The code now includes a validation check that warns if these assumptions are violated.
-
-## Implementation
+### Implementation
 
 **File:** `src/intel/vulkan_hasvk/anv_video_vaapi_bridge.c`  
 **Function:** `anv_vaapi_import_surface_from_image()`
-
-### Changes Made
 
 ```c
 // Calculate absolute Y plane offset for validation
@@ -82,48 +70,43 @@ uint64_t y_plane_abs_offset = binding->address.offset + y_surface->memory_range.
 // Warn if Y plane is not at BO offset 0
 if (y_plane_abs_offset != 0) {
    fprintf(stderr, "WARNING: Video image Y plane not at BO offset 0\n");
-   fprintf(stderr, "This may cause incorrect decoding due to intel-vaapi-driver offset bug.\n");
+   fprintf(stderr, "This will cause incorrect decoding - intel-vaapi-driver assumes Y plane at BO offset 0.\n");
    fprintf(stderr, "Use dedicated memory allocation with offset=0 for video images.\n");
 }
 
-// Set offsets relative to Y plane (workaround for driver bug)
-extbuf.offsets[0] = 0;
-extbuf.offsets[1] = uv_surface->memory_range.offset - y_surface->memory_range.offset;
-```
-
-### What Changed from Previous Implementation
-
-The previous implementation (documented in `VA_API_BRIDGE_FIX_DMABUF_OFFSETS.md`) passed absolute BO offsets:
-
-```c
-// PREVIOUS: Absolute offsets
+// Pass correct absolute BO offsets (even though driver ignores them for NV12)
 extbuf.offsets[0] = binding->address.offset + y_surface->memory_range.offset;
 extbuf.offsets[1] = binding->address.offset + uv_surface->memory_range.offset;
 ```
 
-This was correct for the DMA-buf sharing model (offsets are relative to the start of the exported BO), but incompatible with the intel-vaapi-driver bug.
+### Why Pass Correct Offsets If They're Ignored?
 
-The new implementation passes relative offsets to work around the driver bug, with the assumption that the Y plane is at BO offset 0.
+Even though intel-vaapi-driver ignores the offsets for NV12, we still pass correct values because:
+1. **API compliance**: DMA-buf spec requires absolute BO offsets
+2. **Other drivers**: crocus or future drivers might use the offsets correctly
+3. **Future-proofing**: If intel-vaapi-driver is fixed, our code will work correctly
+4. **Debugging**: Correct values in debug logs help troubleshooting
 
 ## Impact and Limitations
 
 ### When It Works
 
-The workaround works correctly when:
+The code works correctly when:
 - Video images use dedicated memory allocations (recommended best practice)
-- Images are bound at memory offset 0
+- Images are bound at memory offset 0 (`binding->address.offset == 0`)
 - Images are non-disjoint (planes in the same allocation)
+- Y plane starts at binding offset 0 (`y_surface->memory_range.offset == 0`)
 
 This covers the vast majority of real-world video decode use cases.
 
 ### When It Might Not Work
 
-The workaround may fail if:
-- Video image is bound at a non-zero offset within device memory
-- Custom memory allocation strategies that don't use dedicated allocations
-- Disjoint multi-planar images (rare for video decode)
+If any of these is violated, the validation warning alerts the user:
+- Video image bound at non-zero offset within device memory
+- Custom memory allocation strategies without dedicated allocations
+- Suballocations from larger memory blocks
 
-In these cases, the validation warning will alert the user, and decoding may produce incorrect results.
+In these cases, decoding will produce corrupted output.
 
 ### Recommendation
 
@@ -131,6 +114,28 @@ Applications using HasVK video decode should:
 1. Use `VkMemoryDedicatedAllocateInfo` for video images
 2. Bind images at offset 0 (`memoryOffset = 0` in `VkBindImageMemoryInfo`)
 3. Use non-disjoint image format (default behavior)
+
+## Relationship to Referenced Patch
+
+The user referenced [this intel-vaapi-driver patch](https://github.com/intel/intel-vaapi-driver/commit/3aa8fbe690e33e2026002f7af713d52faf1bd617) which is for a **different issue**:
+- That patch fixes surface **export** (`i965_ExportSurfaceHandle`) for 3-plane formats
+- Our issue is surface **import** (`i965_CreateSurfaces2`) for 2-plane NV12
+- The patch is unrelated to our NV12 import path
+
+## Comparison with 3-Plane Formats
+
+For 3-plane formats (I420, YV12), the driver DOES use offsets, but incorrectly:
+
+```c
+case VA_FOURCC_I420:
+    // ...
+    obj_surface->y_cb_offset = obj_surface->height;  // Hardcoded for Cb
+    obj_surface->y_cr_offset = memory_attibute->offsets[2] / obj_surface->width;  // BUG!
+```
+
+The bug: `offsets[2] / width` assumes `offsets[0] == 0`. Should be `(offsets[2] - offsets[0]) / width`.
+
+However, hasvk only uses NV12 (2-plane), so this 3-plane bug doesn't affect us.
 
 ## Testing
 
@@ -145,42 +150,33 @@ export LIBVA_MESSAGING_LEVEL=2
 mpv --hwdec=vulkan test_video.mp4
 ```
 
-Expected output:
+Expected output (if Y plane is at BO offset 0):
 ```
 VA-API surface import: 1920x1088 NV12
   Binding offset: 0
-  Y plane:  pitch=1920 offset=0 (relative to Y plane start)
-  UV plane: pitch=1920 offset=2088960 (relative to Y plane start)
+  Y plane:  pitch=1920 offset=0 (BO absolute)
+  UV plane: pitch=1920 offset=2088960 (BO absolute)
+  NOTE: intel-vaapi-driver ignores offsets[] for NV12, assumes UV at height*pitch
 ```
 
-No warning should appear if the Y plane is at BO offset 0.
-
-## Relationship to Other Fixes
-
-This fix is related to but distinct from the fixes documented in `VA_API_BRIDGE_FIX_DMABUF_OFFSETS.md`:
-
-| Fix | Issue | Solution |
-|-----|-------|----------|
-| **Previous** | Offsets were relative to binding, not BO | Added binding offset to plane offsets |
-| **Current** | intel-vaapi-driver y_cb_offset bug | Made offsets relative to Y plane |
-| **Data Size** | `data_size` field was 0 | Calculate as UV offset + UV size |
-| **Cache Coherency** | Video/render engine cache mismatch | Two-step GEM domain transition |
-
-All fixes work together to ensure correct VA-API video decode operation.
+If Y plane is NOT at offset 0, you'll see:
+```
+WARNING: Video image Y plane not at BO offset 0 (binding_offset=4096 + y_offset=0)
+This will cause incorrect decoding - intel-vaapi-driver assumes Y plane at BO offset 0.
+Use dedicated memory allocation with offset=0 for video images.
+```
 
 ## Alternative Solutions Considered
 
-1. **Fix intel-vaapi-driver**: The ideal solution, but requires changes to an external project and waiting for distribution updates.
+1. **Fix intel-vaapi-driver**: The ideal solution, but requires changes to an external project and waiting for distribution updates. Also, the project is unmaintained.
 
-2. **Export DMA-buf from specific offset**: Not possible - GEM handle export always exports the entire BO.
+2. **Force Y plane to BO offset 0**: Would require changes to image allocation code; validation check is simpler.
 
-3. **Force Y plane to BO offset 0**: Would require changes to image allocation code; current workaround is simpler.
-
-4. **Detect driver version and use different offsets**: Too fragile; workaround with validation is more reliable.
+3. **Use a different VA-API driver**: crocus might handle this better, but users may have i965 installed.
 
 ## References
 
-- intel/intel-vaapi-driver issue: y_cb_offset calculation bug
+- intel/intel-vaapi-driver source: `src/i965_drv_video.c` (NV12 import code)
 - Mesa HasVK VA-API bridge architecture: `VA_API_BRIDGE_ARCHITECTURE.md`
 - DMA-buf offset fixes: `VA_API_BRIDGE_FIX_DMABUF_OFFSETS.md`
 - Vulkan Video specification: VK_KHR_video_decode_queue
