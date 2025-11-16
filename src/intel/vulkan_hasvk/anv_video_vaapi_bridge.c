@@ -777,6 +777,10 @@ anv_vaapi_import_surface_from_image(struct anv_device *device,
       return result;
    }
 
+   /* Get the main memory binding for the image to determine base offset */
+   struct anv_image_binding *binding =
+      &image->bindings[ANV_IMAGE_MEMORY_BINDING_MAIN];
+   
    /* Get image layout information for stride and offsets
     * For NV12 (multi-planar format), we need both Y and UV plane information
     */
@@ -826,17 +830,25 @@ anv_vaapi_import_surface_from_image(struct anv_device *device,
    /* Set offsets for each plane using actual memory layout from ISL
     * This is critical - we must use the ISL-calculated offset, not a
     * simple height*stride calculation, because ISL adds alignment padding.
+    * 
+    * CRITICAL: For DMA-buf sharing, offsets must be relative to the start of the BO,
+    * not the start of the binding. If the binding has a non-zero offset within the BO
+    * (binding->address.offset), we must add that to each plane's offset.
     */
-   extbuf.offsets[0] = 0;       /* Y plane starts at beginning */
-   extbuf.offsets[1] = uv_surface->memory_range.offset; /* UV plane from ISL */
+   extbuf.offsets[0] = binding->address.offset + y_surface->memory_range.offset;
+   extbuf.offsets[1] = binding->address.offset + uv_surface->memory_range.offset;
 
    if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
       fprintf(stderr, "VA-API surface import: %ux%u NV12\n",
               image->vk.extent.width, image->vk.extent.height);
-      fprintf(stderr, "  Y plane:  pitch=%u offset=%u\n",
-              extbuf.pitches[0], extbuf.offsets[0]);
-      fprintf(stderr, "  UV plane: pitch=%u offset=%u\n",
-              extbuf.pitches[1], extbuf.offsets[1]);
+      fprintf(stderr, "  Binding offset: %ld\n",
+              binding->address.offset);
+      fprintf(stderr, "  Y plane:  pitch=%u offset=%u (binding_offset=%ld + plane_offset=%lu)\n",
+              extbuf.pitches[0], extbuf.offsets[0], 
+              binding->address.offset, y_surface->memory_range.offset);
+      fprintf(stderr, "  UV plane: pitch=%u offset=%u (binding_offset=%ld + plane_offset=%lu)\n",
+              extbuf.pitches[1], extbuf.offsets[1],
+              binding->address.offset, uv_surface->memory_range.offset);
       fprintf(stderr, "  Y surface:  row_pitch=%u size=%lu\n",
               y_surface->isl.row_pitch_B, y_surface->memory_range.size);
       fprintf(stderr, "  UV surface: row_pitch=%u offset=%lu size=%lu\n",
