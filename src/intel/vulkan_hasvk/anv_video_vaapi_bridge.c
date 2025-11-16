@@ -942,13 +942,15 @@ anv_vaapi_execute_deferred_decodes(struct anv_device *device,
        * Before VA-API starts decoding to the surface, we need to ensure any
        * previous Vulkan operations on the surface have completed.
        * 
-       * Set the GEM domain to CPU to force a wait for any pending GPU operations.
+       * Wait for any pending GPU operations by setting to CPU read domain.
+       * Do NOT set write_domain here - VA-API will write via the video engine
+       * which is GPU domain, not CPU domain.
        */
       if (decode_cmd->target_bo && decode_cmd->target_gem_handle) {
          struct drm_i915_gem_set_domain set_domain = {
             .handle = decode_cmd->target_gem_handle,
             .read_domains = I915_GEM_DOMAIN_CPU,        /* Wait for GPU to finish */
-            .write_domain = I915_GEM_DOMAIN_CPU,        /* VA-API will write */
+            .write_domain = 0,  /* VA-API will write via GPU video engine */
          };
 
          int ret =
@@ -1037,21 +1039,37 @@ anv_vaapi_execute_deferred_decodes(struct anv_device *device,
        * After VA-API decode completes, ensure proper cache coherency
        * between the VA-API driver (video engine) and Vulkan (render engine).
        * 
-       * Use GTT domain for GPU aperture access - kernel handles cache flushes.
+       * First, flush any writes from the video engine by setting GTT write domain.
+       * This ensures caches are properly flushed so Vulkan can see the decoded data.
        */
       if (decode_cmd->target_bo && decode_cmd->target_gem_handle) {
-         struct drm_i915_gem_set_domain set_domain = {
+         /* Step 1: Flush video engine writes */
+         struct drm_i915_gem_set_domain set_domain_flush = {
             .handle = decode_cmd->target_gem_handle,
-            .read_domains = I915_GEM_DOMAIN_GTT,        /* GPU aperture access for Vulkan */
-            .write_domain = 0,  /* No immediate write, just transitioning from VA-API */
+            .read_domains = I915_GEM_DOMAIN_GTT,
+            .write_domain = I915_GEM_DOMAIN_GTT,  /* Flush writes from video engine */
          };
 
          int ret =
             intel_ioctl(device->fd, DRM_IOCTL_I915_GEM_SET_DOMAIN,
-                        &set_domain);
+                        &set_domain_flush);
          if (ret != 0 && unlikely(INTEL_DEBUG(DEBUG_PERF))) {
             fprintf(stderr,
-                    "Failed to set GEM domain after VA-API decode: %m\n");
+                    "Failed to flush GEM writes after VA-API decode: %m\n");
+         }
+         
+         /* Step 2: Transition to read-only for Vulkan */
+         struct drm_i915_gem_set_domain set_domain_read = {
+            .handle = decode_cmd->target_gem_handle,
+            .read_domains = I915_GEM_DOMAIN_GTT,
+            .write_domain = 0,  /* Transition to read-only */
+         };
+
+         ret = intel_ioctl(device->fd, DRM_IOCTL_I915_GEM_SET_DOMAIN,
+                          &set_domain_read);
+         if (ret != 0 && unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+            fprintf(stderr,
+                    "Failed to set GEM read domain after VA-API decode: %m\n");
          }
       }
 
