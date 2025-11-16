@@ -809,15 +809,15 @@ anv_vaapi_import_surface_from_image(struct anv_device *device,
     * mechanism for communicating tiling for legacy (non-modifier) DMA-buf imports.
     */
 
-   VASurfaceAttribExternalBuffers extbuf = {
-      .pixel_format = VA_FOURCC_NV12,
-      .width = image->vk.extent.width,
-      .height = image->vk.extent.height,
-      .num_buffers = 1,
-      .buffers = (uintptr_t *) & fd,
-      .flags = 0,
-      .num_planes = 2,          /* Y and UV for NV12 */
-   };
+   VASurfaceAttribExternalBuffers extbuf;
+   memset(&extbuf, 0, sizeof(extbuf));
+   extbuf.pixel_format = VA_FOURCC_NV12;
+   extbuf.width = image->vk.extent.width;
+   extbuf.height = image->vk.extent.height;
+   extbuf.num_buffers = 1;
+   extbuf.buffers = (uintptr_t *) & fd;
+   extbuf.flags = 0;
+   extbuf.num_planes = 2;          /* Y and UV for NV12 */
 
    /* Set stride (row pitch) for both planes
     * For NV12:
