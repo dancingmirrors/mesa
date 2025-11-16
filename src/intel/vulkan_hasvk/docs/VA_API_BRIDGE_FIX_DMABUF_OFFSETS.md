@@ -1,14 +1,15 @@
-# VA-API Bridge Critical Fix: DMA-buf Surface Import
+# VA-API Bridge Critical Fixes: DMA-buf Surface Import and Synchronization
 
 **Date:** November 2024  
-**Issue:** Green screen / old framebuffer content due to incorrect surface import parameters  
+**Issue:** Green screen / old framebuffer content due to incorrect surface import and cache coherency  
 **Status:** FIXED
 
 ## Problem Description
 
-The VA-API bridge was displaying green screens or residual framebuffer content when decoding H.264 video via DMA-buf sharing. The issue had TWO root causes:
+The VA-API bridge was displaying green screens or residual framebuffer content when decoding H.264 video via DMA-buf sharing. The issue had THREE root causes:
 1. Plane offsets were calculated incorrectly
 2. The `data_size` field was not being set
+3. Cache coherency synchronization was insufficient
 
 ## Root Causes
 
@@ -32,6 +33,18 @@ Without `data_size` set:
 - VA-API cannot validate the buffer size
 - VA-API may not access the surface data correctly
 - Surface import may succeed but data access fails
+
+### Issue 3: Insufficient Cache Coherency ⚠️ **CRITICAL**
+
+After VA-API decode completes, the decoded data written by the video engine must be properly flushed from caches so Vulkan (render engine) can see it.
+
+The problem:
+- Video engine and render engine have separate caches on Intel GPUs
+- After VA-API decode, data is in video engine caches
+- Without proper cache flush, Vulkan reads stale/uninitialized data (green screens)
+- Previous code only set read domain, didn't explicitly flush writes
+
+This is the most subtle and critical issue - even with correct surface import, cache coherency problems prevent the decoded data from being visible.
 
 ### Example Scenario
 
@@ -103,6 +116,47 @@ For a 1920x1088 NV12 surface:
 - UV size: 1044480 bytes  
 - **Total data_size: 3133440 bytes**
 
+### Fix 3: Cache Coherency Synchronization
+
+**File:** `src/intel/vulkan_hasvk/anv_video_vaapi_bridge.c`  
+**Function:** `anv_vaapi_execute_deferred_decodes()`
+
+**Before (BROKEN):**
+```c
+// After VA-API decode
+vaSyncSurface(va_display, decode_cmd->target_surface);
+
+// Only set read domain - doesn't flush writes!
+struct drm_i915_gem_set_domain set_domain = {
+   .handle = decode_cmd->target_gem_handle,
+   .read_domains = I915_GEM_DOMAIN_GTT,
+   .write_domain = 0,  // No flush!
+};
+intel_ioctl(device->fd, DRM_IOCTL_I915_GEM_SET_DOMAIN, &set_domain);
+```
+
+**After (FIXED):**
+```c
+// After VA-API decode
+vaSyncSurface(va_display, decode_cmd->target_surface);
+
+// Step 1: Flush video engine writes
+struct drm_i915_gem_set_domain set_domain_flush = {
+   .handle = decode_cmd->target_gem_handle,
+   .read_domains = I915_GEM_DOMAIN_GTT,
+   .write_domain = I915_GEM_DOMAIN_GTT,  // Explicit flush!
+};
+intel_ioctl(device->fd, DRM_IOCTL_I915_GEM_SET_DOMAIN, &set_domain_flush);
+
+// Step 2: Transition to read-only for Vulkan
+struct drm_i915_gem_set_domain set_domain_read = {
+   .handle = decode_cmd->target_gem_handle,
+   .read_domains = I915_GEM_DOMAIN_GTT,
+   .write_domain = 0,
+};
+intel_ioctl(device->fd, DRM_IOCTL_I915_GEM_SET_DOMAIN, &set_domain_read);
+```
+
 ## Why These Fixes Were Needed
 
 ### Fix 1: Plane Offsets (Binding vs BO)
@@ -133,6 +187,24 @@ Without this field set, VA-API trace shows `data_size=0`, which can cause:
 - Import to succeed but surface usage to fail
 - Incorrect memory validation
 - Driver-specific issues
+
+### Fix 3: Cache Coherency (Video ↔ Render Engine)
+
+Intel GPUs have separate cache hierarchies for different engines:
+- **Video engine**: Used by VA-API for decode operations
+- **Render engine**: Used by Vulkan for rendering/sampling
+
+After VA-API decode:
+1. **Decoded data**: Written by video engine to BO
+2. **Cache state**: Data in video engine caches, not yet visible to render engine
+3. **Without flush**: Vulkan reads stale data from render engine caches (green screens!)
+4. **With flush**: Explicit GEM domain transition flushes caches properly
+
+The two-step synchronization:
+- **Step 1**: Set GTT write domain → Forces kernel to flush video engine writes
+- **Step 2**: Set GTT read domain → Prepares BO for Vulkan read access
+
+This is critical on Intel Gen7-8 where cache coherency between engines is not automatic.
 
 ### When Binding Offset is Zero
 
