@@ -103,6 +103,8 @@ See [VIDEO_DECODING_ANALYSIS.md](VIDEO_DECODING_ANALYSIS.md) for detailed analys
 | `VA_API_BRIDGE_STATUS.md` | Quick status overview - start here |
 | `VA_API_BRIDGE_ARCHITECTURE.md` | Detailed architecture and design |
 | `VA_API_INTEGRATION_PLAN.md` | Implementation plan and phase tracking |
+| `VA_API_BRIDGE_FIX_DPB_TILING.md` | Fix for DPB reference frame tiling issue |
+| `VA_API_BRIDGE_FIX_DMABUF_OFFSETS.md` | Fix for DMA-buf plane offset calculation |
 | `INTEL_DEBUG.md` | Debug flags and environment variables |
 
 ### Historical/Reference Files

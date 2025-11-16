@@ -134,6 +134,14 @@ It didn't account for reference frames also being shared with VA-API for decode.
 - `docs/genX_video_short.c` - Old native implementation for comparison
 - `docs/VA_API_BRIDGE_ARCHITECTURE.md` - Overall bridge architecture
 - `docs/VA_API_BRIDGE_STATUS.md` - Implementation status
+- `docs/VA_API_BRIDGE_FIX_DMABUF_OFFSETS.md` - Related fix for plane offset calculation
+
+## See Also
+
+**Other critical fixes for VA-API bridge:**
+- [VA_API_BRIDGE_FIX_DMABUF_OFFSETS.md](VA_API_BRIDGE_FIX_DMABUF_OFFSETS.md) - Fix for DMA-buf plane offset calculation (must account for binding offset)
+
+Both this fix and the DMA-buf offset fix are required for correct video decode operation.
 
 ## References
 
