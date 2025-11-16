@@ -839,10 +839,15 @@ anv_vaapi_import_surface_from_image(struct anv_device *device,
    extbuf.offsets[1] = binding->address.offset + uv_surface->memory_range.offset;
 
    /* Set total data size for the DMA-buf
-    * CRITICAL: VA-API needs to know the total size of data in the buffer.
-    * This is the UV plane offset plus the UV plane size.
+    * NOTE: Setting this to 0 allows VA-API to determine the size itself.
+    * When set to a non-zero value, some drivers may validate the size by
+    * seeking to that position in the DMA-BUF fd, which can cause performance
+    * issues including HDD thrashing during buffer export/import.
+    * Since VA-API can determine the required size from the plane offsets,
+    * pitches, and image dimensions, leaving this as 0 is safe and avoids
+    * unnecessary I/O operations.
     */
-   extbuf.data_size = extbuf.offsets[1] + uv_surface->memory_range.size;
+   extbuf.data_size = 0;
 
    if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
       fprintf(stderr, "VA-API surface import: %ux%u NV12\n",
