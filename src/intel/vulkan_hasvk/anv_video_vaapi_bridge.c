@@ -838,11 +838,19 @@ anv_vaapi_import_surface_from_image(struct anv_device *device,
    extbuf.offsets[0] = binding->address.offset + y_surface->memory_range.offset;
    extbuf.offsets[1] = binding->address.offset + uv_surface->memory_range.offset;
 
+   /* Set total data size for the DMA-buf
+    * CRITICAL: VA-API needs to know the total size of data in the buffer.
+    * This is the UV plane offset plus the UV plane size.
+    */
+   extbuf.data_size = extbuf.offsets[1] + uv_surface->memory_range.size;
+
    if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
       fprintf(stderr, "VA-API surface import: %ux%u NV12\n",
               image->vk.extent.width, image->vk.extent.height);
       fprintf(stderr, "  Binding offset: %ld\n",
               binding->address.offset);
+      fprintf(stderr, "  Total data size: %u\n",
+              extbuf.data_size);
       fprintf(stderr, "  Y plane:  pitch=%u offset=%u (binding_offset=%ld + plane_offset=%lu)\n",
               extbuf.pitches[0], extbuf.offsets[0], 
               binding->address.offset, y_surface->memory_range.offset);
