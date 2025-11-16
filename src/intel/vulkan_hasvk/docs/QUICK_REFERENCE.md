@@ -141,6 +141,9 @@ mpv --hwdec=vulkan your-video.mp4
 - **Quick overview:** VA_API_BRIDGE_STATUS.md
 - **Architecture:** VA_API_BRIDGE_ARCHITECTURE.md
 - **Implementation plan:** VA_API_INTEGRATION_PLAN.md
+- **Offset workaround:** VA_API_BRIDGE_FIX_OFFSET_WORKAROUND.md
+- **DMA-buf fixes:** VA_API_BRIDGE_FIX_DMABUF_OFFSETS.md
+- **Tiling fix:** VA_API_BRIDGE_FIX_DPB_TILING.md
 - **Debugging:** INTEL_DEBUG.md
 - **Navigation:** README.md
 - **History:** VIDEO_DECODING_ANALYSIS.md

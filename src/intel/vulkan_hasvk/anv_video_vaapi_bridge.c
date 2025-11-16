@@ -846,6 +846,27 @@ anv_vaapi_import_surface_from_image(struct anv_device *device,
    extbuf.pitches[0] = y_surface->isl.row_pitch_B;
    extbuf.pitches[1] = uv_surface->isl.row_pitch_B;
 
+   /* CRITICAL ASSUMPTION CHECK: The intel-vaapi-driver for NV12 format ignores
+    * the offsets[] array we pass and instead hardcodes y_cb_offset = height,
+    * assuming the UV plane is at offset (height * pitch) from the BO start.
+    * 
+    * This means the driver REQUIRES that the Y plane starts at BO offset 0.
+    * If not, the driver will read from the wrong memory location.
+    * 
+    * For non-disjoint video images (which is the normal case), y_surface->memory_range.offset
+    * is always 0 (plane 0 is first). The binding->address.offset should also be 0 for
+    * video images using dedicated allocations (best practice).
+    */
+   uint64_t y_plane_abs_offset = binding->address.offset + y_surface->memory_range.offset;
+   if (y_plane_abs_offset != 0) {
+      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+         fprintf(stderr, "WARNING: Video image Y plane not at BO offset 0 (binding_offset=%" PRId64 " + y_offset=%" PRIu64 ")\n",
+                 binding->address.offset, y_surface->memory_range.offset);
+         fprintf(stderr, "This will cause incorrect decoding - intel-vaapi-driver assumes Y plane at BO offset 0.\n");
+         fprintf(stderr, "Use dedicated memory allocation with offset=0 for video images.\n");
+      }
+   }
+
    /* Set offsets for each plane using actual memory layout from ISL
     * This is critical - we must use the ISL-calculated offset, not a
     * simple height*stride calculation, because ISL adds alignment padding.
@@ -853,6 +874,11 @@ anv_vaapi_import_surface_from_image(struct anv_device *device,
     * CRITICAL: For DMA-buf sharing, offsets must be relative to the start of the BO,
     * not the start of the binding. If the binding has a non-zero offset within the BO
     * (binding->address.offset), we must add that to each plane's offset.
+    * 
+    * NOTE: For NV12 format, intel-vaapi-driver currently ignores these offsets and
+    * hardcodes y_cb_offset = height, assuming UV is at (height * pitch) from BO start.
+    * However, we pass correct offsets for compatibility with other drivers and in case
+    * the intel-vaapi-driver is fixed in the future.
     */
    extbuf.offsets[0] = binding->address.offset + y_surface->memory_range.offset;
    extbuf.offsets[1] = binding->address.offset + uv_surface->memory_range.offset;
@@ -870,17 +896,16 @@ anv_vaapi_import_surface_from_image(struct anv_device *device,
               binding->address.offset);
       fprintf(stderr, "  Total data size: %u\n",
               extbuf.data_size);
-      fprintf(stderr, "  Y plane:  pitch=%u offset=%u (binding_offset=%" PRId64 " + plane_offset=%" PRIu64 ")\n",
-              extbuf.pitches[0], extbuf.offsets[0], 
-              binding->address.offset, y_surface->memory_range.offset);
-      fprintf(stderr, "  UV plane: pitch=%u offset=%u (binding_offset=%" PRId64 " + plane_offset=%" PRIu64 ")\n",
-              extbuf.pitches[1], extbuf.offsets[1],
-              binding->address.offset, uv_surface->memory_range.offset);
-      fprintf(stderr, "  Y surface:  row_pitch=%u size=%" PRIu64 "\n",
-              y_surface->isl.row_pitch_B, y_surface->memory_range.size);
-      fprintf(stderr, "  UV surface: row_pitch=%u offset=%" PRIu64 " size=%" PRIu64 "\n",
+      fprintf(stderr, "  Y plane:  pitch=%u offset=%u (BO absolute)\n",
+              extbuf.pitches[0], extbuf.offsets[0]);
+      fprintf(stderr, "  UV plane: pitch=%u offset=%u (BO absolute)\n",
+              extbuf.pitches[1], extbuf.offsets[1]);
+      fprintf(stderr, "  Y surface:  row_pitch=%u memory_offset=%" PRIu64 " size=%" PRIu64 "\n",
+              y_surface->isl.row_pitch_B, y_surface->memory_range.offset, y_surface->memory_range.size);
+      fprintf(stderr, "  UV surface: row_pitch=%u memory_offset=%" PRIu64 " size=%" PRIu64 "\n",
               uv_surface->isl.row_pitch_B, uv_surface->memory_range.offset,
               uv_surface->memory_range.size);
+      fprintf(stderr, "  NOTE: intel-vaapi-driver ignores offsets[] for NV12, assumes UV at height*pitch\n");
    }
 
    /* Set up surface attributes for DRM PRIME import */
