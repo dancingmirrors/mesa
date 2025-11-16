@@ -332,7 +332,7 @@ To detect these issues:
 
 1. Enable debugging:
    ```bash
-   export INTEL_DEBUG=perf
+   export INTEL_DEBUG=hasvk
    export LIBVA_MESSAGING_LEVEL=2
    export LIBVA_TRACE=/tmp/va.log
    ```
@@ -375,7 +375,7 @@ After this fix, test with:
 
 ```bash
 # Enable debugging
-export INTEL_DEBUG=perf
+export INTEL_DEBUG=hasvk
 export LIBVA_MESSAGING_LEVEL=2
 
 # Test with mpv

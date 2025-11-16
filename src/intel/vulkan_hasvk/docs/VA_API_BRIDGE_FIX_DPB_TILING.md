@@ -71,7 +71,7 @@ After this fix, test with:
 
 ```bash
 # Enable debugging
-export INTEL_DEBUG=perf
+export INTEL_DEBUG=hasvk
 export LIBVA_MESSAGING_LEVEL=2
 
 # Test with mpv

@@ -42,7 +42,7 @@ Gen7/8 Video Engine (MFD)
 # Need: mesa (hasvk), libva, crocus/i965 drivers
 
 # Enable debug logging
-export INTEL_DEBUG=perf
+export INTEL_DEBUG=hasvk
 export LIBVA_MESSAGING_LEVEL=2
 
 # Test with mpv
@@ -68,7 +68,7 @@ mpv --hwdec=vulkan your-video.mp4
 
 1. **Enable logging:**
    ```bash
-   export INTEL_DEBUG=perf LIBVA_MESSAGING_LEVEL=2
+   export INTEL_DEBUG=hasvk LIBVA_MESSAGING_LEVEL=2
    ```
 
 2. **Run your app:**
@@ -164,7 +164,7 @@ mpv --hwdec=vulkan your-video.mp4
 
 Questions? Check the documentation in `src/intel/vulkan_hasvk/docs/`
 
-Issues? Enable `INTEL_DEBUG=perf` and share the logs!
+Issues? Enable `INTEL_DEBUG=hasvk` and share the logs!
 
 ---
 

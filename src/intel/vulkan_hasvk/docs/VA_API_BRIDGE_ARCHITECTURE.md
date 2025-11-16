@@ -349,7 +349,7 @@ The implementation handles errors but could be improved:
 **Status:** Basic INTEL_DEBUG logging present
 
 Current debugging:
-- **INTEL_DEBUG=perf**: Logs VA-API operations and errors
+- **INTEL_DEBUG=hasvk**: Logs VA-API operations and errors
 - **LIBVA_MESSAGING_LEVEL**: Can enable VA-API driver logging
 
 Could be improved with:
@@ -385,7 +385,7 @@ To be clear, these are **already working**:
 
 1. **Set up test environment** with Gen7/Gen8 hardware and install VA-API drivers (crocus or i965)
 2. **Test basic decode** with simple H.264 file using mpv: `mpv --hwdec=vulkan video.mp4`
-3. **Enable debugging** with `INTEL_DEBUG=perf LIBVA_MESSAGING_LEVEL=2`
+3. **Enable debugging** with `INTEL_DEBUG=hasvk LIBVA_MESSAGING_LEVEL=2`
 4. **Verify functionality** with various H.264 content (different profiles, resolutions)
 5. **Performance testing** to measure overhead vs native VA-API
 6. **Document results** including any issues found and workarounds

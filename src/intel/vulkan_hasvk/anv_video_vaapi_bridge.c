@@ -84,26 +84,26 @@ get_va_profile(const VkVideoProfileInfoKHR *profile)
       if (h264_profile) {
          switch (h264_profile->stdProfileIdc) {
          case STD_VIDEO_H264_PROFILE_IDC_BASELINE:
-            if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+            if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
                fprintf(stderr, "VA-API: Parsed H.264 profile: Baseline (IDC=%d) -> VAProfileH264ConstrainedBaseline\n",
                        h264_profile->stdProfileIdc);
             }
             return VAProfileH264ConstrainedBaseline;
          case STD_VIDEO_H264_PROFILE_IDC_MAIN:
-            if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+            if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
                fprintf(stderr, "VA-API: Parsed H.264 profile: Main (IDC=%d) -> VAProfileH264Main\n",
                        h264_profile->stdProfileIdc);
             }
             return VAProfileH264Main;
          case STD_VIDEO_H264_PROFILE_IDC_HIGH:
-            if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+            if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
                fprintf(stderr, "VA-API: Parsed H.264 profile: High (IDC=%d) -> VAProfileH264High\n",
                        h264_profile->stdProfileIdc);
             }
             return VAProfileH264High;
          default:
             /* Unsupported H.264 profile, default to Main */
-            if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+            if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
                fprintf(stderr, "VA-API: Unsupported H.264 profile (IDC=%d), defaulting to VAProfileH264Main\n",
                        h264_profile->stdProfileIdc);
             }
@@ -112,7 +112,7 @@ get_va_profile(const VkVideoProfileInfoKHR *profile)
       }
       
       /* No profile info provided, default to Main */
-      if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
          fprintf(stderr, "VA-API: No H.264 profile info provided, defaulting to VAProfileH264Main\n");
       }
       return VAProfileH264Main;
@@ -150,7 +150,7 @@ anv_vaapi_get_display(struct anv_device *device)
    /* Create VA display from DRM file descriptor */
    VADisplay va_display = vaGetDisplayDRM(device->fd);
    if (!va_display) {
-      if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
          fprintf(stderr, "Failed to get VA display from DRM fd\n");
       }
       return NULL;
@@ -160,13 +160,13 @@ anv_vaapi_get_display(struct anv_device *device)
    int major, minor;
    VAStatus va_status = vaInitialize(va_display, &major, &minor);
    if (va_status != VA_STATUS_SUCCESS) {
-      if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
          fprintf(stderr, "Failed to initialize VA-API: %d\n", va_status);
       }
       return NULL;
    }
 
-   if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+   if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
       fprintf(stderr, "VA-API initialized: version %d.%d\n", major, minor);
    }
 
@@ -212,7 +212,7 @@ anv_vaapi_session_create(struct anv_device *device,
    VAEntrypoint va_entrypoint = get_va_entrypoint(pCreateInfo->pVideoProfile);
 
    if (session->va_profile == VAProfileNone || va_entrypoint == 0) {
-      if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
          fprintf(stderr, "Unsupported video codec profile\n");
       }
       vk_free(&device->vk.alloc, vid->vaapi_session);
@@ -226,7 +226,7 @@ anv_vaapi_session_create(struct anv_device *device,
                               session->va_profile,
                               va_entrypoint, NULL, 0, &session->va_config);
    if (va_status != VA_STATUS_SUCCESS) {
-      if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
          fprintf(stderr, "Failed to create VA config: %d\n", va_status);
       }
       vk_free(&device->vk.alloc, vid->vaapi_session);
@@ -277,7 +277,7 @@ anv_vaapi_session_create(struct anv_device *device,
                                0,       /* num_render_targets */
                                &session->va_context);
    if (va_status != VA_STATUS_SUCCESS) {
-      if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
          fprintf(stderr, "Failed to create VA context: %d\n", va_status);
       }
       vk_free(&device->vk.alloc, session->va_surfaces);
@@ -292,7 +292,7 @@ anv_vaapi_session_create(struct anv_device *device,
    session->va_slice_param = VA_INVALID_ID;
    session->va_slice_data = VA_INVALID_ID;
 
-   if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+   if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
       fprintf(stderr, "VA-API session created: %ux%u, profile=%d\n",
               session->width, session->height, session->va_profile);
    }
@@ -347,7 +347,7 @@ anv_vaapi_session_destroy(struct anv_device *device,
    vk_free(&device->vk.alloc, vid->vaapi_session);
    vid->vaapi_session = NULL;
 
-   if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+   if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
       fprintf(stderr, "VA-API session destroyed\n");
    }
 }
@@ -417,7 +417,7 @@ anv_vaapi_decode_frame(struct anv_cmd_buffer *cmd_buffer,
       vk_find_struct_const(frame_info->pNext,
                            VIDEO_DECODE_H264_PICTURE_INFO_KHR);
    if (!h264_pic_info) {
-      if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
          fprintf(stderr, "Missing H.264 picture info in decode\n");
       }
       return vk_error(device, VK_ERROR_FORMAT_NOT_SUPPORTED);
@@ -427,7 +427,7 @@ anv_vaapi_decode_frame(struct anv_cmd_buffer *cmd_buffer,
    ANV_FROM_HANDLE(anv_image_view, dst_image_view,
                    frame_info->dstPictureResource.imageViewBinding);
    if (!dst_image_view || !dst_image_view->image) {
-      if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
          fprintf(stderr, "Invalid destination image view for decode\n");
       }
       return vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
@@ -451,7 +451,7 @@ anv_vaapi_decode_frame(struct anv_cmd_buffer *cmd_buffer,
       /* Add destination surface to mapping for future use */
       anv_vaapi_add_surface_mapping(session, dst_image, dst_surface);
    }
-   else if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+   else if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
       fprintf(stderr,
               "VA-API decode: Reusing cached destination surface %u\n",
               dst_surface);
@@ -460,7 +460,7 @@ anv_vaapi_decode_frame(struct anv_cmd_buffer *cmd_buffer,
    /* Get video session parameters - already a pointer, no need for FROM_HANDLE */
    struct anv_video_session_params *params = cmd_buffer->video.params;
    if (!params) {
-      if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
          fprintf(stderr, "No video session parameters bound\n");
       }
       return vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
@@ -503,7 +503,7 @@ anv_vaapi_decode_frame(struct anv_cmd_buffer *cmd_buffer,
    /* Validate that critical picture parameters were set */
    if (va_pic_param.CurrPic.picture_id == VA_INVALID_SURFACE ||
        va_pic_param.CurrPic.flags & VA_PICTURE_H264_INVALID) {
-      if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
          fprintf(stderr,
                  "VA-API: Picture parameter translation failed - invalid current picture\n");
       }
@@ -517,7 +517,7 @@ anv_vaapi_decode_frame(struct anv_cmd_buffer *cmd_buffer,
                               sizeof(VAPictureParameterBufferH264), 1,
                               &va_pic_param, &pic_param_buf);
    if (va_status != VA_STATUS_SUCCESS) {
-      if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
          fprintf(stderr, "Failed to create VA picture parameter buffer: %d\n",
                  va_status);
       }
@@ -528,7 +528,7 @@ anv_vaapi_decode_frame(struct anv_cmd_buffer *cmd_buffer,
    ANV_FROM_HANDLE(anv_buffer, src_buffer, frame_info->srcBuffer);
    if (!src_buffer || !src_buffer->address.bo) {
       vaDestroyBuffer(session->va_display, pic_param_buf);
-      if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
          fprintf(stderr, "Invalid source buffer for decode\n");
       }
       return vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
@@ -540,7 +540,7 @@ anv_vaapi_decode_frame(struct anv_cmd_buffer *cmd_buffer,
                    0, frame_info->srcBufferRange, 0);
    if (!bitstream_data) {
       vaDestroyBuffer(session->va_display, pic_param_buf);
-      if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
          fprintf(stderr, "Failed to map bitstream buffer\n");
       }
       return vk_error(device, VK_ERROR_MEMORY_MAP_FAILED);
@@ -553,13 +553,13 @@ anv_vaapi_decode_frame(struct anv_cmd_buffer *cmd_buffer,
    if (slice_count == 0) {
       anv_gem_munmap(device, bitstream_data, frame_info->srcBufferRange);
       vaDestroyBuffer(session->va_display, pic_param_buf);
-      if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
          fprintf(stderr, "H.264 decode has no slices\n");
       }
       return vk_error(device, VK_ERROR_FORMAT_NOT_SUPPORTED);
    }
 
-   if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+   if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
       fprintf(stderr, "VA-API H.264: Processing %u slices\n", slice_count);
    }
 
@@ -595,7 +595,7 @@ anv_vaapi_decode_frame(struct anv_cmd_buffer *cmd_buffer,
          slice_size = h264_pic_info->pSliceOffsets[s + 1] - slice_offset;
       }
 
-      if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
          fprintf(stderr, "  Slice %u: offset=%u size=%u\n", s, slice_offset,
                  slice_size);
       }
@@ -612,7 +612,7 @@ anv_vaapi_decode_frame(struct anv_cmd_buffer *cmd_buffer,
                                  sizeof(VASliceParameterBufferH264), 1,
                                  &va_slice_param, &slice_param_bufs[s]);
       if (va_status != VA_STATUS_SUCCESS) {
-         if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+         if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
             fprintf(stderr,
                     "Failed to create VA slice parameter buffer %u: %d\n", s,
                     va_status);
@@ -637,7 +637,7 @@ anv_vaapi_decode_frame(struct anv_cmd_buffer *cmd_buffer,
                                  frame_info->srcBufferOffset + slice_offset,
                                  &slice_data_bufs[s]);
       if (va_status != VA_STATUS_SUCCESS) {
-         if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+         if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
             fprintf(stderr, "Failed to create VA slice data buffer %u: %d\n",
                     s, va_status);
          }
@@ -686,7 +686,7 @@ anv_vaapi_decode_frame(struct anv_cmd_buffer *cmd_buffer,
    /* Unmap the bitstream buffer - the VA-API slice data buffers have copied the data */
    anv_gem_munmap(device, bitstream_data, frame_info->srcBufferRange);
 
-   if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+   if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
       fprintf(stderr,
               "VA-API decode: Recorded deferred decode command (%u slices)\n",
               slice_count);
@@ -710,7 +710,7 @@ anv_vaapi_export_video_surface_dmabuf(struct anv_device *device,
       &image->bindings[ANV_IMAGE_MEMORY_BINDING_MAIN];
 
    if (!binding->address.bo) {
-      if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
          fprintf(stderr, "Image has no backing memory\n");
       }
       return vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
@@ -724,7 +724,7 @@ anv_vaapi_export_video_surface_dmabuf(struct anv_device *device,
     * would cause issues.
     */
    if (!bo->is_external) {
-      if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
          fprintf(stderr, "Marking video BO (gem_handle=%u) as external for DMA-buf export\n",
                  bo->gem_handle);
       }
@@ -734,14 +734,14 @@ anv_vaapi_export_video_surface_dmabuf(struct anv_device *device,
    /* Export the BO as a DMA-buf file descriptor using GEM handle to fd */
    int fd = anv_gem_handle_to_fd(device, bo->gem_handle);
    if (fd < 0) {
-      if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
          fprintf(stderr, "Failed to export BO (gem_handle=%u) as DMA-buf: %m\n",
                  bo->gem_handle);
       }
       return vk_error(device, VK_ERROR_TOO_MANY_OBJECTS);
    }
 
-   if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+   if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
       fprintf(stderr, "Exported BO (gem_handle=%u) as DMA-buf fd=%d\n",
               bo->gem_handle, fd);
    }
@@ -844,7 +844,7 @@ anv_vaapi_import_surface_from_image(struct anv_device *device,
     */
    extbuf.data_size = extbuf.offsets[1] + uv_surface->memory_range.size;
 
-   if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+   if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
       fprintf(stderr, "VA-API surface import: %ux%u NV12\n",
               image->vk.extent.width, image->vk.extent.height);
       fprintf(stderr, "  Binding offset: %ld\n",
@@ -890,14 +890,14 @@ anv_vaapi_import_surface_from_image(struct anv_device *device,
    close(fd);
 
    if (va_status != VA_STATUS_SUCCESS) {
-      if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
          fprintf(stderr, "Failed to create VA surface from DMA-buf: %d\n",
                  va_status);
       }
       return vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
    }
 
-   if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+   if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
       fprintf(stderr,
               "Created VA surface %u from Vulkan image (DMA-buf sharing)\n",
               *surface_id);
@@ -932,7 +932,7 @@ anv_vaapi_execute_deferred_decodes(struct anv_device *device,
    util_dynarray_foreach(&cmd_buffer->video.vaapi_decodes,
                          struct anv_vaapi_decode_cmd, decode_cmd)
    {
-      if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
          fprintf(stderr,
                  "Executing deferred VA-API decode: surface=%u, %u slices\n",
                  decode_cmd->target_surface, decode_cmd->slice_count);
@@ -956,7 +956,7 @@ anv_vaapi_execute_deferred_decodes(struct anv_device *device,
          int ret =
             intel_ioctl(device->fd, DRM_IOCTL_I915_GEM_SET_DOMAIN,
                         &set_domain);
-         if (ret != 0 && unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+         if (ret != 0 && unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
             fprintf(stderr,
                     "Failed to set GEM domain before VA-API decode: %m\n");
          }
@@ -967,7 +967,7 @@ anv_vaapi_execute_deferred_decodes(struct anv_device *device,
          vaBeginPicture(va_display, decode_cmd->context,
                         decode_cmd->target_surface);
       if (va_status != VA_STATUS_SUCCESS) {
-         if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+         if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
             fprintf(stderr, "vaBeginPicture failed: %d\n", va_status);
          }
          result = vk_error(device, VK_ERROR_UNKNOWN);
@@ -978,7 +978,7 @@ anv_vaapi_execute_deferred_decodes(struct anv_device *device,
       va_status = vaRenderPicture(va_display, decode_cmd->context,
                                   &decode_cmd->pic_param_buf, 1);
       if (va_status != VA_STATUS_SUCCESS) {
-         if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+         if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
             fprintf(stderr, "vaRenderPicture (picture params) failed: %d\n",
                     va_status);
          }
@@ -993,7 +993,7 @@ anv_vaapi_execute_deferred_decodes(struct anv_device *device,
          va_status = vaRenderPicture(va_display, decode_cmd->context,
                                      &decode_cmd->slice_param_bufs[s], 1);
          if (va_status != VA_STATUS_SUCCESS) {
-            if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+            if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
                fprintf(stderr,
                        "vaRenderPicture (slice %u params) failed: %d\n", s,
                        va_status);
@@ -1007,7 +1007,7 @@ anv_vaapi_execute_deferred_decodes(struct anv_device *device,
          va_status = vaRenderPicture(va_display, decode_cmd->context,
                                      &decode_cmd->slice_data_bufs[s], 1);
          if (va_status != VA_STATUS_SUCCESS) {
-            if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+            if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
                fprintf(stderr, "vaRenderPicture (slice %u data) failed: %d\n",
                        s, va_status);
             }
@@ -1020,7 +1020,7 @@ anv_vaapi_execute_deferred_decodes(struct anv_device *device,
       /* End picture and execute decode */
       va_status = vaEndPicture(va_display, decode_cmd->context);
       if (va_status != VA_STATUS_SUCCESS) {
-         if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+         if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
             fprintf(stderr, "vaEndPicture failed: %d\n", va_status);
          }
          result = vk_error(device, VK_ERROR_UNKNOWN);
@@ -1030,7 +1030,7 @@ anv_vaapi_execute_deferred_decodes(struct anv_device *device,
       /* Sync - wait for decode to complete */
       va_status = vaSyncSurface(va_display, decode_cmd->target_surface);
       if (va_status != VA_STATUS_SUCCESS) {
-         if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+         if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
             fprintf(stderr, "vaSyncSurface failed: %d\n", va_status);
          }
       }
@@ -1053,7 +1053,7 @@ anv_vaapi_execute_deferred_decodes(struct anv_device *device,
          int ret =
             intel_ioctl(device->fd, DRM_IOCTL_I915_GEM_SET_DOMAIN,
                         &set_domain_flush);
-         if (ret != 0 && unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+         if (ret != 0 && unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
             fprintf(stderr,
                     "Failed to flush GEM writes after VA-API decode: %m\n");
          }
@@ -1067,7 +1067,7 @@ anv_vaapi_execute_deferred_decodes(struct anv_device *device,
 
          ret = intel_ioctl(device->fd, DRM_IOCTL_I915_GEM_SET_DOMAIN,
                           &set_domain_read);
-         if (ret != 0 && unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+         if (ret != 0 && unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
             fprintf(stderr,
                     "Failed to set GEM read domain after VA-API decode: %m\n");
          }
@@ -1091,7 +1091,7 @@ anv_vaapi_execute_deferred_decodes(struct anv_device *device,
    /* Clear the deferred commands after execution */
    util_dynarray_clear(&cmd_buffer->video.vaapi_decodes);
 
-   if (unlikely(INTEL_DEBUG(DEBUG_PERF)) && result == VK_SUCCESS) {
+   if (unlikely(INTEL_DEBUG(DEBUG_HASVK)) && result == VK_SUCCESS) {
       fprintf(stderr, "All deferred VA-API decodes executed successfully\n");
    }
 
