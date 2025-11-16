@@ -135,14 +135,14 @@ See [VIDEO_DECODING_ANALYSIS.md](VIDEO_DECODING_ANALYSIS.md) for detailed analys
 
 1. Read the "How to Test" section in [VA_API_BRIDGE_STATUS.md](VA_API_BRIDGE_STATUS.md)
 2. Set up Gen7/Gen8 hardware with VA-API drivers
-3. Enable debugging: `export INTEL_DEBUG=perf LIBVA_MESSAGING_LEVEL=2`
+3. Enable debugging: `export INTEL_DEBUG=hasvk LIBVA_MESSAGING_LEVEL=2`
 4. Test with: `mpv --hwdec=vulkan video.mp4`
 5. Report results!
 
 ### If you want to debug video decode:
 
 1. Read the "VA-API Bridge Debugging" section in [INTEL_DEBUG.md](INTEL_DEBUG.md)
-2. Enable logging with `INTEL_DEBUG=perf`
+2. Enable logging with `INTEL_DEBUG=hasvk`
 3. Enable VA-API logging with `LIBVA_MESSAGING_LEVEL=2`
 4. Optionally trace VA-API: `export LIBVA_TRACE=/tmp/vaapi.log`
 
@@ -186,7 +186,7 @@ A: In `../` (parent directory):
 
 If you test the VA-API bridge and find issues:
 
-1. Enable debugging: `INTEL_DEBUG=perf LIBVA_MESSAGING_LEVEL=2`
+1. Enable debugging: `INTEL_DEBUG=hasvk LIBVA_MESSAGING_LEVEL=2`
 2. Capture the output
 3. Note the specific video file, application, and hardware
 4. File an issue or submit a patch
@@ -195,7 +195,7 @@ If you want to add features:
 
 1. Review the architecture in [VA_API_BRIDGE_ARCHITECTURE.md](VA_API_BRIDGE_ARCHITECTURE.md)
 2. Follow the existing code patterns in `anv_video_vaapi_*.c`
-3. Add appropriate debug logging with `INTEL_DEBUG(DEBUG_PERF)`
+3. Add appropriate debug logging with `INTEL_DEBUG(DEBUG_HASVK)`
 4. Update documentation
 
 ## License

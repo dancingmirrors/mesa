@@ -608,7 +608,7 @@ anv_h264_decode_video_long(struct anv_cmd_buffer *cmd_buffer,
    if (!sps->flags.frame_mbs_only_flag)
       pic_height *= 2;
 
-   if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+   if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
       fprintf(stderr, "  Frame: %ux%u MBs (width_minus1=%u, height=%u)\n",
               sps->pic_width_in_mbs_minus1 + 1, pic_height,
               sps->pic_width_in_mbs_minus1, pic_height - 1);
@@ -914,7 +914,7 @@ anv_h264_decode_video_long(struct anv_cmd_buffer *cmd_buffer,
 
    uint32_t buffer_offset = frame_info->srcBufferOffset & 4095;
 
-   if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+   if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
       fprintf(stderr, "H.264 Decode: %u slices, src_buffer=%p, bo=%p, mapped=%s\n",
               h264_pic_info->sliceCount,
               (void*)src_buffer,
@@ -947,14 +947,14 @@ anv_h264_decode_video_long(struct anv_cmd_buffer *cmd_buffer,
                                             0, &buffer_map);
          if (result == VK_SUCCESS) {
             needs_unmap = true;
-            if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+            if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
                fprintf(stderr, "Mapped bitstream buffer: bo=%p, size=%lu, map=%p\n",
                       (void*)src_buffer->address.bo,
                       (unsigned long)src_buffer->address.bo->size,
                       buffer_map);
             }
          } else {
-            if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+            if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
                fprintf(stderr, "Failed to map bitstream buffer for slice parsing\n");
             }
          }
@@ -1025,7 +1025,7 @@ anv_h264_decode_video_long(struct anv_cmd_buffer *cmd_buffer,
       uint32_t first_mb_x = first_mb_in_slice % pic_width_in_mbs;
       uint32_t first_mb_y = first_mb_in_slice / pic_width_in_mbs;
 
-      if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
          fprintf(stderr, "Slice[%d]: offset=%u, size=%u, type=%u, qp_delta=%d, nal_type=%u, first_mb=%u (x=%u, y=%u)\n",
                  s, buffer_offset + current_offset, slice_data_size,
                  slice_type, slice_qp_delta, nal_unit_type, first_mb_in_slice, first_mb_x, first_mb_y);
@@ -1033,7 +1033,7 @@ anv_h264_decode_video_long(struct anv_cmd_buffer *cmd_buffer,
 
       /* Insert phantom slice if this is the first slice and it doesn't start at (0, 0) */
       if (s == 0 && (first_mb_x != 0 || first_mb_y != 0)) {
-         if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+         if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
             fprintf(stderr, "Inserting phantom slice at (0, 0)\n");
          }
 
@@ -1094,7 +1094,7 @@ anv_h264_decode_video_long(struct anv_cmd_buffer *cmd_buffer,
    if (needs_unmap && buffer_map) {
       anv_device_unmap_bo(cmd_buffer->device, src_buffer->address.bo,
                          buffer_map, src_buffer->address.bo->size);
-      if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
          fprintf(stderr, "Unmapped bitstream buffer\n");
       }
    }

@@ -46,7 +46,7 @@ The VA-API bridge for HasVK (Vulkan driver for Intel Gen7-8 hardware) is **funct
 - ✅ Cache coherency between video engine and render engine
 
 ### Debugging Support
-- ✅ INTEL_DEBUG=perf logging for VA-API operations
+- ✅ INTEL_DEBUG=hasvk logging for VA-API operations
 - ✅ Detailed parameter translation logging
 - ✅ Surface import/export tracking
 - ✅ Error reporting
@@ -121,7 +121,7 @@ The VA-API bridge for HasVK (Vulkan driver for Intel Gen7-8 hardware) is **funct
 
 ```bash
 # Enable debugging
-export INTEL_DEBUG=perf
+export INTEL_DEBUG=hasvk
 export LIBVA_MESSAGING_LEVEL=2
 
 # Test video decode
@@ -142,7 +142,7 @@ ffmpeg -hwaccels
 ffmpeg -hwaccel vulkan -i input.mp4 -f null -
 
 # Enable debugging
-export INTEL_DEBUG=perf LIBVA_MESSAGING_LEVEL=2
+export INTEL_DEBUG=hasvk LIBVA_MESSAGING_LEVEL=2
 ffmpeg -hwaccel vulkan -i input.mp4 output.mp4
 ```
 
@@ -162,7 +162,7 @@ ffmpeg -hwaccel vulkan -i input.mp4 output.mp4
   vainfo
   # Should list H.264 decode profiles
   ```
-- Check INTEL_DEBUG=perf output for specific errors
+- Check INTEL_DEBUG=hasvk output for specific errors
 - Verify video content is valid H.264
 - Try with different video files
 

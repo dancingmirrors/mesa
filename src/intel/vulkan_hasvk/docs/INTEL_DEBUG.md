@@ -5,7 +5,7 @@ This document summarizes which `INTEL_DEBUG` environment variable options now wo
 ## Usage
 Set the `INTEL_DEBUG` environment variable to one or more comma-separated options:
 ```bash
-INTEL_DEBUG=bat,perf vkcube
+INTEL_DEBUG=bat,hasvk vkcube
 INTEL_DEBUG=fs,vs vkcube
 ```
 
@@ -62,10 +62,12 @@ INTEL_DEBUG=bat-stats vkcube
 
 ## Performance & Debugging
 
-- **`perf`** - ✅ ALREADY WORKED (custom hasvk addition) - Print performance warnings
+- **`perf`** - ✅ ALREADY WORKED - Print performance warnings
   - Shows warnings about suboptimal usage patterns
   - Helps identify performance issues
-  - **Also enables VA-API bridge logging** (when video decode is used):
+  
+- **`hasvk`** - ✅ NEW - Print hasvk driver debug messages
+  - **Enables VA-API bridge logging** (when video decode is used):
     - VA display initialization status
     - Video session creation/destruction
     - Surface import/export operations
@@ -153,7 +155,12 @@ INTEL_DEBUG=bat,pc,sync vkcube
 
 **Performance analysis:**
 ```bash
-INTEL_DEBUG=perf,bat-stats,l3 vkcube
+INTEL_DEBUG=hasvk,bat-stats,l3 vkcube
+```
+
+**Video decode debugging:**
+```bash
+INTEL_DEBUG=hasvk vkcube
 ```
 
 **Disable all compression:**
@@ -185,7 +192,7 @@ When using Vulkan Video decode on hasvk (Gen7-8 hardware), the driver routes dec
 
 ### INTEL_DEBUG Flags for Video
 
-- **`INTEL_DEBUG=perf`** - Enables detailed VA-API bridge logging
+- **`INTEL_DEBUG=hasvk`** - Enables detailed VA-API bridge logging
   - Video session lifecycle (create/destroy)
   - Surface import/export via DMA-buf
   - H.264 parameter translation (SPS/PPS/slice headers)
@@ -215,7 +222,7 @@ When using Vulkan Video decode on hasvk (Gen7-8 hardware), the driver routes dec
 
 ```bash
 # Enable all video-related debugging
-export INTEL_DEBUG=perf
+export INTEL_DEBUG=hasvk
 export LIBVA_MESSAGING_LEVEL=2
 export LIBVA_TRACE=/tmp/vaapi-trace.log
 
@@ -229,7 +236,7 @@ cat /tmp/vaapi-trace.log
 ### Common Video Decode Issues
 
 **Symptom:** Video decode fails or produces garbage output  
-**Debug:** Check `INTEL_DEBUG=perf` output for:
+**Debug:** Check `INTEL_DEBUG=hasvk` output for:
 - Failed surface import (DMA-buf issues)
 - Invalid SPS/PPS IDs in parameter translation
 - Missing reference frames in DPB
