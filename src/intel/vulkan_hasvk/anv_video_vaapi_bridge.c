@@ -49,6 +49,7 @@
 #include <sys/stat.h>
 #include <poll.h>
 #include <errno.h>
+#include <inttypes.h>
 
 #include "vk_video/vulkan_video_codecs_common.h"
 #include "vk_video/vulkan_video_codec_h264std.h"
@@ -865,19 +866,19 @@ anv_vaapi_import_surface_from_image(struct anv_device *device,
    if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
       fprintf(stderr, "VA-API surface import: %ux%u NV12\n",
               image->vk.extent.width, image->vk.extent.height);
-      fprintf(stderr, "  Binding offset: %ld\n",
+      fprintf(stderr, "  Binding offset: %" PRId64 "\n",
               binding->address.offset);
       fprintf(stderr, "  Total data size: %u\n",
               extbuf.data_size);
-      fprintf(stderr, "  Y plane:  pitch=%u offset=%u (binding_offset=%ld + plane_offset=%lu)\n",
+      fprintf(stderr, "  Y plane:  pitch=%u offset=%u (binding_offset=%" PRId64 " + plane_offset=%" PRIu64 ")\n",
               extbuf.pitches[0], extbuf.offsets[0], 
               binding->address.offset, y_surface->memory_range.offset);
-      fprintf(stderr, "  UV plane: pitch=%u offset=%u (binding_offset=%ld + plane_offset=%lu)\n",
+      fprintf(stderr, "  UV plane: pitch=%u offset=%u (binding_offset=%" PRId64 " + plane_offset=%" PRIu64 ")\n",
               extbuf.pitches[1], extbuf.offsets[1],
               binding->address.offset, uv_surface->memory_range.offset);
-      fprintf(stderr, "  Y surface:  row_pitch=%u size=%lu\n",
+      fprintf(stderr, "  Y surface:  row_pitch=%u size=%" PRIu64 "\n",
               y_surface->isl.row_pitch_B, y_surface->memory_range.size);
-      fprintf(stderr, "  UV surface: row_pitch=%u offset=%lu size=%lu\n",
+      fprintf(stderr, "  UV surface: row_pitch=%u offset=%" PRIu64 " size=%" PRIu64 "\n",
               uv_surface->isl.row_pitch_B, uv_surface->memory_range.offset,
               uv_surface->memory_range.size);
    }
