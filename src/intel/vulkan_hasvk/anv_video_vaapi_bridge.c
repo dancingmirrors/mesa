@@ -846,24 +846,38 @@ anv_vaapi_import_surface_from_image(struct anv_device *device,
    extbuf.pitches[0] = y_surface->isl.row_pitch_B;
    extbuf.pitches[1] = uv_surface->isl.row_pitch_B;
 
-   /* CRITICAL ASSUMPTION CHECK: The intel-vaapi-driver for NV12 format ignores
-    * the offsets[] array we pass and instead hardcodes y_cb_offset = height,
-    * assuming the UV plane is at offset (height * pitch) from the BO start.
+   /* CRITICAL UNDERSTANDING OF INTEL-VAAPI-DRIVER NV12 HANDLING:
+    * Based on analysis of intel-vaapi-driver source code (i965_drv_video.c),
+    * when importing external NV12 surfaces via DMA-buf, the driver:
     * 
-    * This means the driver REQUIRES that the Y plane starts at BO offset 0.
-    * If not, the driver will read from the wrong memory location.
+    * 1. Sets obj_surface->width = pitches[0] (Y plane pitch in bytes)
+    * 2. Calculates obj_surface->height = offsets[1] / width
+    *    This computes: height = UV_plane_offset / Y_plane_pitch (in rows)
+    * 3. Sets y_cb_offset = obj_surface->height (UV offset in rows)
+    * 4. When programming hardware, it uses: byte_offset = y_cb_offset * pitch
     * 
-    * For non-disjoint video images (which is the normal case), y_surface->memory_range.offset
-    * is always 0 (plane 0 is first). The binding->address.offset should also be 0 for
-    * video images using dedicated allocations (best practice).
+    * So the driver DOES respect our offsets, just indirectly:
+    * - We pass offsets[1] = actual UV plane byte offset from ISL layout
+    * - Driver calculates: obj_surface->height = offsets[1] / pitches[0]
+    * - Driver sets: y_cb_offset = obj_surface->height
+    * - Hardware uses: UV_byte_offset = y_cb_offset * pitch = offsets[1]
+    * 
+    * CRITICAL REQUIREMENT: For this to work correctly:
+    * - Y plane MUST start at BO offset 0 (binding->address.offset must be 0)
+    * - offsets[1] MUST be exactly where ISL placed the UV plane
+    * - offsets[1] / pitches[0] MUST be aligned to 32 (for tiled surfaces)
+    * 
+    * This means we should NOT try to "fix" the layout to match what we think
+    * the driver wants - we should pass the exact ISL layout and the driver
+    * will interpret it correctly.
     */
    uint64_t y_plane_abs_offset = binding->address.offset + y_surface->memory_range.offset;
    if (y_plane_abs_offset != 0) {
       if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
          fprintf(stderr, "WARNING: Video image Y plane not at BO offset 0 (binding_offset=%" PRId64 " + y_offset=%" PRIu64 ")\n",
                  binding->address.offset, y_surface->memory_range.offset);
-         fprintf(stderr, "This will cause incorrect decoding - intel-vaapi-driver assumes Y plane at BO offset 0.\n");
-         fprintf(stderr, "Use dedicated memory allocation with offset=0 for video images.\n");
+         fprintf(stderr, "This will cause incorrect decoding - intel-vaapi-driver requires Y plane at BO offset 0.\n");
+         fprintf(stderr, "The driver calculates height = UV_offset / Y_pitch, which will be wrong if Y doesn't start at 0.\n");
       }
    }
 
@@ -875,10 +889,11 @@ anv_vaapi_import_surface_from_image(struct anv_device *device,
     * not the start of the binding. If the binding has a non-zero offset within the BO
     * (binding->address.offset), we must add that to each plane's offset.
     * 
-    * NOTE: For NV12 format, intel-vaapi-driver currently ignores these offsets and
-    * hardcodes y_cb_offset = height, assuming UV is at (height * pitch) from BO start.
-    * However, we pass correct offsets for compatibility with other drivers and in case
-    * the intel-vaapi-driver is fixed in the future.
+    * The intel-vaapi-driver uses these offsets indirectly:
+    * - It calculates obj_surface->height = offsets[1] / pitches[0]
+    * - Then sets y_cb_offset = obj_surface->height (in rows)
+    * - Hardware computes byte offset as: y_cb_offset * pitch = offsets[1]
+    * So the UV plane offset we pass IS respected, just via this calculation.
     */
    extbuf.offsets[0] = binding->address.offset + y_surface->memory_range.offset;
    extbuf.offsets[1] = binding->address.offset + uv_surface->memory_range.offset;
@@ -905,7 +920,7 @@ anv_vaapi_import_surface_from_image(struct anv_device *device,
       fprintf(stderr, "  UV surface: row_pitch=%u memory_offset=%" PRIu64 " size=%" PRIu64 "\n",
               uv_surface->isl.row_pitch_B, uv_surface->memory_range.offset,
               uv_surface->memory_range.size);
-      fprintf(stderr, "  NOTE: intel-vaapi-driver ignores offsets[] for NV12, assumes UV at height*pitch\n");
+      fprintf(stderr, "  NOTE: intel-vaapi-driver calculates height = UV_offset / Y_pitch, then uses that for y_cb_offset\n");
    }
 
    /* Set up surface attributes for DRM PRIME import */
@@ -1141,37 +1156,28 @@ anv_vaapi_execute_deferred_decodes(struct anv_device *device,
        * After VA-API decode completes, ensure proper cache coherency
        * between the VA-API driver (video engine) and Vulkan (render engine).
        * 
-       * First, flush any writes from the video engine by setting GTT write domain.
-       * This ensures caches are properly flushed so Vulkan can see the decoded data.
+       * The video engine may have independent caches or bypass LLC, so we need
+       * to ensure caches are invalidated for the render engine to see fresh data.
+       * 
+       * According to i915 documentation and research:
+       * - vaSyncSurface has already waited for the video engine to complete
+       * - We now need to invalidate any stale cached data in the render engine
+       * - Setting read_domains without write_domain triggers cache invalidation
+       * - Using both GTT and RENDER domains ensures all relevant caches are flushed
        */
       if (decode_cmd->target_bo && decode_cmd->target_gem_handle) {
-         /* Step 1: Flush video engine writes */
-         struct drm_i915_gem_set_domain set_domain_flush = {
+         struct drm_i915_gem_set_domain set_domain = {
             .handle = decode_cmd->target_gem_handle,
-            .read_domains = I915_GEM_DOMAIN_GTT,
-            .write_domain = I915_GEM_DOMAIN_GTT,  /* Flush writes from video engine */
+            .read_domains = I915_GEM_DOMAIN_GTT | I915_GEM_DOMAIN_RENDER,
+            .write_domain = 0,  /* Read-only transition, invalidates caches */
          };
 
          int ret =
             intel_ioctl(device->fd, DRM_IOCTL_I915_GEM_SET_DOMAIN,
-                        &set_domain_flush);
+                        &set_domain);
          if (ret != 0 && unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
             fprintf(stderr,
-                    "Failed to flush GEM writes after VA-API decode: %m\n");
-         }
-         
-         /* Step 2: Transition to read-only for Vulkan */
-         struct drm_i915_gem_set_domain set_domain_read = {
-            .handle = decode_cmd->target_gem_handle,
-            .read_domains = I915_GEM_DOMAIN_GTT,
-            .write_domain = 0,  /* Transition to read-only */
-         };
-
-         ret = intel_ioctl(device->fd, DRM_IOCTL_I915_GEM_SET_DOMAIN,
-                          &set_domain_read);
-         if (ret != 0 && unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-            fprintf(stderr,
-                    "Failed to set GEM read domain after VA-API decode: %m\n");
+                    "Failed to invalidate caches after VA-API decode: %m\n");
          }
       }
 
