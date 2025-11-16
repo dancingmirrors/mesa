@@ -6,10 +6,11 @@
 
 ## Problem Description
 
-The VA-API bridge was displaying green screens or residual framebuffer content when decoding H.264 video via DMA-buf sharing. The issue had THREE root causes:
+The VA-API bridge was displaying green screens or residual framebuffer content when decoding H.264 video via DMA-buf sharing. The issue had FOUR root causes:
 1. Plane offsets were calculated incorrectly
 2. The `data_size` field was not being set
 3. Cache coherency synchronization was insufficient
+4. Uninitialized array elements in VASurfaceAttribExternalBuffers
 
 ## Root Causes
 
@@ -45,6 +46,24 @@ The problem:
 - Previous code only set read domain, didn't explicitly flush writes
 
 This is the most subtle and critical issue - even with correct surface import, cache coherency problems prevent the decoded data from being visible.
+
+### Issue 4: Uninitialized Array Elements in VASurfaceAttribExternalBuffers
+
+The `VASurfaceAttribExternalBuffers` structure contains `pitches[4]` and `offsets[4]` arrays to support up to 4 planes. For NV12 format, only 2 planes are used (Y and UV), but the structure was being initialized with a designated initializer that left indices 2 and 3 uninitialized.
+
+The problem:
+- Stack-allocated structure with designated initializer doesn't zero unused fields
+- `pitches[2]`, `pitches[3]`, `offsets[2]`, `offsets[3]` contained garbage values
+- Some VA-API drivers or validation layers may inspect all array elements
+- Could cause validation failures or undefined behavior
+
+Expected values:
+```
+pitches[4]=1920 1920 0 0
+offsets[4]=0 2088960 0 0
+```
+
+Without proper initialization, the last two values in each array were undefined.
 
 ### Example Scenario
 
@@ -157,6 +176,40 @@ struct drm_i915_gem_set_domain set_domain_read = {
 intel_ioctl(device->fd, DRM_IOCTL_I915_GEM_SET_DOMAIN, &set_domain_read);
 ```
 
+### Fix 4: Array Initialization
+
+**File:** `src/intel/vulkan_hasvk/anv_video_vaapi_bridge.c`  
+**Function:** `anv_vaapi_import_surface_from_image()`  
+**Lines:** 812-820
+
+**Before (BROKEN):**
+```c
+VASurfaceAttribExternalBuffers extbuf = {
+   .pixel_format = VA_FOURCC_NV12,
+   .width = image->vk.extent.width,
+   .height = image->vk.extent.height,
+   .num_buffers = 1,
+   .buffers = (uintptr_t *) & fd,
+   .flags = 0,
+   .num_planes = 2,
+};
+// pitches[2], pitches[3], offsets[2], offsets[3] are UNINITIALIZED!
+```
+
+**After (FIXED):**
+```c
+VASurfaceAttribExternalBuffers extbuf;
+memset(&extbuf, 0, sizeof(extbuf));  // Zero all fields including arrays
+extbuf.pixel_format = VA_FOURCC_NV12;
+extbuf.width = image->vk.extent.width;
+extbuf.height = image->vk.extent.height;
+extbuf.num_buffers = 1;
+extbuf.buffers = (uintptr_t *) & fd;
+extbuf.flags = 0;
+extbuf.num_planes = 2;
+// All unused array elements are now properly zeroed
+```
+
 ## Why These Fixes Were Needed
 
 ### Fix 1: Plane Offsets (Binding vs BO)
@@ -206,6 +259,31 @@ The two-step synchronization:
 
 This is critical on Intel Gen7-8 where cache coherency between engines is not automatic.
 
+### Fix 4: Array Initialization (Uninitialized Memory)
+
+C designated initializers only initialize the fields that are explicitly listed. For stack-allocated structures, uninitialized fields contain whatever garbage was previously on the stack.
+
+The `VASurfaceAttribExternalBuffers` structure has:
+- `uint32_t pitches[4]` - Row pitch for each plane
+- `uint32_t offsets[4]` - Offset for each plane
+
+For NV12 (2 planes), we only set indices 0 and 1:
+- `pitches[0]` = Y plane pitch (1920 for 1920x1088)
+- `pitches[1]` = UV plane pitch (1920)
+- `pitches[2]` = **UNINITIALIZED** (could be any value!)
+- `pitches[3]` = **UNINITIALIZED** (could be any value!)
+
+Similarly for offsets. While `num_planes=2` tells VA-API to ignore indices 2 and 3, some VA-API implementations or validation layers may still:
+- Read all array elements for logging/debugging
+- Validate that unused elements are zero
+- Have undefined behavior when encountering garbage values
+
+Using `memset(&extbuf, 0, sizeof(extbuf))` before setting fields ensures:
+- All unused array elements are zero
+- All padding bytes are zero
+- Predictable behavior across all VA-API implementations
+- Clean LIBVA_TRACE output showing `pitches[4]=1920 1920 0 0` instead of garbage
+
 ### When Binding Offset is Zero
 
 For most video images created with dedicated allocations:
@@ -241,9 +319,12 @@ This fix is related to but distinct from the DPB tiling fix documented in `VA_AP
 | Fix | Issue | Solution |
 |-----|-------|----------|
 | **DPB Tiling** | Reference frames not having tiling set | Set tiling for both DST and DPB images |
-| **DMA-buf Offsets** (this fix) | Plane offsets calculated incorrectly | Add binding offset to plane offsets |
+| **DMA-buf Offsets** | Plane offsets calculated incorrectly | Add binding offset to plane offsets |
+| **Data Size** | `data_size` field was 0 | Calculate as UV offset + UV size |
+| **Cache Coherency** | Video/render engine cache mismatch | Two-step GEM domain transition |
+| **Array Initialization** | Uninitialized array elements | Use memset to zero entire structure |
 
-Both fixes are necessary for correct VA-API decode operation.
+All fixes are necessary for correct VA-API decode operation.
 
 ## Debugging the Issue
 
