@@ -65,6 +65,7 @@ struct anv_vaapi_decode_cmd {
    VABufferID *slice_param_bufs;  /* Array of slice parameter buffers */
    VABufferID *slice_data_bufs;   /* Array of slice data buffers */
    uint32_t slice_count;          /* Number of slices */
+   int producer_syncfd;           /* Optional sync fd from producer (or -1) */
 };
 
 /**

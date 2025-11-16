@@ -46,6 +46,9 @@
 #include <unistd.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <sys/stat.h>
+#include <poll.h>
+#include <errno.h>
 
 #include "vk_video/vulkan_video_codecs_common.h"
 #include "vk_video/vulkan_video_codec_h264std.h"
@@ -676,6 +679,7 @@ anv_vaapi_decode_frame(struct anv_cmd_buffer *cmd_buffer,
       .slice_param_bufs = slice_param_bufs,
       .slice_data_bufs = slice_data_bufs,
       .slice_count = slice_count,
+      .producer_syncfd = -1,  /* No sync fd by default */
    };
 
    /* Add command to the deferred execution queue
@@ -741,9 +745,16 @@ anv_vaapi_export_video_surface_dmabuf(struct anv_device *device,
       return vk_error(device, VK_ERROR_TOO_MANY_OBJECTS);
    }
 
+   /* Log fstat info for the exported fd */
    if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-      fprintf(stderr, "Exported BO (gem_handle=%u) as DMA-buf fd=%d\n",
-              bo->gem_handle, fd);
+      struct stat st;
+      if (fstat(fd, &st) == 0) {
+         fprintf(stderr, "Exported BO (gem_handle=%u) as DMA-buf fd=%d (inode=%lu, size=%ld)\n",
+                 bo->gem_handle, fd, (unsigned long)st.st_ino, (long)st.st_size);
+      } else {
+         fprintf(stderr, "Exported BO (gem_handle=%u) as DMA-buf fd=%d (fstat failed: %m)\n",
+                 bo->gem_handle, fd);
+      }
    }
 
    *fd_out = fd;
@@ -815,7 +826,14 @@ anv_vaapi_import_surface_from_image(struct anv_device *device,
    extbuf.width = image->vk.extent.width;
    extbuf.height = image->vk.extent.height;
    extbuf.num_buffers = 1;
-   extbuf.buffers = (uintptr_t *) & fd;
+   /* Use explicit fd array as recommended */
+   int fds[1] = { fd };
+   extbuf.buffers = (uintptr_t *)fds;
+   /* Set flags for DRM PRIME memory type
+    * For legacy (non-modifier) imports, the tiling information is retrieved
+    * by the VA-API driver via gem/get_tiling from the kernel.
+    * The VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME flag is set in the attribs array below.
+    */
    extbuf.flags = 0;
    extbuf.num_planes = 2;          /* Y and UV for NV12 */
 
@@ -886,7 +904,7 @@ anv_vaapi_import_surface_from_image(struct anv_device *device,
                                 attribs, 2      /* num_attribs */
       );
 
-   /* Close the fd - VA-API will duplicate it internally */
+   /* Close the fd - VA-API will duplicate it internally if needed */
    close(fd);
 
    if (va_status != VA_STATUS_SUCCESS) {
@@ -904,6 +922,38 @@ anv_vaapi_import_surface_from_image(struct anv_device *device,
    }
 
    return VK_SUCCESS;
+}
+
+/**
+ * Wait for a sync fd to be signaled using poll
+ * 
+ * This is a simple implementation using poll() instead of libsync.
+ * Returns 0 on success, -1 on error.
+ */
+static int
+sync_wait(int fd, int timeout_ms)
+{
+   struct pollfd fds = {
+      .fd = fd,
+      .events = POLLIN,
+   };
+   
+   int ret;
+   do {
+      ret = poll(&fds, 1, timeout_ms);
+   } while (ret == -1 && errno == EINTR);
+   
+   if (ret < 0) {
+      return -1;
+   }
+   
+   if (ret == 0) {
+      /* Timeout */
+      errno = ETIME;
+      return -1;
+   }
+   
+   return 0;
 }
 
 /**
@@ -936,6 +986,32 @@ anv_vaapi_execute_deferred_decodes(struct anv_device *device,
          fprintf(stderr,
                  "Executing deferred VA-API decode: surface=%u, %u slices\n",
                  decode_cmd->target_surface, decode_cmd->slice_count);
+      }
+
+      /* Optional: Wait for producer sync fd if provided
+       * This allows waiting for upstream producers to finish before decoding.
+       */
+      if (decode_cmd->producer_syncfd >= 0) {
+         if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+            fprintf(stderr, "Waiting for producer sync fd %d...\n",
+                    decode_cmd->producer_syncfd);
+         }
+         
+         /* Wait for sync fd with 5 second timeout */
+         int wait_ret = sync_wait(decode_cmd->producer_syncfd, 5000);
+         if (wait_ret != 0) {
+            if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+               fprintf(stderr, "Failed to wait for producer sync fd: %m\n");
+            }
+            /* Continue anyway - the decode might still work */
+         } else {
+            if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+               fprintf(stderr, "Producer sync fd signaled successfully\n");
+            }
+         }
+         
+         /* Close the sync fd after waiting */
+         close(decode_cmd->producer_syncfd);
       }
 
       /* CRITICAL SYNCHRONIZATION (Before VA-API decode):

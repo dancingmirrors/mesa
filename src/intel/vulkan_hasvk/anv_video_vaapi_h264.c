@@ -63,7 +63,17 @@ translate_h264_sps(const StdVideoH264SequenceParameterSet *vk_sps,
 
    va_pic->num_ref_frames = vk_sps->max_num_ref_frames;
    va_pic->picture_width_in_mbs_minus1 = vk_sps->pic_width_in_mbs_minus1;
-   va_pic->picture_height_in_mbs_minus1 = vk_sps->pic_height_in_map_units_minus1;
+   /* Adjust picture_height_in_mbs_minus1 for field vs frame coding
+    * When frame_mbs_only_flag is 0, the height is in map units (field pairs),
+    * and we need to multiply by 2 to get the actual height in MBs.
+    * When frame_mbs_only_flag is 1, it's already in MBs.
+    */
+   if (vk_sps->flags.frame_mbs_only_flag) {
+      va_pic->picture_height_in_mbs_minus1 = vk_sps->pic_height_in_map_units_minus1;
+   } else {
+      /* Field coding: height is in map units, convert to MBs */
+      va_pic->picture_height_in_mbs_minus1 = (vk_sps->pic_height_in_map_units_minus1 + 1) * 2 - 1;
+   }
    va_pic->bit_depth_luma_minus8 = vk_sps->bit_depth_luma_minus8;
    va_pic->bit_depth_chroma_minus8 = vk_sps->bit_depth_chroma_minus8;
 }
