@@ -1,14 +1,18 @@
-# VA-API Bridge Critical Fix: DMA-buf Plane Offset Calculation
+# VA-API Bridge Critical Fix: DMA-buf Surface Import
 
 **Date:** November 2024  
-**Issue:** Green screen / old framebuffer content due to incorrect plane offsets  
+**Issue:** Green screen / old framebuffer content due to incorrect surface import parameters  
 **Status:** FIXED
 
 ## Problem Description
 
-The VA-API bridge was displaying green screens or residual framebuffer content when decoding H.264 video via DMA-buf sharing. The issue occurred because plane offsets passed to VA-API were calculated incorrectly.
+The VA-API bridge was displaying green screens or residual framebuffer content when decoding H.264 video via DMA-buf sharing. The issue had TWO root causes:
+1. Plane offsets were calculated incorrectly
+2. The `data_size` field was not being set
 
-## Root Cause
+## Root Causes
+
+### Issue 1: Incorrect Plane Offsets
 
 When importing Vulkan video surfaces into VA-API via DMA-buf, the plane offsets must be relative to the start of the buffer object (BO), not relative to the start of the image binding.
 
@@ -19,7 +23,15 @@ The issue manifested as follows:
 3. **BO export**: The entire BO is exported via DMA-buf (not just the binding)
 4. **Offset mismatch**: Code was using plane offsets relative to binding, not BO
 5. **VA-API confusion**: VA-API interpreted offsets incorrectly, reading wrong memory locations
-6. **Result**: Decoded data written to correct location, but VA-API reading from wrong location
+
+### Issue 2: Missing data_size Field
+
+The `VASurfaceAttribExternalBuffers` structure has a `data_size` field that must be set to the total size of the buffer data. This was being left uninitialized (0), causing VA-API to not know how much data is in the buffer.
+
+Without `data_size` set:
+- VA-API cannot validate the buffer size
+- VA-API may not access the surface data correctly
+- Surface import may succeed but data access fails
 
 ### Example Scenario
 
@@ -40,25 +52,60 @@ extbuf.offsets[0] = binding->address.offset + y_surface->memory_range.offset;
 extbuf.offsets[1] = binding->address.offset + uv_surface->memory_range.offset;
 ```
 
-## The Fix
+## The Fixes
 
 **File:** `src/intel/vulkan_hasvk/anv_video_vaapi_bridge.c`  
 **Function:** `anv_vaapi_import_surface_from_image()`  
-**Lines:** 838-839
+**Lines:** 838-845
 
-### Before (BROKEN)
+### Fix 1: Plane Offset Calculation
+
+**Before (BROKEN):**
 ```c
 extbuf.offsets[0] = 0;       /* Y plane starts at beginning */
 extbuf.offsets[1] = uv_surface->memory_range.offset; /* UV plane from ISL */
 ```
 
-### After (FIXED)
+**After (FIXED):**
 ```c
 extbuf.offsets[0] = binding->address.offset + y_surface->memory_range.offset;
 extbuf.offsets[1] = binding->address.offset + uv_surface->memory_range.offset;
 ```
 
-## Why This Was Needed
+### Fix 2: Data Size Field
+
+**Before (BROKEN):**
+```c
+VASurfaceAttribExternalBuffers extbuf = {
+   .pixel_format = VA_FOURCC_NV12,
+   .width = image->vk.extent.width,
+   .height = image->vk.extent.height,
+   // ... other fields ...
+   // data_size NOT SET - defaults to 0!
+};
+```
+
+**After (FIXED):**
+```c
+VASurfaceAttribExternalBuffers extbuf = {
+   .pixel_format = VA_FOURCC_NV12,
+   .width = image->vk.extent.width,
+   .height = image->vk.extent.height,
+   // ... other fields ...
+};
+
+// Set total data size for the DMA-buf
+extbuf.data_size = extbuf.offsets[1] + uv_surface->memory_range.size;
+```
+
+For a 1920x1088 NV12 surface:
+- UV offset: 2088960 bytes
+- UV size: 1044480 bytes  
+- **Total data_size: 3133440 bytes**
+
+## Why These Fixes Were Needed
+
+### Fix 1: Plane Offsets (Binding vs BO)
 
 The DMA-buf sharing architecture has a subtle but critical detail:
 
@@ -69,6 +116,23 @@ The DMA-buf sharing architecture has a subtle but critical detail:
 5. **Plane layout**: `surface->memory_range.offset` is the plane's offset within the binding
 
 Therefore: **BO offset = binding offset + plane offset**
+
+### Fix 2: data_size Field (Buffer Size Validation)
+
+The `VASurfaceAttribExternalBuffers` structure needs `data_size` to:
+
+1. **Validate buffer size**: VA-API checks that the buffer is large enough
+2. **Memory safety**: Ensures VA-API doesn't read beyond buffer bounds
+3. **Driver requirements**: Some VA-API drivers (like i965) require this field
+
+The `data_size` is the total size of all data in the buffer:
+- **Formula**: `UV plane offset + UV plane size`
+- **Why**: This gives the end of the last plane's data
+
+Without this field set, VA-API trace shows `data_size=0`, which can cause:
+- Import to succeed but surface usage to fail
+- Incorrect memory validation
+- Driver-specific issues
 
 ### When Binding Offset is Zero
 
@@ -111,22 +175,46 @@ Both fixes are necessary for correct VA-API decode operation.
 
 ## Debugging the Issue
 
-To detect this issue:
+To detect these issues:
 
 1. Enable debugging:
    ```bash
    export INTEL_DEBUG=perf
    export LIBVA_MESSAGING_LEVEL=2
+   export LIBVA_TRACE=/tmp/va.log
    ```
 
-2. Look for offset values in logs:
+2. Check for binding offset in hasvk logs:
    ```
-   Binding offset: 4096
-   Y plane:  pitch=1920 offset=4096 (binding_offset=4096 + plane_offset=0)
-   UV plane: pitch=1920 offset=2093056 (binding_offset=4096 + plane_offset=2088960)
+   Binding offset: 0  (or non-zero if using suballocations)
+   Total data size: 3133440  (should NOT be 0!)
+   Y plane:  pitch=1920 offset=0 (binding_offset=0 + plane_offset=0)
+   UV plane: pitch=1920 offset=2088960 (binding_offset=0 + plane_offset=2088960)
    ```
 
-3. If binding offset is non-zero and not reflected in final offsets, this bug is present
+3. Check VA-API trace for data_size:
+   ```
+   --VASurfaceAttribExternalBufferDescriptor
+     pixel_format=0x3231564e
+     width=1920
+     height=1088
+     data_size=3133440  <-- Should be NON-ZERO!
+     num_planes=2
+     pitches[4]=1920 1920 0 0
+     offsets[4]=0 2088960 0 0
+   ```
+
+### Signs of the Bug
+
+**Before fixes:**
+- LIBVA_TRACE shows `data_size=0`
+- Video shows green screens or old framebuffer content
+- No errors reported, but decode output is wrong
+
+**After fixes:**
+- LIBVA_TRACE shows correct `data_size` (e.g., 3133440 for 1920x1088)
+- Video decodes correctly
+- Both I-frames and P/B-frames work properly
 
 ## Testing Recommendations
 
