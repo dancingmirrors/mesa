@@ -4059,9 +4059,29 @@ wsi_AcquireDrmDisplayEXT(VkPhysicalDevice physicalDevice,
    struct wsi_display *wsi =
       (struct wsi_display *) wsi_device->wsi[VK_ICD_WSI_PLATFORM_DISPLAY];
 
-   /* XXX no support for mulitple leases yet */
-   if (wsi->fd >= 0 || !local_drmIsMaster(drmFd))
-      return VK_ERROR_INITIALIZATION_FAILED;
+   /* "The provided drmFd must correspond to the one owned by the
+    *  physicalDevice.  If not, the error code VK_ERROR_UNKNOWN must be returned.
+    *  The DRM FD must have DRM mast⁠er permissions.  If any error is encountered
+    *  during the acquisition of the display, the call must return the error code
+    *  VK_ERROR_INITIALIZATION_FAILED."
+    *
+    * Since the wsi->fd will only be set to a master fd, we just check if they
+    * provided an fd that matches the device's, and treat the "DRM fd must have
+    * DRM master permissions" as referring to the physicalDevice's.
+    */
+   if (wsi->fd >= 0) {
+      struct stat in_stat = {0}, wsi_stat = {0};
+      if (fstat(drmFd, &in_stat) != 0 ||
+          fstat(wsi->fd, &wsi_stat) != 0) {
+         wsi_display_debug("vkAcquireDRMDisplayEXT(rdev=%d/%d) vs wsi->fd rdev=%d/%d\n",
+            major(in_stat.st_rdev), minor(in_stat.st_rdev),
+            major(wsi_stat.st_rdev), minor(wsi_stat.st_rdev));
+         return VK_ERROR_UNKNOWN;
+      }
+   } else {
+      if (!local_drmIsMaster(drmFd))
+         return VK_ERROR_INITIALIZATION_FAILED;
+   }
 
    struct wsi_display_connector *connector =
          wsi_display_connector_from_handle(display);
@@ -4074,7 +4094,8 @@ wsi_AcquireDrmDisplayEXT(VkPhysicalDevice physicalDevice,
 
    drmModeFreeConnector(drm_connector);
 
-   wsi->fd = drmFd;
+   if (wsi->fd < 0)
+      wsi->fd = drmFd;
    return VK_SUCCESS;
 }
 
