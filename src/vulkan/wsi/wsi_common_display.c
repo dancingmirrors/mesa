@@ -2847,6 +2847,7 @@ _wsi_display_queue_next(struct wsi_swapchain *drv_chain)
       if (ret != -EACCES) {
          connector->active = false;
          image->state = WSI_IMAGE_IDLE;
+         wsi_display_debug("drm_atomic_commit error: %s\n", strerror(-ret));
          wsi_display_surface_error(chain, VK_ERROR_SURFACE_LOST_KHR);
          return VK_ERROR_SURFACE_LOST_KHR;
       }
