@@ -1,5 +1,5 @@
-/* Copyright © 2024 Intel Corporation 
- * SPDX-License-Identifier: MIT       
+/* Copyright © 2024 Intel Corporation
+ * SPDX-License-Identifier: MIT
  */
 
 #ifndef ANV_BVH_BUILD_HELPERS_H
