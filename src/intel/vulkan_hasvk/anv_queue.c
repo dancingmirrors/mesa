@@ -26,6 +26,7 @@
  */
 
 #include "anv_private.h"
+#include "vk_common_entrypoints.h"
 
 VkResult
 anv_queue_init(struct anv_device *device, struct anv_queue *queue,
@@ -71,4 +72,10 @@ anv_queue_finish(struct anv_queue *queue)
       vk_sync_destroy(&queue->device->vk, queue->sync);
 
    vk_queue_finish(&queue->vk);
+}
+
+VkResult
+anv_QueueWaitIdle(VkQueue _queue)
+{
+   return vk_common_QueueWaitIdle(_queue);
 }
