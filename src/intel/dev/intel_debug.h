@@ -113,6 +113,7 @@ enum intel_debug_flag {
    DEBUG_NO16,
    DEBUG_NO32,
    DEBUG_DO32,
+   DEBUG_HASVK,
 
    /* Must be the last entry */
    INTEL_DEBUG_MAX,
@@ -195,6 +196,8 @@ extern uint32_t intel_shader_dump_filter;
 extern uint64_t intel_debug_flag_for_shader_stage(mesa_shader_stage stage);
 
 extern void process_intel_debug_variable(void);
+
+extern void intel_debug_print_active_flags(void);
 
 #ifdef __cplusplus
 }
