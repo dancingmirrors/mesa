@@ -3232,7 +3232,6 @@ anv_is_rgb24_format_unsupported_on_ivb(const struct intel_device_info *devinfo,
    case ISL_FORMAT_R16G16B16_UINT:
    case ISL_FORMAT_R16G16B16_SINT:
    /* 96-bit RGB formats */
-   case ISL_FORMAT_R32G32B32_FLOAT:
    case ISL_FORMAT_R32G32B32_SINT:
    case ISL_FORMAT_R32G32B32_UINT:
    case ISL_FORMAT_R32G32B32_UNORM:
