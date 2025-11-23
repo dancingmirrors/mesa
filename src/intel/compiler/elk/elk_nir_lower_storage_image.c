@@ -368,8 +368,63 @@ lower_image_load_instr(nir_builder *b,
    nir_deref_instr *deref = nir_src_as_deref(intrin->src[0]);
    nir_variable *var = nir_deref_instr_get_variable(deref);
 
-   if (var->data.image.format == PIPE_FORMAT_NONE)
-      return false;
+   /* For format-less loads (PIPE_FORMAT_NONE), we need to use the untyped
+    * path since Gen7-8 hardware doesn't support typed reads without format.
+    * We'll assume a RGBA32_UINT format for the raw read and let the
+    * application handle the actual format conversion.
+    */
+   if (var->data.image.format == PIPE_FORMAT_NONE) {
+      /* This code path is only useful prior to Gfx9, we do not have plans to
+       * enable sparse there.
+       */
+      assert(!sparse);
+
+      const unsigned dest_components = intrin->num_components;
+
+      b->cursor = nir_instr_remove(&intrin->instr);
+
+      nir_def *coord = intrin->src[1].ssa;
+
+      nir_def *do_load = image_coord_is_in_bounds(b, deref, coord);
+      if (devinfo->verx10 == 70) {
+         /* Check whether the first stride component (i.e. the Bpp value)
+          * is greater than four, what on Gfx7 indicates that a surface of
+          * type RAW has been bind for untyped access.  Reading or writing
+          * to a surface of type other than RAW using untyped surface
+          * messages causes a hang on IVB and VLV.
+          */
+         nir_def *stride = load_image_param(b, deref, STRIDE);
+         nir_def *is_raw =
+            nir_igt_imm(b, nir_channel(b, stride, 0), 4);
+         do_load = nir_iand(b, do_load, is_raw);
+      }
+      nir_push_if(b, do_load);
+
+      nir_def *addr = image_address(b, devinfo, deref, coord);
+      /* Read as RGBA32_UINT (4 components of 32-bit) */
+      nir_def *load =
+         nir_image_deref_load_raw_intel(b, 4, 32, &deref->def, addr);
+
+      nir_push_else(b, NULL);
+
+      nir_def *zero = nir_imm_zero(b, load->num_components, 32);
+
+      nir_pop_if(b, NULL);
+
+      nir_def *value = nir_if_phi(b, load, zero);
+
+      /* Return the requested number of components */
+      nir_def *result;
+      if (dest_components < 4) {
+         result = nir_trim_vector(b, value, dest_components);
+      } else {
+         result = value;
+      }
+
+      nir_def_rewrite_uses(&intrin->def, result);
+
+      return true;
+   }
 
    const enum isl_format image_fmt =
       isl_format_for_pipe_format(var->data.image.format);
@@ -711,12 +766,12 @@ elk_nir_lower_storage_image_instr(nir_builder *b,
    nir_intrinsic_instr *intrin = nir_instr_as_intrinsic(instr);
    switch (intrin->intrinsic) {
    case nir_intrinsic_image_deref_load:
-      if (opts->lower_loads)
+      if (opts->lower_loads_without_formats || opts->lower_loads)
          return lower_image_load_instr(b, opts->devinfo, intrin, false);
       return false;
 
    case nir_intrinsic_image_deref_sparse_load:
-      if (opts->lower_loads)
+      if (opts->lower_loads_without_formats || opts->lower_loads)
          return lower_image_load_instr(b, opts->devinfo, intrin, true);
       return false;
 
