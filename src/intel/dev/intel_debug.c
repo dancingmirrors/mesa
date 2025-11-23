@@ -115,6 +115,7 @@ static const struct debug_control_bitset debug_control[] = {
    OPT1("perf-symbol-names", DEBUG_PERF_SYMBOL_NAMES),
    OPT1("swsb-stall",        DEBUG_SWSB_STALL),
    OPT1("heaps",             DEBUG_HEAPS),
+   OPT1("hasvk",             DEBUG_HASVK),
    OPT1("isl",               DEBUG_ISL),
    OPT1("sparse",            DEBUG_SPARSE),
    OPT1("draw_bkp",          DEBUG_DRAW_BKP),
@@ -308,4 +309,54 @@ process_intel_debug_variable(void)
 
    call_once(&process_intel_debug_variable_flag,
              process_intel_debug_variable_once);
+}
+
+static void
+intel_debug_print_active_flags_once(void)
+{
+   bool first = true;
+
+   /* Check if any debug flags are set */
+   bool any_flag_set = false;
+   for (unsigned i = 0; i < INTEL_DEBUG_MAX; i++) {
+      if (BITSET_TEST(intel_debug, i)) {
+         any_flag_set = true;
+         break;
+      }
+   }
+
+   if (!any_flag_set)
+      return;
+
+   fprintf(stderr, "INTEL_DEBUG flags active:");
+
+   for (unsigned i = 0; debug_control[i].string; i++) {
+      bool any_in_range = false;
+      for (unsigned bit = debug_control[i].range[0]; bit <= debug_control[i].range[1]; bit++) {
+         if (BITSET_TEST(intel_debug, bit)) {
+            any_in_range = true;
+            break;
+         }
+      }
+
+      if (any_in_range) {
+         if (first) {
+            fprintf(stderr, " %s", debug_control[i].string);
+            first = false;
+         } else {
+            fprintf(stderr, ", %s", debug_control[i].string);
+         }
+      }
+   }
+
+   fprintf(stderr, "\n");
+}
+
+void
+intel_debug_print_active_flags(void)
+{
+   static once_flag print_debug_flags_flag = ONCE_FLAG_INIT;
+
+   call_once(&print_debug_flags_flag,
+             intel_debug_print_active_flags_once);
 }
