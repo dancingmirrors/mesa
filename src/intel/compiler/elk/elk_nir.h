@@ -217,6 +217,7 @@ struct elk_nir_lower_storage_image_opts {
    bool lower_stores;
    bool lower_atomics;
    bool lower_get_size;
+   bool lower_loads_without_formats;
 };
 
 bool elk_nir_lower_storage_image(nir_shader *nir,
