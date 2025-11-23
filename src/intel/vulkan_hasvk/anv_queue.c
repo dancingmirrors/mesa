@@ -77,5 +77,26 @@ anv_queue_finish(struct anv_queue *queue)
 VkResult
 anv_QueueWaitIdle(VkQueue _queue)
 {
-   return vk_common_QueueWaitIdle(_queue);
+   VK_FROM_HANDLE(anv_queue, queue, _queue);
+   struct anv_device *device = queue->device;
+
+   if (vk_device_is_lost(&device->vk))
+      return VK_ERROR_DEVICE_LOST;
+
+    /* Flush any pending work in the queue */
+   VkResult result = vk_device_flush(&device->vk);
+   if (result != VK_SUCCESS)
+      return result;
+
+   /* Now we wait */
+   result = vk_common_QueueWaitIdle(_queue);
+   if (result != VK_SUCCESS)
+      return result;
+
+   /* Check device status after waiting */
+   VkResult device_status = vk_device_check_status(&device->vk);
+   if (device_status != VK_SUCCESS)
+      return device_status;
+
+   return VK_SUCCESS;
 }
