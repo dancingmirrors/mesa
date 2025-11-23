@@ -25,7 +25,7 @@ BUILD_DIR="build-32"
 PREFIX="/usr/local"
 LIBDIR="lib32"
 INCLUDEDIR="include32"
-MESON_ARGS="-Dgallium-drivers=crocus -Dllvm=disabled -Dvulkan-drivers=intel_hasvk -Dvideo-codecs=${CODECS}"
+MESON_ARGS="-Dgallium-drivers=crocus -Dllvm=disabled -Dshared-llvm=disabled -Dvulkan-drivers=intel_hasvk -Dvideo-codecs=${CODECS}"
 
 export CFLAGS="-m32 ${CFLAGS:-}"
 export CXXFLAGS="-m32 ${CXXFLAGS:-}"
