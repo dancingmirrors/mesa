@@ -1,0 +1,95 @@
+---
+name: Build Mesa with crocus/intel_hasvk
+
+'on':
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  intel-78-64:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          ./bin/intel-check-whitespace.sh
+
+          sudo apt-get update
+          # Enable source repositories
+          sudo sed -i 's/^Types: deb$/Types: deb deb-src/' \
+            /etc/apt/sources.list.d/ubuntu.sources
+          sudo apt-get update
+          sudo apt-get build-dep -y mesa
+          # Install additional tools (excluding meson since we need newer)
+          sudo apt-get install -y ninja-build pkg-config python3-pip
+          # Install newer Meson via pip (user install)
+          pip3 install --user meson
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Configure Mesa with Meson
+        run: |
+          meson setup --prefix=/usr/local -Dgallium-drivers=crocus \
+            -Dllvm=disabled -Dvulkan-drivers=intel_hasvk -Dvideo-codecs=all_free \
+            -Dwerror=true build
+
+      - name: Build Mesa
+        run: |
+          ninja -C build
+
+  intel-78-32:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    container:
+      image: i386/debian:trixie
+
+    steps:
+      - name: Install git and checkout code manually
+        run: |
+          apt-get update
+          apt-get install -y git ca-certificates
+          git clone https://github.com/${{ github.repository }} /workspace
+          cd /workspace
+          git fetch origin ${{ github.ref }}
+          git checkout ${{ github.sha }}
+
+      - name: Install build dependencies
+        run: |
+          cd /workspace
+          # Install basic tools needed for checks
+          apt-get install -y bash
+          # Run whitespace check
+          ./bin/intel-check-whitespace.sh
+
+          # Enable source repositories
+          if [ -f /etc/apt/sources.list.d/debian.sources ]; then
+            sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/debian.sources
+          else
+            . /etc/os-release
+            echo "deb-src http://deb.debian.org/debian $VERSION_CODENAME main contrib non-free" \
+              >> /etc/apt/sources.list
+          fi
+          apt-get update
+          apt-get build-dep -y mesa
+          # Install additional dependencies that may not be picked up by build-dep
+          apt-get install -y libva-dev libvulkan-dev meson ninja-build pkg-config
+
+      - name: Configure Mesa with Meson for 32-bit
+        run: |
+          cd /workspace
+          meson setup --prefix=/usr/local -Dgallium-drivers=crocus \
+            -Dllvm=disabled -Dvulkan-drivers=intel_hasvk \
+            -Dvideo-codecs=all_free -Dwerror=true build-32
+
+      - name: Build Mesa
+        run: |
+          cd /workspace
+          ninja -C build-32
