@@ -879,13 +879,6 @@ get_properties_1_2(const struct anv_physical_device *pdevice,
       pdevice->info.ver ==
       7 ? VK_SAMPLE_COUNT_1_BIT :
       isl_device_get_sample_counts(&pdevice->isl_dev);
-
-   /* Set maxBufferSize for VkPhysicalDeviceMaintenance4Properties.
-    * This is also set in get_properties_1_3() for Vulkan 1.3, but we set it
-    * here as well to ensure it's available when queried through the
-    * Maintenance4 extension in Vulkan 1.2.
-    */
-   p->maxBufferSize = pdevice->isl_dev.max_buffer_size;
 }
 
 static void
@@ -1320,34 +1313,6 @@ get_properties(const struct anv_physical_device *pdevice,
    }
 }
 
-VKAPI_ATTR void VKAPI_CALL
-anv_GetPhysicalDeviceProperties2(VkPhysicalDevice physicalDevice,
-                                 VkPhysicalDeviceProperties2 *pProperties)
-{
-   ANV_FROM_HANDLE(anv_physical_device, pdevice, physicalDevice);
-
-   /* Explicitly handle VkPhysicalDeviceMaintenance4Properties and VkPhysicalDeviceVulkan13Properties
-    * There appears to be an issue with the property generation/copying for maxBufferSize,
-    * so we manually fill it here to ensure it's properly exposed.
-    * Note: Maintenance4 was promoted to Vulkan 1.3, so maxBufferSize appears in both structures.
-    */
-   vk_common_GetPhysicalDeviceProperties2(physicalDevice, pProperties);
-   vk_foreach_struct(ext, pProperties->pNext) {
-      if (ext->sType ==
-          VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_4_PROPERTIES) {
-         VkPhysicalDeviceMaintenance4Properties *props =
-            (VkPhysicalDeviceMaintenance4Properties *) ext;
-         props->maxBufferSize = pdevice->vk.properties.maxBufferSize;
-      }
-      else if (ext->sType ==
-               VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_PROPERTIES) {
-         VkPhysicalDeviceVulkan13Properties *props =
-            (VkPhysicalDeviceVulkan13Properties *) ext;
-         props->maxBufferSize = pdevice->vk.properties.maxBufferSize;
-      }
-   }
-}
-
 static uint64_t
 anv_compute_sys_heap_size(struct anv_physical_device *device,
                           uint64_t available_ram)
@@ -1729,15 +1694,6 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
       goto fail_fd;
    }
 
-   /* Initialize a minimal properties struct with maxBufferSize set.
-    * Hardcoded to 1GB for hasvk (Ivy Bridge/Haswell/Broadwell all support 1GB).
-    * This ensures maxBufferSize is never 0 when validation layers query it.
-    * This will be overwritten later by get_properties() with the actual ISL value.
-    */
-   struct vk_properties initial_props = {
-      .maxBufferSize = 1073741824ull  /* 1GB */
-   };
-
    struct vk_physical_device_dispatch_table dispatch_table;
    vk_physical_device_dispatch_table_from_entrypoints(&dispatch_table,
                                                       &anv_physical_device_entrypoints,
@@ -1746,17 +1702,12 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
                                                       &wsi_physical_device_entrypoints,
                                                       false);
 
-   result = vk_physical_device_init(&device->vk, &instance->vk, NULL, NULL, &initial_props,
+   result = vk_physical_device_init(&device->vk, &instance->vk, NULL, NULL, NULL,
                                     &dispatch_table);
    if (result != VK_SUCCESS) {
       vk_error(instance, result);
       goto fail_alloc;
    }
-
-   /* Explicitly set our custom GetPhysicalDeviceProperties2 implementation
-    * to ensure Maintenance4Properties.maxBufferSize is properly exposed */
-   device->vk.dispatch_table.GetPhysicalDeviceProperties2 =
-      anv_GetPhysicalDeviceProperties2;
 
    device->instance = instance;
 
