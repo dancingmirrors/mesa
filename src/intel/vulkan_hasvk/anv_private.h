@@ -1128,7 +1128,17 @@ struct anv_device
    int perf_fd;                 /* -1 if no opened */
    uint64_t perf_metric;        /* 0 if unset */
 
-   const struct intel_l3_config *l3_config;
+   /** Cached L3 config for 3D pipelines (no SLM) */
+   const struct intel_l3_config *l3_config_3d;
+   /** Cached L3 config for compute pipelines with SLM */
+   const struct intel_l3_config *l3_config_cs;
+   /**
+    * Track the last L3 config that was programmed to the GPU.
+    * This allows us to skip redundant L3 programming when command buffers
+    * are reset but the desired L3 config hasn't changed.
+    * Protected by device mutex during queue submit.
+    */
+   const struct intel_l3_config *last_gpu_l3_config;
 
    struct intel_debug_block_frame *debug_frame_desc;
 

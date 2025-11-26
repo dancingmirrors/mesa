@@ -1675,11 +1675,27 @@ genX(cmd_buffer_config_l3)(struct anv_cmd_buffer *cmd_buffer,
                            const struct intel_l3_config *cfg)
 {
    assert(cfg);
+
+   /* Fast path: if this command buffer already has this L3 config set, skip */
    if (cfg == cmd_buffer->state.current_l3_config)
       return;
 
+   /* Check if the GPU's L3 config already matches what we want.
+    * If so, we can skip the expensive PIPE_CONTROLs and L3 reprogramming.
+    * We still need to update the command buffer's tracking though.
+    */
+   if (cfg == cmd_buffer->device->last_gpu_l3_config) {
+      cmd_buffer->state.current_l3_config = cfg;
+      return;
+   }
+
    if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
-      perf_debug("L3 config change (requires full pipeline stall)\n");
+      perf_debug("L3 config change (requires full pipeline stall) "
+                 "cmd_buffer=%p new=%p current=%p device_3d=%p device_cs=%p last_gpu=%p\n",
+                 cmd_buffer, cfg, cmd_buffer->state.current_l3_config,
+                 cmd_buffer->device->l3_config_3d,
+                 cmd_buffer->device->l3_config_cs,
+                 cmd_buffer->device->last_gpu_l3_config);
    }
 
    if (INTEL_DEBUG(DEBUG_L3)) {
@@ -1733,6 +1749,15 @@ genX(cmd_buffer_config_l3)(struct anv_cmd_buffer *cmd_buffer,
 
    genX(emit_l3_config)(&cmd_buffer->batch, cmd_buffer->device, cfg);
    cmd_buffer->state.current_l3_config = cfg;
+   /* Update device-level tracking so subsequent command buffers know
+    * the GPU's current L3 config and can skip redundant programming.
+    */
+   cmd_buffer->device->last_gpu_l3_config = cfg;
+
+   if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+      perf_debug("L3 config SET: cmd_buffer=%p current_l3_config=%p\n",
+                 cmd_buffer, cmd_buffer->state.current_l3_config);
+   }
 }
 
 ALWAYS_INLINE enum anv_pipe_bits
