@@ -58,6 +58,7 @@
 #include "common/i915/intel_defines.h"
 #include "common/i915/intel_gem.h"
 #include "common/intel_debug_identifier.h"
+#include "common/intel_l3_config.h"
 #include "common/intel_uuid.h"
 #include "perf/intel_perf.h"
 
@@ -2834,6 +2835,20 @@ anv_CreateDevice(VkPhysicalDevice physicalDevice,
    device->robust_buffer_access =
       device->vk.enabled_features.robustBufferAccess ||
       device->vk.enabled_features.nullDescriptor;
+
+   /* Cache L3 configs at device level to avoid thrashing.
+    * Like crocus, we cache separate configs for 3D (no SLM) and compute (SLM).
+    * All pipelines will use these cached pointers, ensuring pointer equality
+    * in genX(cmd_buffer_config_l3) comparisons.
+    * This must be done before anv_device_init_blorp() in case it needs L3 configs.
+    */
+   const struct intel_l3_weights w_3d =
+      intel_get_default_l3_weights(device->info, true, false);
+   device->l3_config_3d = intel_get_l3_config(device->info, w_3d);
+
+   const struct intel_l3_weights w_cs =
+      intel_get_default_l3_weights(device->info, true, true);
+   device->l3_config_cs = intel_get_l3_config(device->info, w_cs);
 
    anv_device_init_blorp(device);
 

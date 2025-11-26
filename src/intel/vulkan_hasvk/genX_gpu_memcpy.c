@@ -26,8 +26,6 @@
 #include "genxml/gen_macros.h"
 #include "genxml/hasvk_genX_pack.h"
 
-#include "common/intel_l3_config.h"
-
 /**
  * This file implements some lightweight memcpy/memset operations on the GPU
  * using a vertex buffer and streamout.
@@ -275,9 +273,10 @@ genX(cmd_buffer_so_memcpy)(struct anv_cmd_buffer *cmd_buffer,
       return;
 
    if (!cmd_buffer->state.current_l3_config) {
-      const struct intel_l3_config *cfg =
-         intel_get_default_l3_config(cmd_buffer->device->info);
-      genX(cmd_buffer_config_l3)(cmd_buffer, cfg);
+      /* Use device-level cached L3 config to ensure pointer equality with
+       * pipeline L3 configs, avoiding expensive L3 config thrashing.
+       */
+      genX(cmd_buffer_config_l3)(cmd_buffer, cmd_buffer->device->l3_config_3d);
    }
 
    genX(cmd_buffer_set_binding_for_gfx8_vb_flush)(cmd_buffer, 32, src, size);
