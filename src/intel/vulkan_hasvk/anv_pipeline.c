@@ -1786,21 +1786,17 @@ anv_CreateComputePipelines(VkDevice _device,
 }
 
 /**
- * Calculate the desired L3 partitioning based on the current state of the
- * pipeline.  For now this simply returns the conservative defaults calculated
- * by get_default_l3_weights(), but we could probably do better by gathering
- * more statistics from the pipeline state (e.g. guess of expected URB usage
- * and bound surfaces), or by using feed-back from performance counters.
+ * Set the L3 config for a pipeline using the device-level cached configs.
+ * Using cached configs at the device level ensures pointer equality when
+ * comparing L3 configs in genX(cmd_buffer_config_l3), avoiding expensive
+ * L3 config thrashing between pipelines and blorp operations.
  */
 void
 anv_pipeline_setup_l3_config(struct anv_pipeline *pipeline, bool needs_slm)
 {
-   const struct intel_device_info *devinfo = pipeline->device->info;
-
-   const struct intel_l3_weights w =
-      intel_get_default_l3_weights(devinfo, true, needs_slm);
-
-   pipeline->l3_config = intel_get_l3_config(devinfo, w);
+   /* Use device-level cached L3 configs to ensure pointer equality */
+   pipeline->l3_config = needs_slm ? pipeline->device->l3_config_cs
+                                   : pipeline->device->l3_config_3d;
 }
 
 static VkResult
