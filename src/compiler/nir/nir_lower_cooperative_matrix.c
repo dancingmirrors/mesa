@@ -613,7 +613,7 @@ split_cmat_call_reduce(nir_builder *b,
          for (unsigned r = 0; r < dst_split->num_row_splits; r++) {
             for (unsigned c = 0; c < dst_split->num_col_splits; c++) {
                int didx = r * dst_split->num_col_splits + c;
-               int idx;
+               int idx = 0;
                if ((reduce & (NIR_CMAT_REDUCE_ROW | NIR_CMAT_REDUCE_COLUMN)) == (NIR_CMAT_REDUCE_ROW | NIR_CMAT_REDUCE_COLUMN))
                   idx = 0;
                else if (reduce & NIR_CMAT_REDUCE_ROW)
