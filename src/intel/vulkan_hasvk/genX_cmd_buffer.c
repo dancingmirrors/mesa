@@ -113,15 +113,16 @@ genX(cmd_buffer_emit_state_base_address)(struct anv_cmd_buffer *cmd_buffer)
     * this, we get GPU hangs when using multi-level command buffers which
     * clear depth, reset state base address, and then go render stuff.
     *
-    * The SKL PRM mentions that the render cache cannot be flushed, nor can
-    * read caches (except for instruction/state caches), in conjunction with
-    * the depth stall bit being enabled. Also, from my testing on IVB, setting
-    * VF (L2) cache invalidation here actually just causes hangs.
+    * We use a post-sync write operation to ensure the flush completes before
+    * the STATE_BASE_ADDRESS is processed, matching the crocus driver approach.
     */
    anv_batch_emit(&cmd_buffer->batch, GENX(PIPE_CONTROL), pc) {
       pc.DCFlushEnable = true;
       pc.RenderTargetCacheFlushEnable = true;
+      pc.DepthCacheFlushEnable = true;
       pc.CommandStreamerStallEnable = true;
+      pc.PostSyncOperation = WriteImmediateData;
+      pc.Address = cmd_buffer->device->workaround_address;
       anv_debug_dump_pc(pc);
    }
 
@@ -699,7 +700,7 @@ anv_cmd_simple_resolve_predicate(struct anv_cmd_buffer *cmd_buffer,
 
    /* This only works for partial resolves and only when the clear color is
     * all or nothing.  On the upside, this emits less command streamer code
-    * and works on Ivybridge and Bay Trail.
+    * and works on Ivy Bridge and Bay Trail.
     */
    assert(resolve_op == ISL_AUX_OP_PARTIAL_RESOLVE);
    assert(fast_clear_supported != ANV_FAST_CLEAR_ANY);
@@ -771,7 +772,7 @@ anv_cmd_predicated_mcs_resolve(struct anv_cmd_buffer *cmd_buffer,
    anv_image_mcs_op(cmd_buffer, image, format, swizzle, aspect,
                     array_layer, 1, resolve_op, NULL, true);
 #else
-   UNREACHABLE("MCS resolves are unsupported on Ivybridge and Bay Trail");
+   UNREACHABLE("MCS resolves are unsupported on Ivy Bridge and Bay Trail");
 #endif
 }
 
@@ -2199,6 +2200,23 @@ cmd_buffer_alloc_push_constants(struct anv_cmd_buffer *cmd_buffer)
       alloc.ConstantBufferSize = push_constant_kb - kb_used;
    }
 
+#if GFX_VERx10 == 70
+   /* From the Ivy Bridge PRM (11.2.4 3DSTATE_PUSH_CONSTANT_ALLOC_PS):
+    *
+    *    "A PIPE_CONTROL command with the CS Stall bit set must be programmed
+    *     in the ring after this instruction."
+    *
+    * No such restriction exists for Haswell or Baytrail.
+    * This matches the workaround in the crocus driver.
+    */
+   anv_batch_emit(&cmd_buffer->batch, GENX(PIPE_CONTROL), pc) {
+      pc.CommandStreamerStallEnable = true;
+      pc.PostSyncOperation = WriteImmediateData;
+      pc.Address = cmd_buffer->device->workaround_address;
+      anv_debug_dump_pc(pc);
+   }
+#endif
+
    cmd_buffer->state.gfx.push_constant_stages = stages;
 
    /* From the BDW PRM for 3DSTATE_PUSH_CONSTANT_ALLOC_VS:
@@ -2820,6 +2838,20 @@ cmd_buffer_emit_push_constant(struct anv_cmd_buffer *cmd_buffer,
    };
 
    assert(stage < ARRAY_SIZE(push_constant_opcodes));
+
+#if GFX_VERx10 == 70
+   /* Ivy Bridge requires a depth stall and write before VS constant buffer
+    * updates. This matches the workaround in the crocus driver.
+    */
+   if (stage == MESA_SHADER_VERTEX) {
+      anv_batch_emit(&cmd_buffer->batch, GENX(PIPE_CONTROL), pc) {
+         pc.DepthStallEnable = true;
+         pc.PostSyncOperation = WriteImmediateData;
+         pc.Address = cmd_buffer->device->workaround_address;
+         anv_debug_dump_pc(pc);
+      }
+   }
+#endif
 
    UNUSED uint32_t mocs = anv_mocs(cmd_buffer->device, NULL, 0);
 
@@ -4904,6 +4936,28 @@ genX(flush_pipeline_select)(struct anv_cmd_buffer *cmd_buffer,
    anv_batch_emit(&cmd_buffer->batch, GENX(PIPELINE_SELECT), ps) {
       ps.PipelineSelection = pipeline;
    }
+
+#if GFX_VERx10 == 70
+   /* Ivy Bridge differs from Haswell here. After selecting the 3D pipeline,
+    * we need to issue an extra CS stall with post-sync write followed by a
+    * dummy 3DPRIMITIVE to properly flush the pipeline state. Without this
+    * workaround, the hardware may not correctly synchronize state when
+    * switching from GPGPU to 3D pipeline.
+    * This matches the workaround in the crocus driver.
+    */
+   if (pipeline == _3D) {
+      anv_batch_emit(&cmd_buffer->batch, GENX(PIPE_CONTROL), pc) {
+         pc.CommandStreamerStallEnable = true;
+         pc.PostSyncOperation = WriteImmediateData;
+         pc.Address = cmd_buffer->device->workaround_address;
+         anv_debug_dump_pc(pc);
+      }
+
+      anv_batch_emit(&cmd_buffer->batch, GENX(3DPRIMITIVE), prim) {
+         prim.PrimitiveTopologyType = _3DPRIM_POINTLIST;
+      }
+   }
+#endif
 
    cmd_buffer->state.current_pipeline = pipeline;
 }
