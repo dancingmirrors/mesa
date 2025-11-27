@@ -3482,7 +3482,7 @@ genX(cmd_buffer_flush_gfx_state)(struct anv_cmd_buffer *cmd_buffer)
       cmd_buffer_alloc_push_constants(cmd_buffer);
    }
 
-#if GFX_VER <= 7
+#if GFX_VERx10 == 70
    if (cmd_buffer->state.descriptors_dirty & VK_SHADER_STAGE_VERTEX_BIT ||
        cmd_buffer->state.push_constants_dirty & VK_SHADER_STAGE_VERTEX_BIT) {
       /* From the IVB PRM Vol. 2, Part 1, Section 3.2.1:
