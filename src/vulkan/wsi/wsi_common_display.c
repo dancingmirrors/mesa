@@ -210,7 +210,7 @@ struct wsi_display {
     * colorimetry outcome on the output. This is used to avoid propagating
     * dirty tracking flags across large numbers of objects.
     */
-   uint64_t                     color_outcome_serial_counter;
+   alignas(8) uint64_t          color_outcome_serial_counter;
 };
 
 static void
