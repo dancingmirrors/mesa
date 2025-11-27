@@ -606,6 +606,16 @@ add_aux_surface_if_supported(struct anv_device *device,
                                  &image->planes[plane].aux_surface.isl);
       if (!ok)
          return VK_SUCCESS;
+
+      image->planes[plane].aux_usage = ISL_AUX_USAGE_HIZ;
+
+      result = add_surface(device, image, &image->planes[plane].aux_surface,
+                           ANV_IMAGE_MEMORY_BINDING_PLANE_0 + plane,
+                           ANV_OFFSET_IMPLICIT);
+      if (result != VK_SUCCESS)
+         return result;
+
+      return add_aux_state_tracking_buffer(device, image, plane);
    }
    else if ((aspect & VK_IMAGE_ASPECT_ANY_COLOR_BIT_ANV)
             && image->vk.samples == 1) {
