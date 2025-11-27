@@ -5866,11 +5866,11 @@ elk_fs_visitor::allocate_registers(bool allow_spilling)
    };
 
    static const char *scheduler_mode_name[] = {
-      [SCHEDULE_PRE] = "top-down",
-      [SCHEDULE_PRE_NON_LIFO] = "non-lifo",
-      [SCHEDULE_PRE_LIFO] = "lifo",
-      [SCHEDULE_POST] = "post",
-      [SCHEDULE_NONE] = "none",
+      /* SCHEDULE_PRE */         "top-down",
+      /* SCHEDULE_PRE_NON_LIFO */ "non-lifo",
+      /* SCHEDULE_PRE_LIFO */     "lifo",
+      /* SCHEDULE_POST */         "post",
+      /* SCHEDULE_NONE */         "none",
    };
 
    uint32_t best_register_pressure = UINT32_MAX;
