@@ -36,6 +36,11 @@
 #include "vk_video/vulkan_video_codec_h264std_decode.h"
 #include "vk_video.h"
 
+/* https://github.com/intel/libva/pull/836 */
+#ifndef VA_PICTURE_H264_NON_EXISTING
+#define VA_PICTURE_H264_NON_EXISTING 0x00000020
+#endif
+
 /**
  * Translate Vulkan H.264 SPS to VA-API SPS fields in picture parameter buffer
  */
@@ -310,6 +315,12 @@ anv_vaapi_translate_h264_picture_params(
          va_pic->ReferenceFrames[dpb_idx].flags |= VA_PICTURE_H264_BOTTOM_FIELD;
       /* If both flags are set, both fields are used independently - don't set field flags */
       /* If neither flag is set, this is a frame reference - don't set field flags */
+
+      /* Set non-existing flag if the reference is marked as non-existing per H.264 spec 8.2.5.2
+       * This is used for frames that are inferred to exist but were never actually decoded.
+       */
+      if (ref_info->flags.is_non_existing)
+         va_pic->ReferenceFrames[dpb_idx].flags |= VA_PICTURE_H264_NON_EXISTING;
 
       if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
          fprintf(stderr, "  Slot %u -> DPB[%u]: surface_id=%u frame_num=%u flags=0x%x POC=[%d,%d]\n",
