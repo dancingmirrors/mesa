@@ -32,6 +32,7 @@
 #include <string.h>
 
 #include "anv_private.h"
+#include "util/os_misc.h"
 
 /**
  * VA-API Bridge for HasVK Video Decode
@@ -289,25 +290,29 @@ anv_vaapi_execute_deferred_decodes(struct anv_device *device,
 /**
  * Check if VA-API bridge should be used
  *
- * The VA-API bridge is now always enabled for hasvk video decode.
- * Native H.264 decode is not feasible on Ivy Bridge and earlier hardware,
- * so the VA-API bridge (using the crocus driver) is the only supported path.
+ * The VA-API bridge is gated behind the INTEL_HASVK_BRIDGE environment
+ * variable. Set INTEL_HASVK_BRIDGE=1 to enable video decode via VA-API
+ * on Gen7/7.5/8 hardware using the crocus driver.
  *
- * @return true (VA-API bridge is always used)
+ * @return true if INTEL_HASVK_BRIDGE is set to a non-empty value
  */
 static inline bool
 anv_use_vaapi_bridge(void)
 {
-   static bool logged = false;
+   const char *env = os_get_option_cached("INTEL_HASVK_BRIDGE");
+   bool enabled = (env != NULL && env[0] != '\0');
 
-   if (!logged && unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-      fprintf(stderr, "VA-API bridge: ENABLED (default)\n");
-      fprintf(stderr, "  Video decode will use crocus driver via VA-API\n");
-      fprintf(stderr, "  DPB and decode logging requires INTEL_DEBUG=hasvk to be set\n");
-      logged = true;
+   if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+      if (enabled) {
+         fprintf(stderr, "VA-API bridge: ENABLED (INTEL_HASVK_BRIDGE is set)\n");
+         fprintf(stderr, "  Video decode will use crocus driver via VA-API\n");
+         fprintf(stderr, "  DPB and decode logging requires INTEL_DEBUG=hasvk to be set\n");
+      } else {
+         fprintf(stderr, "VA-API bridge: DISABLED (set INTEL_HASVK_BRIDGE=1 to enable)\n");
+      }
    }
 
-   return true;
+   return enabled;
 }
 
 /* *INDENT-ON* */
