@@ -650,18 +650,6 @@ anv_vaapi_decode_frame(struct anv_cmd_buffer *cmd_buffer,
 
    /* Allocate array for reference surfaces if we have any */
    if (frame_info->referenceSlotCount > 0) {
-      /* Check for potential integer overflow in size calculation
-       * We use SIZE_MAX (not UINT32_MAX) because we're checking if the
-       * allocation size itself would overflow, not the count.
-       */
-      if (frame_info->referenceSlotCount > SIZE_MAX / sizeof(VASurfaceID)) {
-         /* Overflow would occur */
-         if (dst_surface_created) {
-            vaDestroySurfaces(session->va_display, &dst_surface, 1);
-         }
-         return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
-      }
-
       size_t alloc_size = (size_t)frame_info->referenceSlotCount * sizeof(VASurfaceID);
       ref_surfaces = vk_alloc(&device->vk.alloc, alloc_size, 8,
                               VK_SYSTEM_ALLOCATION_SCOPE_COMMAND);
