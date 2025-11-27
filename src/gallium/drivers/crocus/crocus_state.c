@@ -1569,12 +1569,12 @@ set_blend_entry_bits(struct crocus_batch *batch, BLEND_ENTRY_GENXML *entry,
    struct elk_wm_prog_data *wm_prog_data = (void *) shader->prog_data;
    if (idx == 0 && !blend_enabled && wm_prog_data->dual_src_blend) {
       entry->ColorBufferBlendEnable = 1;
-      entry->ColorBlendFunction = PIPE_BLEND_ADD;
-      entry->AlphaBlendFunction = PIPE_BLEND_ADD;
-      entry->SourceBlendFactor = PIPE_BLENDFACTOR_ONE;
-      entry->SourceAlphaBlendFactor = PIPE_BLENDFACTOR_ONE;
-      entry->DestinationBlendFactor = PIPE_BLENDFACTOR_ZERO;
-      entry->DestinationAlphaBlendFactor = PIPE_BLENDFACTOR_ZERO;
+      entry->ColorBlendFunction = (int)PIPE_BLEND_ADD;
+      entry->AlphaBlendFunction = (int)PIPE_BLEND_ADD;
+      entry->SourceBlendFactor = (int)PIPE_BLENDFACTOR_ONE;
+      entry->SourceAlphaBlendFactor = (int)PIPE_BLENDFACTOR_ONE;
+      entry->DestinationBlendFactor = (int)PIPE_BLENDFACTOR_ZERO;
+      entry->DestinationAlphaBlendFactor = (int)PIPE_BLENDFACTOR_ZERO;
    }
 #endif
    return independent_alpha_blend;
