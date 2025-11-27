@@ -37,6 +37,14 @@
 static enum isl_format
 crocus_isl_format_for_pipe_format(enum pipe_format pf)
 {
+   /* Suppress warnings for intentional initializer overrides - we use range
+    * initialization to set all entries to ISL_FORMAT_UNSUPPORTED first, then
+    * override specific entries with their proper values.
+    */
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Winitializer-overrides"
+#endif
    static const enum isl_format table[PIPE_FORMAT_COUNT] = {
       [0 ... PIPE_FORMAT_COUNT-1] = ISL_FORMAT_UNSUPPORTED,
 
@@ -296,6 +304,9 @@ crocus_isl_format_for_pipe_format(enum pipe_format pf)
       [PIPE_FORMAT_R32G32B32X32_SINT]       = ISL_FORMAT_R32G32B32A32_SINT,
       [PIPE_FORMAT_R10G10B10X2_SNORM]       = ISL_FORMAT_R10G10B10A2_SNORM,
    };
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
    assert(pf < PIPE_FORMAT_COUNT);
    return table[pf];
 }
