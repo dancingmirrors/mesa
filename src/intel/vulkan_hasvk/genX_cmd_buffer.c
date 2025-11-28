@@ -1799,10 +1799,19 @@ genX(emit_apply_pipe_flushes)(struct anv_batch *batch,
 
    /* If we're going to do an invalidate and we have a pending end-of-pipe
     * sync that has yet to be resolved, we do the end-of-pipe sync now.
+    *
+    * However, if we already have an explicit CS stall bit set, that provides
+    * sufficient synchronization - we don't need the additional post-sync
+    * write operation that END_OF_PIPE_SYNC adds. The CS stall ensures all
+    * previous operations complete before the invalidation, which is what
+    * we need. This optimization reduces redundant stalls, particularly on
+    * Ivy Bridge where excessive stalls significantly impact performance.
     */
    if ((bits & ANV_PIPE_INVALIDATE_BITS) &&
        (bits & ANV_PIPE_NEEDS_END_OF_PIPE_SYNC_BIT)) {
-      bits |= ANV_PIPE_END_OF_PIPE_SYNC_BIT;
+      if (!(bits & ANV_PIPE_CS_STALL_BIT)) {
+         bits |= ANV_PIPE_END_OF_PIPE_SYNC_BIT;
+      }
       bits &= ~ANV_PIPE_NEEDS_END_OF_PIPE_SYNC_BIT;
    }
 
