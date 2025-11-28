@@ -1799,14 +1799,6 @@ anv_image_hiz_clear(struct anv_cmd_buffer *cmd_buffer,
                              ANV_PIPE_DEPTH_CACHE_FLUSH_BIT |
                              ANV_PIPE_DEPTH_STALL_BIT, "before clear hiz");
 
-#if GFX_VER == 7
-   /* On gfx7, we don't have WM_HZ_OP, so we use blorp_hiz_op instead.
-    * This only supports full-surface depth clears.
-    */
-   assert(aspects == VK_IMAGE_ASPECT_DEPTH_BIT);
-   blorp_hiz_op(&batch, &depth, level, base_layer, layer_count,
-                ISL_AUX_OP_FAST_CLEAR);
-#else
    blorp_hiz_clear_depth_stencil(&batch, &depth, &stencil,
                                  level, base_layer, layer_count,
                                  area.offset.x, area.offset.y,
@@ -1816,7 +1808,6 @@ anv_image_hiz_clear(struct anv_cmd_buffer *cmd_buffer,
                                  ANV_HZ_FC_VAL,
                                  aspects & VK_IMAGE_ASPECT_STENCIL_BIT,
                                  stencil_value);
-#endif
 
    anv_blorp_batch_finish(&batch);
 

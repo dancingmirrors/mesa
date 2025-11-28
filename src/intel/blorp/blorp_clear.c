@@ -1106,8 +1106,15 @@ blorp_hiz_clear_depth_stencil(struct blorp_batch *batch,
    blorp_params_init(&params);
    params.op = BLORP_OP_HIZ_CLEAR;
 
-   /* This requires WM_HZ_OP which only exists on gfx8+ */
-   assert(ISL_GFX_VER(batch->blorp->isl_dev) >= 8);
+   /* Different mechanisms are used on different generations:
+    * - Gfx8+ uses 3DSTATE_WM_HZ_OP
+    * - Gfx7 uses 3DSTATE_WM::DepthBufferClear + 3DPRIMITIVE
+    *
+    * Stencil clears require 3DSTATE_WM_HZ_OP which only exists on gfx8+.
+    * Callers must ensure stencil clears are not requested on gfx7.
+    */
+   assert(ISL_GFX_VER(batch->blorp->isl_dev) >= 7);
+   assert(ISL_GFX_VER(batch->blorp->isl_dev) >= 8 || !clear_stencil);
 
    params.hiz_op = ISL_AUX_OP_FAST_CLEAR;
    /* From BSpec: 3DSTATE_WM_HZ_OP_BODY >> Full Surface Depth and Stencil Clear
