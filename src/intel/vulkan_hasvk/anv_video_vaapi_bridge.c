@@ -929,6 +929,25 @@ anv_vaapi_decode_frame(struct anv_cmd_buffer *cmd_buffer,
     */
    util_dynarray_append(&cmd_buffer->video.vaapi_decodes, decode_cmd);
 
+   /* CRITICAL: Add texture cache invalidate to pending pipe bits.
+    *
+    * When VA-API decodes into the surface through crocus/i915, the data is
+    * written via the video decode engine (MFD). When hasvk's render engine
+    * later samples from this surface, the sampler cache may contain stale
+    * data from before the decode.
+    *
+    * By adding ANV_PIPE_TEXTURE_CACHE_INVALIDATE_BIT, we ensure that before
+    * any subsequent draw/dispatch command that might sample from decoded
+    * surfaces, the texture cache is invalidated so fresh data is fetched
+    * from memory.
+    *
+    * This is the GPU-side equivalent of the CPU cache flush we do after
+    * vaSyncSurface - both are needed for correct cross-engine coherency.
+    */
+   anv_add_pending_pipe_bits(cmd_buffer,
+                             ANV_PIPE_TEXTURE_CACHE_INVALIDATE_BIT,
+                             "VA-API decode texture cache invalidate");
+
    /* Unmap the bitstream buffer - the VA-API slice data buffers have copied the data */
    anv_gem_munmap(device, bitstream_data, frame_info->srcBufferRange);
 
