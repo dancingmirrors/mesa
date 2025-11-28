@@ -275,6 +275,7 @@ get_device_extensions(const struct anv_physical_device *device,
 #ifdef ANV_USE_WSI_PLATFORM
       .KHR_swapchain = true,
       .KHR_swapchain_mutable_format = true,
+      .EXT_swapchain_maintenance1 = true,
 #endif
       .KHR_synchronization2 = true,
       .KHR_timeline_semaphore = true,
@@ -672,6 +673,9 @@ get_features(const struct anv_physical_device *pdevice,
 
       /* VK_KHR_present_wait */
       .presentWait = true,
+
+      /* VK_EXT_swapchain_maintenance1 */
+      .swapchainMaintenance1 = true,
 #endif
 
       /* VK_KHR_shader_expect_assume */
