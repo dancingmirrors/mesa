@@ -302,13 +302,17 @@ anv_use_vaapi_bridge(void)
    const char *env = os_get_option_cached("INTEL_HASVK_BRIDGE");
    bool enabled = (env != NULL && env[0] != '\0');
 
+   /* Print bridge status only once to avoid log spam */
    if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-      if (enabled) {
-         fprintf(stderr, "VA-API bridge: ENABLED (INTEL_HASVK_BRIDGE is set)\n");
-         fprintf(stderr, "  Video decode will use crocus driver via VA-API\n");
-         fprintf(stderr, "  DPB and decode logging requires INTEL_DEBUG=hasvk to be set\n");
-      } else {
-         fprintf(stderr, "VA-API bridge: DISABLED (set INTEL_HASVK_BRIDGE=1 to enable)\n");
+      static bool status_printed = false;
+      if (!status_printed) {
+         status_printed = true;
+         if (enabled) {
+            fprintf(stderr, "VA-API bridge: ENABLED (INTEL_HASVK_BRIDGE is set)\n");
+            fprintf(stderr, "  Video decode will use crocus driver via VA-API\n");
+         } else {
+            fprintf(stderr, "VA-API bridge: DISABLED (set INTEL_HASVK_BRIDGE=1 to enable)\n");
+         }
       }
    }
 
