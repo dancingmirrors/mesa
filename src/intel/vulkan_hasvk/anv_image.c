@@ -2238,6 +2238,16 @@ anv_layout_to_aux_state(const struct intel_device_info *const devinfo,
    }
 
    switch (aux_usage) {
+   case ISL_AUX_USAGE_HIZ:
+      if (aux_supported) {
+         assert(clear_supported);
+         return ISL_AUX_STATE_COMPRESSED_CLEAR;
+      } else if (read_only) {
+         return ISL_AUX_STATE_RESOLVED;
+      } else {
+         return ISL_AUX_STATE_AUX_INVALID;
+      }
+
    case ISL_AUX_USAGE_CCS_D:
       /* We only support clear in exactly one state */
       if (layout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL) {
