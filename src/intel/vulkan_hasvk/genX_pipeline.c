@@ -24,7 +24,7 @@
 #include "anv_private.h"
 
 #include "genxml/gen_macros.h"
-#include "genxml/genX_pack.h"
+#include "genxml/hasvk_genX_pack.h"
 #include "genxml/genX_rt_pack.h"
 
 #include "common/intel_compute_slm.h"
@@ -37,6 +37,7 @@
 #include "vk_log.h"
 #include "vk_render_pass.h"
 
+/* *INDENT-OFF* */
 static uint32_t
 vertex_element_comp_control(enum isl_format format, unsigned comp)
 {
@@ -154,6 +155,14 @@ emit_vertex_input(struct anv_graphics_pipeline *pipeline,
                                                   vi->attributes[a].format,
                                                   VK_IMAGE_ASPECT_COLOR_BIT,
                                                   VK_IMAGE_TILING_LINEAR);
+
+      /* Skip unsupported formats. On Ivy Bridge, rgb24 formats and other
+       * unsupported formats return ISL_FORMAT_UNSUPPORTED, which would cause
+       * the assume() below to fail. Skip these attributes to prevent the crash.
+       */
+      if (format == ISL_FORMAT_UNSUPPORTED)
+         continue;
+
       assume(format < ISL_NUM_FORMATS);
 
       uint32_t binding = vi->attributes[a].binding;
@@ -848,7 +857,6 @@ emit_cb_state(struct anv_graphics_pipeline *pipeline,
               const struct vk_multisample_state *ms,
               const struct vk_render_pass_state *rp)
 {
-   struct anv_device *device = pipeline->base.device;
    const struct elk_wm_prog_data *wm_prog_data = get_wm_prog_data(pipeline);
 
    struct GENX(BLEND_STATE) blend_state = {
@@ -956,9 +964,10 @@ emit_cb_state(struct anv_graphics_pipeline *pipeline,
            is_dual_src_blend_factor(a->dst_color_blend_factor) ||
            is_dual_src_blend_factor(a->src_alpha_blend_factor) ||
            is_dual_src_blend_factor(a->dst_alpha_blend_factor))) {
-         vk_logw(VK_LOG_OBJS(&device->vk.base),
-                 "Enabled dual-src blend factors without writing both targets "
-                 "in the shader.  Disabling blending to avoid GPU hangs.");
+         if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+            fprintf(stderr, "Enabled dual-src blend factors without writing both targets "
+                    "in the shader.  Disabling blending to avoid GPU hangs.\n");
+         }
          entry.ColorBufferBlendEnable = false;
       }
 
@@ -1835,7 +1844,6 @@ genX(graphics_pipeline_emit)(struct anv_graphics_pipeline *pipeline,
 
    emit_3dstate_clip(pipeline, state->ia, state->vp, state->rs);
 
-#if 0
    /* From gfx7_vs_state.c */
 
    /**
@@ -1850,9 +1858,11 @@ genX(graphics_pipeline_emit)(struct anv_graphics_pipeline *pipeline,
     * whole fixed function pipeline" means to emit a PIPE_CONTROL with the "CS
     * Stall" bit set.
     */
-   if (device->info->platform == INTEL_PLATFORM_IVB)
-      gfx7_emit_vs_workaround_flush(elk);
-#endif
+   if (pipeline->base.device->info->platform == INTEL_PLATFORM_IVB) {
+      anv_batch_emit(&pipeline->base.batch, GENX(PIPE_CONTROL), pc) {
+         pc.CommandStreamerStallEnable = true;
+      }
+   }
 
    emit_vertex_input(pipeline, state->vi);
 
@@ -1956,3 +1966,4 @@ genX(compute_pipeline_emit)(struct anv_compute_pipeline *pipeline)
                                         pipeline->interface_descriptor_data,
                                         &desc);
 }
+/* *INDENT-ON* */

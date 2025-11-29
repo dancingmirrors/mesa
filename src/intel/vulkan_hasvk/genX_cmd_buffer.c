@@ -23,6 +23,7 @@
 
 #include <assert.h>
 #include <stdbool.h>
+#include <string.h>
 
 #include "anv_private.h"
 #include "anv_measure.h"
@@ -34,7 +35,7 @@
 
 #include "common/intel_l3_config.h"
 #include "genxml/gen_macros.h"
-#include "genxml/genX_pack.h"
+#include "genxml/hasvk_genX_pack.h"
 #include "common/intel_guardband.h"
 #include "compiler/intel_prim.h"
 
@@ -42,6 +43,7 @@
 
 #include "ds/intel_tracepoints.h"
 
+/* *INDENT-OFF* */
 /* We reserve :
  *    - GPR 14 for secondary command buffer returns
  *    - GPR 15 for conditional rendering
@@ -86,6 +88,13 @@ is_render_queue_cmd_buffer(const struct anv_cmd_buffer *cmd_buffer)
    return (queue_family->queueFlags & VK_QUEUE_GRAPHICS_BIT) != 0;
 }
 
+static bool
+is_video_queue_cmd_buffer(const struct anv_cmd_buffer *cmd_buffer)
+{
+   struct anv_queue_family *queue_family = cmd_buffer->queue_family;
+   return (queue_family->queueFlags & VK_QUEUE_VIDEO_DECODE_BIT_KHR) != 0;
+}
+
 void
 genX(cmd_buffer_emit_state_base_address)(struct anv_cmd_buffer *cmd_buffer)
 {
@@ -103,6 +112,11 @@ genX(cmd_buffer_emit_state_base_address)(struct anv_cmd_buffer *cmd_buffer)
     * necessary prior to changing the surface state base address.  Without
     * this, we get GPU hangs when using multi-level command buffers which
     * clear depth, reset state base address, and then go render stuff.
+    *
+    * The SKL PRM mentions that the render cache cannot be flushed, nor can
+    * read caches (except for instruction/state caches), in conjunction with
+    * the depth stall bit being enabled. Also, from my testing on IVB, setting
+    * VF (L2) cache invalidation here actually just causes hangs.
     */
    anv_batch_emit(&cmd_buffer->batch, GENX(PIPE_CONTROL), pc) {
       pc.DCFlushEnable = true;
@@ -398,8 +412,10 @@ anv_can_hiz_clear_ds_view(struct anv_device *device,
                           float depth_clear_value,
                           VkRect2D render_area)
 {
-   /* We don't do any HiZ or depth fast-clears on gfx7 yet */
-   if (GFX_VER == 7)
+   /* On gfx7, we can only do HiZ depth clears, not stencil. Stencil clears
+    * require WM_HZ_OP which only exists on gfx8+.
+    */
+   if (GFX_VER == 7 && (clear_aspects & VK_IMAGE_ASPECT_STENCIL_BIT))
       return false;
 
    /* If we're just clearing stencil, we can always HiZ clear */
@@ -418,10 +434,23 @@ anv_can_hiz_clear_ds_view(struct anv_device *device,
    if (!isl_aux_usage_has_fast_clears(clear_aux_usage))
       return false;
 
-   assert(GFX_VER == 8);
-   assert(iview->vk.format != VK_FORMAT_D16_UNORM_S8_UINT);
-   if (iview->vk.format == VK_FORMAT_D16_UNORM) {
-      /* From the BDW PRM, Vol 7, "Depth Buffer Clear":
+   /* On gfx7, HiZ operations can only be done on full surfaces due to
+    * hardware limitations. blorp_hiz_op always does full-surface operations.
+    */
+   if (GFX_VER == 7) {
+      if (render_area.offset.x != 0 || render_area.offset.y != 0 ||
+          render_area.extent.width !=
+          u_minify(iview->vk.extent.width, iview->vk.base_mip_level) ||
+          render_area.extent.height !=
+          u_minify(iview->vk.extent.height, iview->vk.base_mip_level)) {
+         return false;
+      }
+   }
+
+   if (GFX_VER == 8) {
+      assert(iview->vk.format != VK_FORMAT_D16_UNORM_S8_UINT);
+      if (iview->vk.format == VK_FORMAT_D16_UNORM) {
+         /* From the BDW PRM, Vol 7, "Depth Buffer Clear":
        *
        *   The following restrictions apply only if the depth buffer surface
        *   type is D16_UNORM and software does not use the “full surf clear”:
@@ -433,13 +462,14 @@ anv_can_hiz_clear_ds_view(struct anv_device *device,
        *
        * Simply disable partial clears for D16 on BDW.
        */
-      if (render_area.offset.x > 0 ||
-          render_area.offset.y > 0 ||
-          render_area.extent.width !=
-          u_minify(iview->vk.extent.width, iview->vk.base_mip_level) ||
-          render_area.extent.height !=
-          u_minify(iview->vk.extent.height, iview->vk.base_mip_level)) {
-         return false;
+         if (render_area.offset.x > 0 ||
+             render_area.offset.y > 0 ||
+             render_area.extent.width !=
+             u_minify(iview->vk.extent.width, iview->vk.base_mip_level) ||
+             render_area.extent.height !=
+             u_minify(iview->vk.extent.height, iview->vk.base_mip_level)) {
+            return false;
+         }
       }
    }
 
@@ -450,7 +480,7 @@ anv_can_hiz_clear_ds_view(struct anv_device *device,
     * portion of a HiZ buffer. Testing has revealed that Gfx8 only supports
     * returning 0.0f. Gens prior to gfx8 do not support this feature at all.
     */
-   if (GFX_VER == 8 && anv_can_sample_with_hiz(device->info, iview->image))
+   if (GFX_VER <= 8 && anv_can_sample_with_hiz(device->info, iview->image))
       return false;
 
    /* If we got here, then we can fast clear */
@@ -1342,6 +1372,9 @@ genX(BeginCommandBuffer)(
    if (cmd_buffer->vk.level == VK_COMMAND_BUFFER_LEVEL_PRIMARY)
       cmd_buffer->usage_flags &= ~VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
 
+   if (is_video_queue_cmd_buffer(cmd_buffer))
+      return VK_SUCCESS;
+
    trace_intel_begin_cmd_buffer(&cmd_buffer->trace);
 
    genX(cmd_buffer_emit_state_base_address)(cmd_buffer);
@@ -1502,6 +1535,11 @@ genX(EndCommandBuffer)(
    if (anv_batch_has_error(&cmd_buffer->batch))
       return cmd_buffer->batch.status;
 
+   if (is_video_queue_cmd_buffer(cmd_buffer)) {
+      anv_cmd_buffer_end_batch_buffer(cmd_buffer);
+      return VK_SUCCESS;
+   }
+
    anv_measure_endcommandbuffer(cmd_buffer);
 
    /* We want every command buffer to start with the PMA fix in a known state,
@@ -1640,6 +1678,10 @@ genX(cmd_buffer_config_l3)(struct anv_cmd_buffer *cmd_buffer,
    if (cfg == cmd_buffer->state.current_l3_config)
       return;
 
+   if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+      perf_debug("L3 config change (requires full pipeline stall)\n");
+   }
+
    if (INTEL_DEBUG(DEBUG_L3)) {
       mesa_logd("L3 config transition: ");
       intel_dump_l3_config(cfg, stderr);
@@ -1752,6 +1794,20 @@ genX(emit_apply_pipe_flushes)(struct anv_batch *batch,
 
    if (bits & (ANV_PIPE_FLUSH_BITS | ANV_PIPE_STALL_BITS |
                ANV_PIPE_END_OF_PIPE_SYNC_BIT)) {
+      /* Emit perf debug info for stalls if enabled */
+      if (unlikely(INTEL_DEBUG(DEBUG_PERF)) &&
+          (bits & ANV_PIPE_STALL_BITS)) {
+         char stall_msg[64] = "";
+         int offset = 0;
+         if (bits & ANV_PIPE_STALL_AT_SCOREBOARD_BIT)
+            offset += snprintf(stall_msg + offset, sizeof(stall_msg) - offset, "scoreboard ");
+         if (bits & ANV_PIPE_DEPTH_STALL_BIT)
+            offset += snprintf(stall_msg + offset, sizeof(stall_msg) - offset, "depth ");
+         if (bits & ANV_PIPE_CS_STALL_BIT)
+            offset += snprintf(stall_msg + offset, sizeof(stall_msg) - offset, "cs ");
+         perf_debug("PIPE_CONTROL stall: %s\n", stall_msg);
+      }
+
       anv_batch_emit(batch, GENX(PIPE_CONTROL), pipe) {
          /* Flushing HDC pipeline requires DC Flush on earlier HW. */
          pipe.DCFlushEnable |= bits & ANV_PIPE_HDC_PIPELINE_FLUSH_BIT;
@@ -1920,6 +1976,13 @@ genX(cmd_buffer_apply_pipe_flushes)(struct anv_cmd_buffer *cmd_buffer)
    else if (bits == 0)
       return;
 
+   /* Log when we have both flush and invalidate bits, which can be costly */
+   if (unlikely(INTEL_DEBUG(DEBUG_PERF))) {
+      if ((bits & ANV_PIPE_FLUSH_BITS) && (bits & ANV_PIPE_INVALIDATE_BITS)) {
+         perf_debug("PIPE_CONTROL: flush + invalidate (requires end-of-pipe sync)\n");
+      }
+   }
+
    bool trace_flush =
       (bits & (ANV_PIPE_FLUSH_BITS | ANV_PIPE_STALL_BITS | ANV_PIPE_INVALIDATE_BITS)) != 0;
    if (trace_flush)
@@ -1961,6 +2024,9 @@ cmd_buffer_barrier(struct anv_cmd_buffer *cmd_buffer,
     */
    VkAccessFlags2 src_flags = 0;
    VkAccessFlags2 dst_flags = 0;
+
+   if (is_video_queue_cmd_buffer(cmd_buffer))
+      return;
 
    for (uint32_t i = 0; i < dep_info->memoryBarrierCount; i++) {
       src_flags |= dep_info->pMemoryBarriers[i].srcAccessMask;
@@ -4334,7 +4400,7 @@ void genX(CmdBeginTransformFeedbackEXT)(
 
    /* From the SKL PRM Vol. 2c, SO_WRITE_OFFSET:
     *
-    *    "Ssoftware must ensure that no HW stream output operations can be in
+    *    "Software must ensure that no HW stream output operations can be in
     *    process or otherwise pending at the point that the MI_LOAD/STORE
     *    commands are processed. This will likely require a pipeline flush."
     */
@@ -4389,7 +4455,7 @@ void genX(CmdEndTransformFeedbackEXT)(
 
    /* From the SKL PRM Vol. 2c, SO_WRITE_OFFSET:
     *
-    *    "Ssoftware must ensure that no HW stream output operations can be in
+    *    "Software must ensure that no HW stream output operations can be in
     *    process or otherwise pending at the point that the MI_LOAD/STORE
     *    commands are processed. This will likely require a pipeline flush."
     */
@@ -5004,6 +5070,7 @@ cmd_buffer_emit_depth_stencil(struct anv_cmd_buffer *cmd_buffer)
          anv_batch_emit_reloc(&cmd_buffer->batch,
                               dw + device->isl_dev.ds.depth_offset / 4,
                               depth_address.bo, depth_address.offset);
+
       info.mocs =
          anv_mocs(device, depth_address.bo, ISL_SURF_USAGE_DEPTH_BIT);
 
@@ -5812,6 +5879,32 @@ void genX(CmdSetEvent2)(
    ANV_FROM_HANDLE(anv_cmd_buffer, cmd_buffer, commandBuffer);
    ANV_FROM_HANDLE(anv_event, event, _event);
 
+   if (is_video_queue_cmd_buffer(cmd_buffer)) {
+#if GFX_VER >= 8
+      anv_batch_emit(&cmd_buffer->batch, GENX(MI_FLUSH_DW), flush) {
+         flush.PostSyncOperation = WriteImmediateData;
+         flush.Address = (struct anv_address) {
+            cmd_buffer->device->dynamic_state_pool.block_pool.bo,
+            event->state.offset
+         };
+         flush.ImmediateData = VK_EVENT_SET;
+      }
+#else
+      anv_batch_emit(&cmd_buffer->batch, GENX(PIPE_CONTROL), pc) {
+         pc.CommandStreamerStallEnable = true;
+         pc.DestinationAddressType  = DAT_PPGTT;
+         pc.PostSyncOperation       = WriteImmediateData;
+         pc.Address = (struct anv_address) {
+            cmd_buffer->device->dynamic_state_pool.block_pool.bo,
+            event->state.offset
+         };
+         pc.ImmediateData           = VK_EVENT_SET;
+         anv_debug_dump_pc(pc);
+      }
+#endif
+      return;
+   }
+
    VkPipelineStageFlags2 src_stages =
       vk_collect_dependency_info_src_stages(pDependencyInfo);
 
@@ -5842,6 +5935,32 @@ void genX(CmdResetEvent2)(
 {
    ANV_FROM_HANDLE(anv_cmd_buffer, cmd_buffer, commandBuffer);
    ANV_FROM_HANDLE(anv_event, event, _event);
+
+   if (is_video_queue_cmd_buffer(cmd_buffer)) {
+#if GFX_VER >= 8
+      anv_batch_emit(&cmd_buffer->batch, GENX(MI_FLUSH_DW), flush) {
+         flush.PostSyncOperation = WriteImmediateData;
+         flush.Address = (struct anv_address) {
+            cmd_buffer->device->dynamic_state_pool.block_pool.bo,
+            event->state.offset
+         };
+         flush.ImmediateData = VK_EVENT_RESET;
+      }
+#else
+      anv_batch_emit(&cmd_buffer->batch, GENX(PIPE_CONTROL), pc) {
+         pc.CommandStreamerStallEnable = true;
+         pc.DestinationAddressType  = DAT_PPGTT;
+         pc.PostSyncOperation       = WriteImmediateData;
+         pc.Address = (struct anv_address) {
+            cmd_buffer->device->dynamic_state_pool.block_pool.bo,
+            event->state.offset
+         };
+         pc.ImmediateData           = VK_EVENT_RESET;
+         anv_debug_dump_pc(pc);
+      }
+#endif
+      return;
+   }
 
    cmd_buffer->state.pending_pipe_bits |= ANV_PIPE_POST_SYNC_BIT;
    genX(cmd_buffer_apply_pipe_flushes)(cmd_buffer);
@@ -5920,7 +6039,7 @@ void genX(CmdBindIndexBuffer2KHR)(
    cmd_buffer->state.gfx.index_buffer = buffer;
    cmd_buffer->state.gfx.index_type = vk_to_intel_index_type(indexType);
    cmd_buffer->state.gfx.index_offset = offset;
-   cmd_buffer->state.gfx.index_size = vk_buffer_range(&buffer->vk, offset, size);
+   cmd_buffer->state.gfx.index_size = buffer ? vk_buffer_range(&buffer->vk, offset, size) : 0;
    cmd_buffer->state.gfx.dirty |= ANV_CMD_DIRTY_INDEX_BUFFER;
 }
 
@@ -6014,3 +6133,4 @@ void genX(cmd_capture_data)(struct anv_batch *batch,
    mi_builder_init(&b, device->info, batch);
    mi_memcpy(&b, dst_addr, src_addr, size_B);
 }
+/* *INDENT-ON* */
