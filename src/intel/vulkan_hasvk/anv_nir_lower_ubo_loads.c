@@ -61,21 +61,24 @@ lower_ubo_load_instr(nir_builder *b, nir_intrinsic_instr *load,
       for (unsigned i = 0; i < 2; i++) {
          nir_def *addr = nir_iadd_imm(b, base_addr, aligned_offset + i * 64);
 
-         data[i] = nir_load_global_constant_uniform_block_intel(
-            b, 16, 32, addr,
-            .access = nir_intrinsic_access(load),
-            .align_mul = 64);
+         data[i] =
+            nir_load_global_constant_uniform_block_intel(b, 16, 32,
+                                                         addr,.access =
+                                                         nir_intrinsic_access
+                                                         (load),.align_mul =
+                                                         64);
          if (bound) {
             data[i] = nir_bcsel(b,
-                                nir_igt_imm(b, bound, aligned_offset + i * 64 + 63),
-                                data[i],
-                                nir_imm_int(b, 0));
+                                nir_igt_imm(b, bound,
+                                            aligned_offset + i * 64 + 63),
+                                data[i], nir_imm_int(b, 0));
          }
       }
 
       val = nir_extract_bits(b, data, 2, suboffset * 8,
                              load->num_components, bit_size);
-   } else {
+   }
+   else {
       nir_def *offset = load->src[1].ssa;
       nir_def *addr = nir_iadd(b, base_addr, nir_u2u64(b, offset));
 
@@ -90,20 +93,25 @@ lower_ubo_load_instr(nir_builder *b, nir_intrinsic_instr *load,
 
          nir_def *load_val =
             nir_load_global_constant(b, load->def.num_components,
-                                           load->def.bit_size, addr,
-                                           .access = nir_intrinsic_access(load),
-                                           .align_mul = nir_intrinsic_align_mul(load),
-                                           .align_offset = nir_intrinsic_align_offset(load));
+                                     load->def.bit_size, addr,
+                                     .access = nir_intrinsic_access(load),
+                                     .align_mul =
+                                     nir_intrinsic_align_mul(load),
+                                     .align_offset =
+                                     nir_intrinsic_align_offset(load));
 
          nir_pop_if(b, NULL);
 
          val = nir_if_phi(b, load_val, zero);
-      } else {
+      }
+      else {
          val = nir_load_global_constant(b, load->def.num_components,
-                                              load->def.bit_size, addr,
-                                              .access = nir_intrinsic_access(load),
-                                              .align_mul = nir_intrinsic_align_mul(load),
-                                              .align_offset = nir_intrinsic_align_offset(load));
+                                        load->def.bit_size, addr,.access =
+                                        nir_intrinsic_access(load),.align_mul
+                                        =
+                                        nir_intrinsic_align_mul
+                                        (load),.align_offset =
+                                        nir_intrinsic_align_offset(load));
       }
    }
 
@@ -118,6 +126,5 @@ anv_nir_lower_ubo_loads(nir_shader *shader)
    nir_divergence_analysis(shader);
 
    return nir_shader_intrinsics_pass(shader, lower_ubo_load_instr,
-                                       nir_metadata_none,
-                                       NULL);
+                                     nir_metadata_none, NULL);
 }
