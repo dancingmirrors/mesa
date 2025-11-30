@@ -93,6 +93,12 @@ anv_QueueWaitIdle(VkQueue _queue)
    if (result != VK_SUCCESS)
       return result;
 
+   /* Trim cached memory in BO pools while the queue is idle.
+    * This helps reduce memory pressure for applications with
+    * varying command buffer sizes.
+    */
+   anv_bo_pool_trim(&device->batch_bo_pool);
+
    /* Check device status after waiting */
    VkResult device_status = vk_device_check_status(&device->vk);
    if (device_status != VK_SUCCESS)
