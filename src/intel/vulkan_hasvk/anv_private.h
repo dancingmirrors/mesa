@@ -795,6 +795,7 @@ void anv_bo_pool_finish(struct anv_bo_pool *pool);
 VkResult anv_bo_pool_alloc(struct anv_bo_pool *pool, uint32_t size,
                            struct anv_bo **bo_out);
 void anv_bo_pool_free(struct anv_bo_pool *pool, struct anv_bo *bo);
+void anv_bo_pool_trim(struct anv_bo_pool *pool);
 
 struct anv_scratch_pool
 {
