@@ -1406,12 +1406,30 @@ anv_bo_pool_alloc(struct anv_bo_pool *pool, uint32_t size,
    return VK_SUCCESS;
 }
 
+/* Threshold above which BOs are immediately released instead of cached.
+ * This helps reduce memory pressure for applications that allocate large
+ * transient buffers. Set to 2MB which is a reasonable threshold for
+ * batch buffers and similar allocations.
+ */
+#define ANV_BO_POOL_CACHE_THRESHOLD (2 * 1024 * 1024)
+
 void
 anv_bo_pool_free(struct anv_bo_pool *pool, struct anv_bo *bo)
 {
    VG(VALGRIND_MEMPOOL_FREE(pool, bo->map));
 
    assert(util_is_power_of_two_or_zero(bo->size));
+
+   /* For large BOs, immediately release them instead of caching to reduce
+    * memory pressure. This is especially important for applications that
+    * create large transient command buffers.
+    */
+   if (bo->size >= ANV_BO_POOL_CACHE_THRESHOLD) {
+      VG(VALGRIND_MALLOCLIKE_BLOCK(bo->map, bo->size, 0, 1));
+      anv_device_release_bo(pool->device, bo);
+      return;
+   }
+
    const unsigned size_log2 = ilog2_round_up(bo->size);
    const unsigned bucket = size_log2 - 12;
    assert(bucket < ARRAY_SIZE(pool->free_list));
@@ -1420,6 +1438,25 @@ anv_bo_pool_free(struct anv_bo_pool *pool, struct anv_bo *bo)
                                 bo->gem_handle) == bo);
    util_sparse_array_free_list_push(&pool->free_list[bucket],
                                     &bo->gem_handle, 1);
+}
+
+void
+anv_bo_pool_trim(struct anv_bo_pool *pool)
+{
+   /* Release all cached BOs to reclaim memory. This is useful when
+    * memory pressure is detected or when the application is idle.
+    */
+   for (unsigned i = 0; i < ARRAY_SIZE(pool->free_list); i++) {
+      while (1) {
+         struct anv_bo *bo =
+            util_sparse_array_free_list_pop_elem(&pool->free_list[i]);
+         if (bo == NULL)
+            break;
+
+         VG(VALGRIND_MALLOCLIKE_BLOCK(bo->map, bo->size, 0, 1));
+         anv_device_release_bo(pool->device, bo);
+      }
+   }
 }
 
 // Scratch pool
