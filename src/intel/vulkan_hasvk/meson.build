@@ -56,6 +56,11 @@ devenv.append('VK_DRIVER_FILES', _dev_icd.full_path())
 # Deprecated: replaced by VK_DRIVER_FILES above
 devenv.append('VK_ICD_FILENAMES', _dev_icd.full_path())
 
+# Build libvdpau-va-gl as part of Mesa
+# This is the VDPAU driver (by Rinat Ibragimov) that provides video decode
+# support via VA-API/OpenGL, built and installed alongside hasvk.
+subdir('libvdpau_va_gl')
+
 # Check for VDPAU early since we need it to determine which files to compile
 # VDPAU is required for video decode bridge in hasvk (using libvdpau-va-gl)
 dep_hasvk_vdpau = dependency('vdpau', version : '>= 1.0', required : false)
