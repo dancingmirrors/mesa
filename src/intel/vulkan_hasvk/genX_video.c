@@ -30,15 +30,14 @@
 #include "genxml/hasvk_genX_pack.h"
 #include "genxml/hasvk_genX_video_pack.h"
 
-#ifdef HAVE_LIBVA
-#include "anv_video_vaapi_bridge.h"
+#ifdef HAVE_VDPAU
+#include "anv_video_vdpau_bridge.h"
 #endif
 
 /* Native H.264 decode implementation has been removed.
- * The VA-API bridge is now the only supported path for video decode on hasvk.
- * This is because native H.264 decode is not feasible on Ivy Bridge and
- * earlier hardware. The VA-API bridge uses the crocus driver for actual
- * hardware decode operations.
+ * The VDPAU bridge is now the only supported path for video decode on hasvk.
+ * VDPAU is used via libvdpau-va-gl which provides a simpler interface than
+ * direct VA-API and handles the complex slice header parsing internally.
  */
 
 void
@@ -98,21 +97,21 @@ genX(CmdDecodeVideoKHR) (VkCommandBuffer commandBuffer,
               GFX_VERx10);
    }
 
-#ifdef HAVE_LIBVA
-   /* VA-API bridge is always used for hasvk video decode */
+#ifdef HAVE_VDPAU
+   /* VDPAU bridge is always used for hasvk video decode */
    if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-      fprintf(stderr, "CmdDecodeVideoKHR: Using VA-API bridge path\n");
+      fprintf(stderr, "CmdDecodeVideoKHR: Using VDPAU bridge path\n");
    }
-   VkResult result = anv_vaapi_decode_frame(cmd_buffer, frame_info);
+   VkResult result = anv_vdpau_decode_frame(cmd_buffer, frame_info);
    if (result != VK_SUCCESS) {
       if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "VA-API decode failed: %d\n", result);
+         fprintf(stderr, "VDPAU decode failed: %d\n", result);
       }
    }
 #else
    if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
       fprintf(stderr,
-              "CmdDecodeVideoKHR: ERROR - HAVE_LIBVA not defined, cannot decode\n");
+              "CmdDecodeVideoKHR: ERROR - HAVE_VDPAU not defined, cannot decode\n");
    }
 #endif
 }

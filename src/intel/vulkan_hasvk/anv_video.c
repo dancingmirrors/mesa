@@ -28,8 +28,8 @@
 #include "vk_common_entrypoints.h"
 #include "vk_video/vulkan_video_codecs_common.h"
 
-#ifdef HAVE_LIBVA
-#include "anv_video_vaapi_bridge.h"
+#ifdef HAVE_VDPAU
+#include "anv_video_vdpau_bridge.h"
 #endif
 
 VkResult
@@ -56,15 +56,13 @@ anv_CreateVideoSessionKHR(VkDevice _device,
       return result;
    }
 
-#ifdef HAVE_LIBVA
-   /* Initialize VA-API bridge session (always enabled for hasvk) */
-   if (anv_use_vaapi_bridge()) {
-      result = anv_vaapi_session_create(device, vid, pCreateInfo);
-      if (result != VK_SUCCESS) {
-         vk_video_session_finish(&vid->vk);
-         vk_free2(&device->vk.alloc, pAllocator, vid);
-         return result;
-      }
+#ifdef HAVE_VDPAU
+   /* Initialize VDPAU bridge session (always enabled for hasvk) */
+   result = anv_vdpau_session_create(device, vid, pCreateInfo);
+   if (result != VK_SUCCESS) {
+      vk_video_session_finish(&vid->vk);
+      vk_free2(&device->vk.alloc, pAllocator, vid);
+      return result;
    }
 #endif
 
@@ -88,10 +86,10 @@ anv_DestroyVideoSessionKHR(VkDevice _device,
     */
    vk_common_DeviceWaitIdle(_device);
 
-#ifdef HAVE_LIBVA
-   /* Destroy VA-API bridge session if it was created */
-   if (vid->vaapi_session) {
-      anv_vaapi_session_destroy(device, vid);
+#ifdef HAVE_VDPAU
+   /* Destroy VDPAU bridge session if it was created */
+   if (vid->vdpau_session) {
+      anv_vdpau_session_destroy(device, vid);
    }
 #endif
 

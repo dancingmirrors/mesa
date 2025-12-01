@@ -24,7 +24,7 @@
 /**
  * Cross-Device Resource Sharing for HasVK Video
  *
- * This module implements cross-device resource sharing for the VA-API/Vulkan
+ * This module implements cross-device resource sharing for the VDPAU/Vulkan
  * bridge, enabling decoded video frames to be efficiently shared between
  * different Vulkan devices (e.g., FFmpeg's Vulkan instance for decode and
  * libplacebo's Vulkan instance for rendering).
@@ -38,13 +38,12 @@
  * Architecture:
  *   Device A (Decode) → Video Surface → DMA-buf FD → Device B (Render)
  *       ↓                                               ↓
- *   VA-API Bridge                                  Import & Use
+ *   VDPAU Bridge                                   Import & Use
  *       ↓
- *   Crocus Driver
+ *   libvdpau-va-gl
  */
 
 #include "anv_private.h"
-#include "anv_video_vaapi_bridge.h"
 #include "anv_video_cross_device.h"
 
 #include <fcntl.h>
@@ -135,18 +134,44 @@ anv_video_export_surface_for_cross_device(struct anv_device *device,
       return vk_error(device, VK_ERROR_FEATURE_NOT_PRESENT);
    }
 
-   /* Export using the existing DMA-buf export function from the VA-API bridge */
-   VkResult result = anv_vaapi_export_video_surface_dmabuf(device, image, fd_out);
+   /* Get the main memory binding for the image */
+   struct anv_image_binding *binding =
+      &image->bindings[ANV_IMAGE_MEMORY_BINDING_MAIN];
 
-   if (result == VK_SUCCESS && unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+   if (!binding->address.bo) {
+      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+         fprintf(stderr, "Cross-device: Image has no backing memory\n");
+      }
+      return vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
+   }
+
+   struct anv_bo *bo = binding->address.bo;
+
+   /* Mark as external if not already */
+   if (!bo->is_external) {
+      bo->is_external = true;
+   }
+
+   /* Export the BO as a DMA-buf file descriptor */
+   int fd = anv_gem_handle_to_fd(device, bo->gem_handle);
+   if (fd < 0) {
+      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+         fprintf(stderr, "Cross-device: Failed to export BO as DMA-buf\n");
+      }
+      return vk_error(device, VK_ERROR_TOO_MANY_OBJECTS);
+   }
+
+   *fd_out = fd;
+
+   if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
       fprintf(stderr, "Cross-device: Successfully exported video surface (fd=%d)\n",
-              *fd_out);
+              fd);
       fprintf(stderr, "  Image size: %ux%u, format: %d\n",
               image->vk.extent.width, image->vk.extent.height, image->vk.format);
       fprintf(stderr, "  This surface can now be imported by another Vulkan device\n");
    }
 
-   return result;
+   return VK_SUCCESS;
 }
 
 /**

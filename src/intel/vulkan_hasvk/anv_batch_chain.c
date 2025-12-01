@@ -31,8 +31,8 @@
 
 #include "anv_private.h"
 #include "anv_measure.h"
-#ifdef HAVE_LIBVA
-#include "anv_video_vaapi_bridge.h"
+#ifdef HAVE_VDPAU
+#include "anv_video_vdpau_bridge.h"
 #endif
 
 #include "common/intel_debug_identifier.h"
@@ -2121,22 +2121,20 @@ anv_queue_exec_locked(struct anv_queue *queue,
       .perf_query_pass = perf_query_pass,
    };
 
-   /* PHASE 4: Execute deferred VA-API decode commands
-    * Before submitting GPU commands, execute all deferred VA-API decode
+   /* Execute deferred VDPAU decode commands
+    * Before submitting GPU commands, execute all deferred VDPAU decode
     * operations that were recorded during CmdDecodeVideoKHR.
-    * The VA-API bridge is always used for video decode on hasvk.
+    * The VDPAU bridge is always used for video decode on hasvk.
     */
-#ifdef HAVE_LIBVA
-   if (anv_use_vaapi_bridge()) {
-      for (uint32_t i = 0; i < cmd_buffer_count; i++) {
-         if (util_dynarray_num_elements(&cmd_buffers[i]->video.vaapi_decodes,
-                                        struct anv_vaapi_decode_cmd) > 0)
-         {
-            VkResult result =
-               anv_vaapi_execute_deferred_decodes(device, cmd_buffers[i]);
-            if (result != VK_SUCCESS) {
-               return result;
-            }
+#ifdef HAVE_VDPAU
+   for (uint32_t i = 0; i < cmd_buffer_count; i++) {
+      if (util_dynarray_num_elements(&cmd_buffers[i]->video.vdpau_decodes,
+                                     struct anv_vdpau_decode_cmd) > 0)
+      {
+         VkResult result =
+            anv_vdpau_execute_deferred_decodes(device, cmd_buffers[i]);
+         if (result != VK_SUCCESS) {
+            return result;
          }
       }
    }

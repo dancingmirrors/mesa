@@ -65,8 +65,9 @@
 #include "genxml/hasvk_gen7_pack.h"
 #include "genxml/genX_bits.h"
 
-#ifdef HAVE_LIBVA
-#include <va/va.h>
+#ifdef HAVE_VDPAU
+#include <vdpau/vdpau.h>
+#include <dlfcn.h>
 #endif
 
 static const driOptionDescription anv_dri_options[] = {
@@ -203,8 +204,8 @@ get_device_extensions(const struct anv_physical_device *device,
    const bool has_syncobj_wait =
       (device->sync_syncobj_type.features & VK_SYNC_FEATURE_CPU_WAIT) != 0;
 
-   /* Video decode is only supported through VA-API with H.264 codec enabled */
-#if defined(HAVE_LIBVA) && VIDEO_CODEC_H264DEC
+   /* Video decode is only supported through VDPAU with H.264 codec enabled */
+#if defined(HAVE_VDPAU) && VIDEO_CODEC_H264DEC
    const bool video_decode = true;
 #else
    const bool video_decode = false;
@@ -2624,12 +2625,14 @@ anv_CreateDevice(VkPhysicalDevice physicalDevice,
       goto fail_device;
    }
 
-   /* Initialize VA-API DRM fd to -1 (not opened yet)
-    * This will be opened separately when VA-API is first used to avoid
-    * conflicts with multiple Vulkan instances (FFmpeg hwdec + libplacebo)
-    * accessing the same i915 hardware.
+   /* Initialize VDPAU device handle to invalid
+    * This will be initialized on first use when video decode is needed.
     */
-   device->va_drm_fd = -1;
+   device->vdp_device = (uint32_t)-1;
+   device->vdp_get_proc_address = NULL;
+   device->x11_display = NULL;
+   device->libX11 = NULL;
+   device->libvdpau = NULL;
 
    device->vk.command_buffer_ops = &anv_cmd_buffer_ops;
    device->vk.check_status = anv_device_check_status;
@@ -2980,23 +2983,41 @@ anv_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
       }
    }
 
-   /* Terminate VA-API display if it was initialized */
-   if (device->va_display) {
-#ifdef HAVE_LIBVA
-      vaTerminate((VADisplay) device->va_display);
-#endif
-      device->va_display = NULL;
-
-      /* Close the dedicated VA-API DRM file descriptor
-       * This was opened separately from the Vulkan DRM fd to prevent
-       * conflicts when multiple Vulkan instances (FFmpeg hwdec + libplacebo)
-       * are active on the same i915 hardware.
-       */
-      if (device->va_drm_fd >= 0) {
-         close(device->va_drm_fd);
-         device->va_drm_fd = -1;
+   /* Cleanup VDPAU resources if initialized */
+#ifdef HAVE_VDPAU
+   if (device->vdp_device != (uint32_t)-1) {
+      /* Get device destroy function and call it */
+      VdpDeviceDestroy *vdp_device_destroy = NULL;
+      if (device->vdp_get_proc_address) {
+         typedef VdpStatus (*GetProcAddress)(uint32_t, uint32_t, void**);
+         GetProcAddress get_proc = (GetProcAddress)device->vdp_get_proc_address;
+         get_proc(device->vdp_device, VDP_FUNC_ID_DEVICE_DESTROY, (void**)&vdp_device_destroy);
+         if (vdp_device_destroy) {
+            vdp_device_destroy(device->vdp_device);
+         }
       }
+      device->vdp_device = (uint32_t)-1;
    }
+
+   /* Close X11 display if opened */
+   if (device->x11_display && device->libX11) {
+      typedef int (*XCloseDisplay_fn)(void *);
+      XCloseDisplay_fn XCloseDisplay_ptr = (XCloseDisplay_fn)dlsym(device->libX11, "XCloseDisplay");
+      if (XCloseDisplay_ptr)
+         XCloseDisplay_ptr(device->x11_display);
+      device->x11_display = NULL;
+   }
+
+   /* Close library handles */
+   if (device->libvdpau) {
+      dlclose(device->libvdpau);
+      device->libvdpau = NULL;
+   }
+   if (device->libX11) {
+      dlclose(device->libX11);
+      device->libX11 = NULL;
+   }
+#endif
 
    close(device->fd);
 
@@ -3370,12 +3391,12 @@ anv_AllocateMemory(VkDevice _device,
        * the BO.  In this case, we have a dedicated allocation.
        *
        * CRITICAL: Video images also need tiling set on the BO so that when
-       * we export them via DMA-buf for VA-API, the VA-API driver can query
-       * the tiling from the kernel. Without this, VA-API assumes linear
+       * we export them via DMA-buf for VDPAU/VA-API, the driver can query
+       * the tiling from the kernel. Without this, it assumes linear
        * tiling and the decoded data will be garbled.
        *
        * Both decode destination (DST) and DPB (reference frame) images need
-       * tiling set, as both are shared with VA-API.
+       * tiling set, as both are shared with the video decode backend.
        */
       if (image->vk.wsi_legacy_scanout ||
           (image->vk.usage & (VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR |
