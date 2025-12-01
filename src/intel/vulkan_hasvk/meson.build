@@ -54,10 +54,9 @@ _dev_icd = custom_target(
 
 devenv.append('VK_DRIVER_FILES', _dev_icd.full_path())
 
-# Check for VA-API early since we need it to determine which files to compile
-# VA-API is required for video decode bridge in hasvk
-_hasvk_va_name = host_machine.system() == 'windows' ? 'libva-win32' : 'libva'
-dep_hasvk_va = dependency(_hasvk_va_name, version : '>= 1.8.0', required : false)
+# Check for VDPAU early since we need it to determine which files to compile
+# VDPAU is required for video decode bridge in hasvk (using libvdpau-va-gl)
+dep_hasvk_vdpau = dependency('vdpau', version : '>= 1.0', required : false)
 
 libanv_per_hw_ver_libs = []
 anv_per_hw_ver_files = files(
@@ -69,17 +68,17 @@ anv_per_hw_ver_files = files(
   'genX_state.c',
 )
 
-# Add video decode files only when libva is available
-if dep_hasvk_va.found()
+# Add video decode files only when vdpau is available
+if dep_hasvk_vdpau.found()
   anv_per_hw_ver_files += files('genX_video.c')
 endif
 
-# Build c_args for per-hw-ver libs, including HAVE_LIBVA when available
+# Build c_args for per-hw-ver libs, including HAVE_VDPAU when available
 _per_hw_ver_c_args = [
   no_override_init_args, sse2_args,
 ]
-if dep_hasvk_va.found()
-  _per_hw_ver_c_args += '-DHAVE_LIBVA'
+if dep_hasvk_vdpau.found()
+  _per_hw_ver_c_args += '-DHAVE_VDPAU'
 endif
 
 foreach g : [['70', ['gfx7_cmd_buffer.c']],
@@ -135,12 +134,12 @@ libanv_files = files(
   'anv_wsi.c',
 )
 
-# Add video decode files only when libva is available
-if dep_hasvk_va.found()
+# Add video decode files only when vdpau is available
+if dep_hasvk_vdpau.found()
   libanv_files += files(
     'anv_video.c',
-    'anv_video_vaapi_bridge.c',
-    'anv_video_vaapi_h264.c',
+    'anv_video_vdpau_bridge.c',
+    'anv_video_vdpau_h264.c',
     'anv_video_cross_device.c',
   )
 endif
@@ -156,25 +155,18 @@ anv_deps = [
   idep_vulkan_wsi_headers,
 ]
 
-# Add VA-API dependencies to anv_deps when found
-if dep_hasvk_va.found()
-  anv_deps += dep_hasvk_va
-  # Also need libva-drm for vaGetDisplayDRM and DRM-specific functions
-  if host_machine.system() != 'windows'
-    dep_hasvk_va_drm = dependency('libva-drm', version : '>= 1.8.0', required : false)
-    if dep_hasvk_va_drm.found()
-      anv_deps += dep_hasvk_va_drm
-    endif
-  endif
+# Add VDPAU dependencies to anv_deps when found
+if dep_hasvk_vdpau.found()
+  anv_deps += dep_hasvk_vdpau
 endif
 anv_flags = [
   no_override_init_args,
   sse2_args,
 ]
 
-# Define HAVE_LIBVA when libva is available for video decode support
-if dep_hasvk_va.found()
-  anv_flags += '-DHAVE_LIBVA'
+# Define HAVE_VDPAU when vdpau is available for video decode support
+if dep_hasvk_vdpau.found()
+  anv_flags += '-DHAVE_VDPAU'
 endif
 
 anv_cpp_flags = []

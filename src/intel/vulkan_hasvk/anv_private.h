@@ -105,7 +105,7 @@ struct anv_buffer_view;
 struct anv_image;
 struct anv_image_view;
 struct anv_instance;
-struct anv_vaapi_session;
+struct anv_vdpau_session;
 
 struct intel_perf_config;
 struct intel_perf_counter_pass;
@@ -1145,10 +1145,12 @@ struct anv_device
 
    struct intel_ds_device ds;
 
-   /* VA-API display for video decode bridge */
-   void *va_display;
-   /* Separate DRM file descriptor for VA-API to avoid conflicts with Vulkan */
-   int va_drm_fd;
+   /* VDPAU device for video decode bridge */
+   uint32_t vdp_device;                   /* VdpDevice handle */
+   void *vdp_get_proc_address;            /* VdpGetProcAddress function pointer */
+   void *x11_display;                     /* X11 Display for VDPAU */
+   void *libX11;                          /* libX11 handle */
+   void *libvdpau;                        /* libvdpau handle */
 };
 
 static inline bool
@@ -2740,10 +2742,10 @@ struct anv_cmd_buffer
       struct anv_video_session *vid;
       struct anv_video_session_params *params;
 
-      /* Phase 4: Deferred VA-API decode commands
+      /* Deferred VDPAU decode commands
        * These are recorded during CmdDecodeVideoKHR and executed at QueueSubmit time.
        */
-      struct util_dynarray vaapi_decodes;  /* array of struct anv_vaapi_decode_cmd */
+      struct util_dynarray vdpau_decodes;  /* array of struct anv_vdpau_decode_cmd */
    } video;
 };
 
@@ -3908,8 +3910,8 @@ struct anv_video_session
    /* the decoder needs some private memory allocations */
    struct anv_vid_mem vid_mem[ANV_VID_MEM_H264_MAX];
 
-   /* VA-API bridge session for hardware decode */
-   struct anv_vaapi_session *vaapi_session;
+   /* VDPAU bridge session for hardware decode */
+   struct anv_vdpau_session *vdpau_session;
 };
 
 struct anv_video_session_params

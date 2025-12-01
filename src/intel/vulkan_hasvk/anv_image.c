@@ -1891,12 +1891,12 @@ anv_bind_image_memory(struct anv_device *device,
    }
 
    /* For video images, we need to set tiling on the BO so that when
-    * we export them via DMA-buf for VA-API, the VA-API driver can query
-    * the tiling from the kernel. Without this, VA-API assumes linear
+    * we export them via DMA-buf for VDPAU/VA-API, the driver can query
+    * the tiling from the kernel. Without this, it assumes linear
     * tiling and the decoded data will be garbled.
     *
     * Both decode destination (DST) and DPB (reference frame) images need
-    * tiling set, as both are shared with VA-API.
+    * tiling set, as both are shared with the video decode backend.
     *
     * This is done here in BindImageMemory rather than AllocateMemory because
     * not all video images use dedicated allocations.
