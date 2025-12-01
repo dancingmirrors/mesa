@@ -23,15 +23,13 @@ jobs:
           ./bin/intel-check-whitespace.sh
 
           sudo apt-get update
-          # Enable source repositories
           sudo sed -i 's/^Types: deb$/Types: deb deb-src/' \
             /etc/apt/sources.list.d/ubuntu.sources
           sudo apt-get update
           sudo apt-get build-dep -y mesa
-          # Install additional tools (excluding meson since we need newer)
-          sudo apt-get install -y ninja-build pkg-config python3-pip
-          # Install newer Meson via pip (user install)
+          sudo apt-get install -y libva-dev libvdpau-dev ninja-build pkg-config python3-pip
           pip3 install --user meson
+
           echo "$HOME/.local/bin" >> $GITHUB_PATH
 
       - name: Configure Mesa with Meson
@@ -64,12 +62,11 @@ jobs:
       - name: Install build dependencies
         run: |
           cd /workspace
-          # Install basic tools needed for checks
+
           apt-get install -y bash
-          # Run whitespace check
+
           ./bin/intel-check-whitespace.sh
 
-          # Enable source repositories
           if [ -f /etc/apt/sources.list.d/debian.sources ]; then
             sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/debian.sources
           else
@@ -79,8 +76,8 @@ jobs:
           fi
           apt-get update
           apt-get build-dep -y mesa
-          # Install additional dependencies that may not be picked up by build-dep
-          apt-get install -y libva-dev libvulkan-dev meson ninja-build pkg-config
+
+          apt-get install -y libva-dev libvdpau-dev libvulkan-dev meson ninja-build pkg-config
 
       - name: Configure Mesa with Meson for 32-bit
         run: |
