@@ -129,27 +129,24 @@ va_gl_library_constructor(void)
     // initialize tracer
     traceSetTarget(stdout);
     traceSetHook(trc_hk, NULL);
-#ifdef NDEBUG
+    // Tracing is disabled by default. Use VDPAU_LOG=1 to enable.
     traceEnableTracing(0);
-#else
-    traceEnableTracing(1);
-#endif
     const char *value = getenv("VDPAU_LOG");
     if (value) {
-        // enable tracing when variable present
-        traceEnableTracing(1);
         char *value_lc = strdup(value); // convert to lowercase
-        for (int k = 0; value_lc[k] != 0; k ++) value_lc[k] = tolower(value_lc[k]);
-        // and disable tracing when variable value equals one of the following values
-        if (!strcmp(value_lc, "0") ||
-            !strcmp(value_lc, "false") ||
-            !strcmp(value_lc, "off") ||
-            !strcmp(value_lc, "disable") ||
-            !strcmp(value_lc, "disabled"))
-        {
-            traceEnableTracing(0);
+        if (value_lc) {
+            for (int k = 0; value_lc[k] != 0; k ++) value_lc[k] = tolower(value_lc[k]);
+            // enable tracing for truthy values
+            if (!strcmp(value_lc, "1") ||
+                !strcmp(value_lc, "true") ||
+                !strcmp(value_lc, "on") ||
+                !strcmp(value_lc, "enable") ||
+                !strcmp(value_lc, "enabled"))
+            {
+                traceEnableTracing(1);
+            }
+            free(value_lc);
         }
-        free(value_lc);
     }
     traceInfo("Software VDPAU backend library initialized\n");
 }
