@@ -46,9 +46,11 @@
 #include <string.h>
 #include <stdlib.h>
 #include <sys/mman.h>
+#include <sys/stat.h>
 #include <errno.h>
 #include <inttypes.h>
 #include <dlfcn.h>
+#include <libgen.h>
 
 #include "vk_video/vulkan_video_codecs_common.h"
 #include "vk_video/vulkan_video_codec_h264std.h"
@@ -204,6 +206,97 @@ get_vdp_profile(const VkVideoProfileInfoKHR *profile)
 }
 
 /**
+ * Set up VDPAU environment to use Mesa's bundled libvdpau_va_gl
+ *
+ * This function ensures that when libvdpau loads a VDPAU backend driver,
+ * it uses Mesa's bundled libvdpau_va_gl instead of any system-installed
+ * version. This prevents confusion when the system has its own version
+ * of libvdpau_va_gl installed via package manager.
+ *
+ * The VDPAU library searches for drivers in:
+ * 1. Directory specified by VDPAU_DRIVER_PATH environment variable
+ * 2. Default system locations (e.g., /usr/lib/vdpau)
+ *
+ * By setting VDPAU_DRIVER_PATH to point to Mesa's install directory,
+ * we ensure the bundled version is found first.
+ */
+static void
+setup_vdpau_driver_path(void)
+{
+   /* Only set the path if not already explicitly configured by user */
+   const char *existing_path = getenv("VDPAU_DRIVER_PATH");
+   if (existing_path && existing_path[0] != '\0') {
+      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+         fprintf(stderr, "VDPAU: Using user-specified VDPAU_DRIVER_PATH: %s\n",
+                 existing_path);
+      }
+      return;
+   }
+
+   /* Use dladdr to find where this library (hasvk) is installed.
+    * The bundled libvdpau_va_gl.so is installed in the same libdir
+    * under the 'vdpau' subdirectory.
+    *
+    * Example: if hasvk is at /usr/local/lib/libvulkan_intel_hasvk.so
+    * then libvdpau_va_gl.so is at /usr/local/lib/vdpau/libvdpau_va_gl.so
+    */
+   Dl_info info;
+   if (dladdr((void *)setup_vdpau_driver_path, &info) && info.dli_fname) {
+      /* Make a copy since dirname() may modify its argument */
+      char *lib_path = strdup(info.dli_fname);
+      if (lib_path) {
+         char *lib_dir = dirname(lib_path);
+         if (lib_dir) {
+            /* Construct path to vdpau subdirectory */
+            size_t vdpau_path_len = strlen(lib_dir) + strlen("/vdpau") + 1;
+            char *vdpau_path = malloc(vdpau_path_len);
+            if (vdpau_path) {
+               snprintf(vdpau_path, vdpau_path_len, "%s/vdpau", lib_dir);
+
+               /* Check if the directory exists and is accessible.
+                * Note: This has a theoretical TOCTOU race, but the consequence
+                * is benign - if the directory disappears between this check and
+                * libvdpau's driver load, libvdpau will simply fail to find the
+                * driver and use system defaults. The directory is part of Mesa's
+                * installation and shouldn't change during runtime.
+                */
+               struct stat st;
+               if (stat(vdpau_path, &st) == 0 && S_ISDIR(st.st_mode)) {
+                  setenv("VDPAU_DRIVER_PATH", vdpau_path, 0);
+
+                  if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+                     fprintf(stderr, "VDPAU: Set VDPAU_DRIVER_PATH to Mesa's bundled driver: %s\n",
+                             vdpau_path);
+                  }
+               } else if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+                  fprintf(stderr, "VDPAU: Mesa vdpau directory not found: %s (using system default)\n",
+                          vdpau_path);
+               }
+
+               free(vdpau_path);
+            }
+         }
+         free(lib_path);
+      }
+   }
+
+   /* Also set VDPAU_DRIVER to va_gl if not already set, to ensure the
+    * correct driver is loaded even if other drivers are present.
+    */
+   const char *existing_driver = getenv("VDPAU_DRIVER");
+   if (!existing_driver || existing_driver[0] == '\0') {
+      setenv("VDPAU_DRIVER", "va_gl", 0);
+
+      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+         fprintf(stderr, "VDPAU: Set VDPAU_DRIVER to va_gl\n");
+      }
+   } else if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+      fprintf(stderr, "VDPAU: Using user-specified VDPAU_DRIVER: %s\n",
+              existing_driver);
+   }
+}
+
+/**
  * Get VDPAU function pointers
  */
 static VkResult
@@ -277,6 +370,11 @@ anv_vdpau_get_device(struct anv_device *device)
       dlclose(libX11);
       return VDP_INVALID_HANDLE;
    }
+
+   /* Set up VDPAU environment to prefer Mesa's bundled libvdpau_va_gl
+    * over any system-installed version. Must be done before loading libvdpau.
+    */
+   setup_vdpau_driver_path();
 
    /* Load VDPAU library and create device */
    void *libvdpau = dlopen("libvdpau.so.1", RTLD_LAZY);
