@@ -689,9 +689,11 @@ anv_vdpau_copy_surface_to_image(struct anv_device *device,
    size_t y_size = (size_t)linear_y_pitch * aligned_height;
    size_t uv_size = (size_t)linear_uv_pitch * (aligned_height / 2);
 
-   /* Use page-aligned allocation for better compatibility with DMA operations */
-   size_t y_alloc_size = align(y_size, 4096);
-   size_t uv_alloc_size = align(uv_size, 4096);
+   /* Use page-aligned allocation for better compatibility with DMA operations
+    * Note: Use ALIGN_POT macro which preserves type (works on 32-bit and 64-bit)
+    */
+   size_t y_alloc_size = ALIGN_POT(y_size, 4096);
+   size_t uv_alloc_size = ALIGN_POT(uv_size, 4096);
    void *linear_y = aligned_alloc(4096, y_alloc_size);
    void *linear_uv = aligned_alloc(4096, uv_alloc_size);
 
