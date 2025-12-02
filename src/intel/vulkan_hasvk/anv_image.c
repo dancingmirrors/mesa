@@ -585,8 +585,8 @@ add_aux_surface_if_supported(struct anv_device *device,
       if (INTEL_DEBUG(DEBUG_NO_HIZ))
          return VK_SUCCESS;
 
-      /* HiZ is not working properly on Haswell, disable it for now. */
-      if (device->info->verx10 == 75)
+      /* HiZ is not working properly on Haswell and can't test Broadwell, disable it for now. */
+      if (device->info->verx10 >= 75)
          return VK_SUCCESS;
 
       if (!(image->vk.usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)) {
