@@ -17,6 +17,14 @@
 #include <sys/thr.h>
 #endif
 
+/* Branch prediction hints */
+#ifndef likely
+#define likely(x)   __builtin_expect(!!(x), 1)
+#endif
+#ifndef unlikely
+#define unlikely(x) __builtin_expect(!!(x), 0)
+#endif
+
 #if (LIBAVUTIL_VERSION_INT < AV_VERSION_INT(51, 42, 0)) || \
     (LIBAVUTIL_VERSION_INT == AV_VERSION_INT(51, 73, 101))
 
