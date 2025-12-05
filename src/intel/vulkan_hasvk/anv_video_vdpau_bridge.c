@@ -45,10 +45,12 @@
 #include <unistd.h>
 #include <string.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <errno.h>
 #include <inttypes.h>
+#include <limits.h>
 #include <dlfcn.h>
 #include <libgen.h>
 #include <pthread.h>
@@ -969,11 +971,19 @@ anv_vdpau_decode_frame(struct anv_cmd_buffer *cmd_buffer,
 /**
  * Execute deferred VDPAU decode commands
  *
- * Called at QueueSubmit time to execute all VDPAU decode operations.
+ * Called at QueueSubmit time to execute VDPAU decode operations.
  *
  * Performance optimization: Submit all decode operations first to allow
  * VA-API/GPU pipelining, then copy the results. This avoids serializing
  * decodes where decode N+1 can't start until decode N is fully copied.
+ *
+ * Frame limiting optimization: To prevent excessive frame queue buildup
+ * when using --hwdec=vulkan-copy, we limit the number of frames processed
+ * per QueueSubmit. This allows mpv's presentation timing logic to drop
+ * frames that haven't been submitted yet, improving performance on slow
+ * hardware like Gen7/7.5/8.
+ *
+ * Configurable via HASVK_VIDEO_MAX_FRAMES_PER_SUBMIT (default: 2)
  */
 VkResult
 anv_vdpau_execute_deferred_decodes(struct anv_device *device,
@@ -982,21 +992,69 @@ anv_vdpau_execute_deferred_decodes(struct anv_device *device,
    VdpStatus vdp_status;
    VkResult result = VK_SUCCESS;
 
-   if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-      uint32_t decode_count = util_dynarray_num_elements(
-         &cmd_buffer->video.vdpau_decodes, struct anv_vdpau_decode_cmd);
-      fprintf(stderr, "HASVK Performance: Executing %u deferred video decode(s)\n",
-              decode_count);
+   uint32_t total_decode_count = util_dynarray_num_elements(
+      &cmd_buffer->video.vdpau_decodes, struct anv_vdpau_decode_cmd);
+
+   if (total_decode_count == 0) {
+      return VK_SUCCESS;
    }
 
-   /* Phase 1: Submit all decode operations to VA-API
+   /* Get maximum frames to process per submit from environment variable
+    * Default to 2 frames to prevent queue buildup while allowing some pipelining.
+    * Set to 0 or very large value to process all frames (old behavior).
+    */
+   static bool initialized = false;
+   static uint32_t max_frames_per_submit = 2;
+   if (!initialized) {
+      initialized = true;
+      const char *env = getenv("HASVK_VIDEO_MAX_FRAMES_PER_SUBMIT");
+      if (env) {
+         char *endptr;
+         long parsed = strtol(env, &endptr, 10);
+
+         /* Validate the input: successful parse, no trailing chars, in valid range
+          * Check against LONG_MAX first, then ensure it fits in uint32_t
+          */
+         if (endptr != env && *endptr == '\0' && parsed >= 0 &&
+             (unsigned long)parsed <= UINT32_MAX) {
+            max_frames_per_submit = (uint32_t)parsed;
+         } else {
+            fprintf(stderr, "HASVK: Invalid HASVK_VIDEO_MAX_FRAMES_PER_SUBMIT value '%s', "
+                    "using default of 2\n", env);
+            max_frames_per_submit = 2;
+         }
+      }
+      /* else: keep default of 2 */
+   }
+
+   /* Determine how many frames to actually process */
+   uint32_t frames_to_process = total_decode_count;
+   if (max_frames_per_submit > 0 && total_decode_count > max_frames_per_submit) {
+      frames_to_process = max_frames_per_submit;
+      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+         fprintf(stderr, "HASVK Performance: Limiting decode to %u of %u queued frames\n",
+                 frames_to_process, total_decode_count);
+      }
+   }
+
+   if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+      fprintf(stderr, "HASVK Performance: Executing %u deferred video decode(s)\n",
+              frames_to_process);
+   }
+
+   /* Phase 1: Submit decode operations to VA-API
     * This allows VA-API to pipeline multiple decodes on the GPU instead of
     * serializing them. Each vdp_decoder_render submits work to VA-API but
     * doesn't wait for completion.
     */
+   uint32_t frame_index = 0;
    util_dynarray_foreach(&cmd_buffer->video.vdpau_decodes,
                          struct anv_vdpau_decode_cmd, decode_cmd)
    {
+      if (frame_index >= frames_to_process) {
+         break;
+      }
+
       vdp_status = decode_cmd->session->vdp_decoder_render(
          decode_cmd->decoder,
          decode_cmd->target_surface,
@@ -1008,6 +1066,8 @@ anv_vdpau_execute_deferred_decodes(struct anv_device *device,
          result = vk_error(device, VK_ERROR_UNKNOWN);
          break;
       }
+
+      frame_index++;
    }
 
    /* Phase 2: Copy decoded results from VDPAU surfaces to Vulkan images
@@ -1017,9 +1077,14 @@ anv_vdpau_execute_deferred_decodes(struct anv_device *device,
     * submitted and can execute in parallel on the GPU.
     */
    if (result == VK_SUCCESS) {
+      frame_index = 0;
       util_dynarray_foreach(&cmd_buffer->video.vdpau_decodes,
                             struct anv_vdpau_decode_cmd, decode_cmd)
       {
+         if (frame_index >= frames_to_process) {
+            break;
+         }
+
          /* Find the Vulkan image for this surface */
          struct anv_image *target_image = NULL;
          for (uint32_t i = 0; i < decode_cmd->session->surface_map_size; i++) {
@@ -1036,10 +1101,14 @@ anv_vdpau_execute_deferred_decodes(struct anv_device *device,
                result = copy_result;
             }
          }
+
+         frame_index++;
       }
    }
 
-   /* Phase 3: Clean up resources */
+   /* Phase 3: Clean up resources for ALL frames (even those not decoded)
+    * Frames beyond the limit are dropped to prevent resource leaks
+    */
    util_dynarray_foreach(&cmd_buffer->video.vdpau_decodes,
                          struct anv_vdpau_decode_cmd, decode_cmd)
    {
@@ -1057,16 +1126,23 @@ anv_vdpau_execute_deferred_decodes(struct anv_device *device,
       }
    }
 
-   /* Clear the deferred commands after execution */
+   /* Log dropped frames for debugging */
+   if (unlikely(INTEL_DEBUG(DEBUG_HASVK)) && total_decode_count > frames_to_process) {
+      fprintf(stderr, "HASVK Performance: Dropped %u frames (processed %u of %u)\n",
+              total_decode_count - frames_to_process, frames_to_process, total_decode_count);
+   }
+
+   /* Clear all commands from the queue */
    util_dynarray_clear(&cmd_buffer->video.vdpau_decodes);
 
-   /* Add texture cache invalidate for coherency after all decodes are complete
-    * We only need to invalidate once after all video frames have been decoded
+   /* Add texture cache invalidate for coherency after decode attempts
+    * We only need to invalidate once after video frames have been decoded
     * and copied, not once per frame. This significantly reduces cache thrashing
     * and improves performance.
     *
-    * Note: We invalidate even if there were errors to ensure cache coherency
-    * for any frames that did successfully decode.
+    * We always reach here with total_decode_count > 0 due to early return above.
+    * We invalidate even if some frames were dropped or there were errors, to
+    * ensure cache coherency for frames that were successfully processed.
     */
    anv_add_pending_pipe_bits(cmd_buffer,
                              ANV_PIPE_TEXTURE_CACHE_INVALIDATE_BIT,
