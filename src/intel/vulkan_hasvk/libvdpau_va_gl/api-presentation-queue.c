@@ -229,19 +229,21 @@ do_presentation_queue_display(struct task_s *task)
         glEnd();
     }
 
-    glFinish();
+    // Submit rendering commands without waiting for completion.
+    // glFlush() ensures GPU commands are submitted but doesn't block.
+    // This allows the presentation thread to move on to the next frame immediately,
+    // enabling effective frame dropping on slow hardware. The GPU will process
+    // frames asynchronously, and surfaces are safe due to reference counting.
+    glFlush();
     GLenum gl_error = glGetError();
 
-    x11_push_eh();
+    // XCopyArea to present the frame to the window. Use XFlush instead of XSync
+    // to avoid blocking. The rendering happens async on the GPU, and the window
+    // update happens async via X11. Surface can be marked IDLE immediately.
     XCopyArea(deviceData->display, pqData->targetData->pixmap, pqData->targetData->drawable,
               pqData->targetData->plain_copy_gc, 0, 0, target_width, target_height, 0, 0);
-    XSync(deviceData->display, False);
-    int x11_err = x11_pop_eh();
-    if (x11_err != Success) {
-        char buf[200] = { 0 };
-        XGetErrorText(deviceData->display, x11_err, buf, sizeof(buf));
-        traceError("warning (%s): caught X11 error %s\n", __func__, buf);
-    }
+    XFlush(deviceData->display);
+
     glx_ctx_unlock();
 
     struct timespec now;
@@ -302,17 +304,39 @@ presentation_thread(void *param)
                 // task is ready to go
                 g_queue_pop_head(int_q); // remove it from queue
 
-                // Frame dropping: Check if we're significantly behind schedule.
-                // Drop frames that are too late to allow weak hardware to maintain
-                // real-time playback. The threshold is adaptive - we use 2 frame times
-                // as a conservative value to avoid dropping frames unnecessarily while
-                // still allowing catch-up. For most content (24-60fps), this is 33-83ms.
-                // At 60fps: 1 frame = 16.67ms, threshold = 2 frames = 33.33ms
-                // At 30fps: 1 frame = 33.33ms, threshold = 2 frames = 66.67ms
-                // At 24fps: 1 frame = 41.67ms, threshold = 2 frames = 83.33ms
-                const gint64 frame_drop_threshold_us = -33333; // -33.33ms in microseconds
-                if (timeout < frame_drop_threshold_us) {
-                    // Frame is too late, drop it
+                // Frame dropping: On slow hardware, rendering can take longer than
+                // the frame time, causing a backlog. We aggressively drop frames
+                // to maintain real-time playback while ensuring we never get stuck.
+                //
+                // Strategy: Find the newest ready frame and drop everything older.
+                // This minimizes processing time when heavily behind schedule.
+
+                // Scan queue to find the newest (least late) ready frame
+                struct task_s *newest_ready_task = task;
+                gint64 newest_ready_timeout = timeout;
+                gint total_dropped = 0;
+
+                GList *iter = g_queue_peek_head_link(int_q);
+                while (iter != NULL) {
+                    struct task_s *next_task = iter->data;
+                    gint64 next_timeout = (next_task->when.tv_sec - now.tv_sec) * 1000 * 1000 +
+                                         (next_task->when.tv_nsec - now.tv_nsec) / 1000;
+                    if (next_timeout <= 0) {
+                        // This frame is also ready - check if it's newer
+                        if (next_timeout > newest_ready_timeout) {
+                            newest_ready_timeout = next_timeout;
+                            newest_ready_task = next_task;
+                        }
+                    } else {
+                        // Stop when we hit a frame that's not ready yet
+                        break;
+                    }
+                    iter = g_list_next(iter);
+                }
+
+                // If current frame is NOT the newest ready frame, drop it
+                if (task != newest_ready_task) {
+                    // This frame is old, drop it to catch up to the newest ready frame
                     VdpOutputSurfaceData *surfData = handle_acquire(task->surface, HANDLETYPE_OUTPUT_SURFACE);
                     if (surfData) {
                         // Mark surface as idle without displaying
@@ -320,15 +344,40 @@ presentation_thread(void *param)
                         surfData->status = VDP_PRESENTATION_QUEUE_STATUS_IDLE;
                         handle_release(task->surface);
                     }
-                    if (global.quirks.log_pq_delay) {
-                        traceInfo("Frame dropped: %lld us late (threshold: %lld us)\n",
-                                  (long long)(-timeout), (long long)(-frame_drop_threshold_us));
-                    }
+                    total_dropped++;
                     g_slice_free(struct task_s, task);
+
+                    // Now batch-drop ALL frames before the newest ready frame
+                    // This is more efficient than processing them one by one
+                    while (!g_queue_is_empty(int_q)) {
+                        struct task_s *next = g_queue_peek_head(int_q);
+                        if (next == newest_ready_task) {
+                            // Found the newest ready frame, stop dropping
+                            break;
+                        }
+
+                        // Drop this frame too
+                        g_queue_pop_head(int_q);
+                        VdpOutputSurfaceData *nextSurfData = handle_acquire(next->surface, HANDLETYPE_OUTPUT_SURFACE);
+                        if (nextSurfData) {
+                            nextSurfData->first_presentation_time = timespec2vdptime(now);
+                            nextSurfData->status = VDP_PRESENTATION_QUEUE_STATUS_IDLE;
+                            handle_release(next->surface);
+                        }
+                        total_dropped++;
+                        g_slice_free(struct task_s, next);
+                    }
+
+                    if (global.quirks.log_pq_delay && total_dropped > 0) {
+                        traceInfo("Batch dropped %d frames, current was %lld us late, keeping newest at %lld us late\n",
+                                  total_dropped, (long long)(-timeout), (long long)(-newest_ready_timeout));
+                    }
+
+                    // Continue to next iteration which will process the newest ready frame
                     continue;
                 }
 
-                // run the task
+                // Display this frame (it's the newest ready frame)
                 do_presentation_queue_display(task);
                 g_slice_free(struct task_s, task);
                 continue;
