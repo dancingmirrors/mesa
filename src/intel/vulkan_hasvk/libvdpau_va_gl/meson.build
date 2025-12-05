@@ -10,7 +10,6 @@
 # Check for required dependencies
 dep_glib = dependency('glib-2.0', required : false)
 dep_libva_x11 = dependency('libva-x11', required : false)
-dep_libswscale = dependency('libswscale', required : false)
 dep_gl = dependency('gl', required : false)
 dep_glu = dependency('glu', required : false)
 dep_x11 = dependency('x11', required : false)
@@ -18,7 +17,6 @@ dep_x11 = dependency('x11', required : false)
 with_libvdpau_va_gl = (
   dep_glib.found() and
   dep_libva_x11.found() and
-  dep_libswscale.found() and
   dep_gl.found() and
   dep_x11.found()
 )
@@ -71,7 +69,6 @@ if with_libvdpau_va_gl
   libvdpau_va_gl_deps = [
     dep_glib,
     dep_libva_x11,
-    dep_libswscale,
     dep_gl,
     dep_x11,
     dep_thread,
@@ -107,5 +104,5 @@ if with_libvdpau_va_gl
   )
 
 else
-  message('Skipping libvdpau-va-gl (missing dependencies: glib-2.0, libva-x11, libswscale, gl, x11)')
+  message('Skipping libvdpau-va-gl (missing dependencies: glib-2.0, libva-x11, gl, x11)')
 endif

@@ -102,7 +102,7 @@ vdpDecoderCreate(VdpDevice device, VdpDecoderProfile profile, uint32_t width, ui
     }
 
     // Create surfaces. All video surfaces created here, rather than in VdpVideoSurfaceCreate.
-    // VAAPI requires surfaces to be bound with context on its creation time, while VDPAU allows
+    // VA-API requires surfaces to be bound with context on its creation time, while VDPAU allows
     // to do it later. So here is a trick: VDP video surfaces get their va_surf dynamically in
     // DecoderRender.
 

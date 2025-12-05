@@ -10,7 +10,6 @@
 #include "ctx-stack.h"
 #include <GL/gl.h>
 #include <GL/glu.h>
-#include <libswscale/swscale.h>
 #include "compat.h"
 #include "shaders.h"
 #include <stdlib.h>
@@ -380,21 +379,6 @@ vdpVideoSurfaceGetParameters(VdpVideoSurface surface, VdpChromaType *chroma_type
 }
 
 static
-int
-vdpau_ycbcr_to_av_pixfmt(int fmt)
-{
-    switch (fmt) {
-    case VDP_YCBCR_FORMAT_NV12:     return AV_PIX_FMT_NV12;
-    case VDP_YCBCR_FORMAT_YV12:     return AV_PIX_FMT_YUV420P;
-    case VDP_YCBCR_FORMAT_UYVY:     return AV_PIX_FMT_UYVY422;
-    case VDP_YCBCR_FORMAT_YUYV:     return AV_PIX_FMT_YUYV422;
-    case VDP_YCBCR_FORMAT_Y8U8V8A8: return AV_PIX_FMT_NONE;
-    case VDP_YCBCR_FORMAT_V8U8Y8A8: return AV_PIX_FMT_NONE;
-    default:                        return AV_PIX_FMT_NONE;
-    }
-}
-
-static
 VdpStatus
 _video_surface_ensure_allocated(VdpVideoSurfaceData *surf)
 {
@@ -433,76 +417,6 @@ _video_surface_ensure_allocated(VdpVideoSurfaceData *surf)
     default:
         return VDP_STATUS_INVALID_CHROMA_TYPE;
     }
-}
-
-static
-VdpStatus
-vdpVideoSurfacePutBitsYCbCr_swscale(VdpVideoSurface surface, VdpYCbCrFormat source_ycbcr_format,
-                                    void const *const *source_data, uint32_t const *source_pitches)
-{
-    VdpStatus err_code;
-    // TODO: implement this
-    VdpVideoSurfaceData *dstSurfData = handle_acquire(surface, HANDLETYPE_VIDEO_SURFACE);
-    // TODO: remove following (void)'s
-    (void)vdpau_ycbcr_to_av_pixfmt;
-    (void)source_pitches;
-    (void)source_data;
-
-    if (NULL == dstSurfData)
-        return VDP_STATUS_INVALID_HANDLE;
-
-    // sanity check
-    switch (source_ycbcr_format) {
-    case VDP_YCBCR_FORMAT_NV12:
-        // fall through
-    case VDP_YCBCR_FORMAT_YV12:
-        if (dstSurfData->chroma_type != VDP_CHROMA_TYPE_420) {
-            err_code = VDP_STATUS_INVALID_Y_CB_CR_FORMAT;
-            goto err;
-        }
-        break;
-    case VDP_YCBCR_FORMAT_UYVY:
-        // fall through
-    case VDP_YCBCR_FORMAT_YUYV:
-        if (dstSurfData->chroma_type != VDP_CHROMA_TYPE_422) {
-            err_code = VDP_STATUS_INVALID_Y_CB_CR_FORMAT;
-            goto err;
-        }
-        break;
-    case VDP_YCBCR_FORMAT_Y8U8V8A8:
-        // fall through
-    case VDP_YCBCR_FORMAT_V8U8Y8A8:
-        if (dstSurfData->chroma_type != VDP_CHROMA_TYPE_444) {
-            err_code = VDP_STATUS_INVALID_Y_CB_CR_FORMAT;
-            goto err;
-        }
-        break;
-    default:
-        err_code = VDP_STATUS_INVALID_Y_CB_CR_FORMAT;
-        goto err;
-    }
-
-    _video_surface_ensure_allocated(dstSurfData);
-    dstSurfData->format = source_ycbcr_format;
-    switch (source_ycbcr_format) {
-    case VDP_YCBCR_FORMAT_NV12:
-
-    case VDP_YCBCR_FORMAT_YV12:   // 420
-
-    case VDP_YCBCR_FORMAT_UYVY:   // 422
-    case VDP_YCBCR_FORMAT_YUYV:   // 422
-    case VDP_YCBCR_FORMAT_Y8U8V8A8:   // 444
-    case VDP_YCBCR_FORMAT_V8U8Y8A8:   // 444
-        break;
-    }
-
-
-
-
-    err_code = VDP_STATUS_OK;
-err:
-    handle_release(surface);
-    return err_code;
 }
 
 static
@@ -650,17 +564,8 @@ VdpStatus
 vdpVideoSurfacePutBitsYCbCr(VdpVideoSurface surface, VdpYCbCrFormat source_ycbcr_format,
                             void const *const *source_data, uint32_t const *source_pitches)
 {
-    int using_glsl = 1;
-    VdpStatus ret;
-
-    if (using_glsl) {
-        ret = vdpVideoSurfacePutBitsYCbCr_glsl(surface, source_ycbcr_format, source_data,
-                                               source_pitches);
-    } else {
-        ret = vdpVideoSurfacePutBitsYCbCr_swscale(surface, source_ycbcr_format, source_data,
-                                                  source_pitches);
-    }
-    return ret;
+    return vdpVideoSurfacePutBitsYCbCr_glsl(surface, source_ycbcr_format, source_data,
+                                           source_pitches);
 }
 
 VdpStatus
