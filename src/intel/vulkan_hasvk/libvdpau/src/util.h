@@ -42,7 +42,7 @@ static inline char * getenv_wrapper(const char *name)
 #  ifdef HAVE___SECURE_GETENV
 #    define secure_getenv __secure_getenv
 #  else
-#    warning Neither secure_getenv nor __secure_getenv is available.
+#    warning Neither secure_getenv nor __secure_getenv is available. Falling back to getenv_wrapper which checks uid/gid equality but may not be secure for setuid/setgid applications. Consider using a system with secure_getenv support.
 #    define secure_getenv getenv_wrapper
 #  endif
 #endif

@@ -1,6 +1,7 @@
 #include <dirent.h>
 #include <dlfcn.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <vdpau/vdpau.h>
 #include <vdpau/vdpau_x11.h>
 #include <X11/Xlib.h>
@@ -34,6 +35,10 @@ static const char libXext_so[] = "libXext.so.0";
 static const char libXext_so[] = "libXext.so.6";
 #endif
 
+#ifndef LIBVDPAU_TEST_PATH
+#define LIBVDPAU_TEST_PATH "src/libvdpau.so"
+#endif
+
 int main(void)
 {
     // Work around a bug in libXext: dlclosing it after it has registered the
@@ -41,7 +46,11 @@ int main(void)
     // is trying to test for.
     int nOpenFDs = countOpenFDs();
     void *libXext = dlopen(libXext_so, RTLD_LAZY);
-    void *libvdpau = dlopen("src/libvdpau.so", RTLD_LAZY);
+    const char *libvdpau_path = getenv("LIBVDPAU_TEST_PATH");
+    if (!libvdpau_path || libvdpau_path[0] == '\0') {
+        libvdpau_path = LIBVDPAU_TEST_PATH;
+    }
+    void *libvdpau = dlopen(libvdpau_path, RTLD_LAZY);
     Display *dpy = XOpenDisplay(NULL);
     VdpDeviceCreateX11 *pvdp_device_create_x11;
     VdpDevice device;
@@ -54,7 +63,7 @@ int main(void)
     }
 
     if (!libvdpau) {
-        fprintf(stderr, "Failed to open libvdpau.so: %s", dlerror());
+        fprintf(stderr, "Failed to open %s: %s\n", libvdpau_path, dlerror());
         return FAIL;
     }
 

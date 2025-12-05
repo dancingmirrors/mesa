@@ -54,7 +54,7 @@ static void _vdp_close_driver(void) __attribute__((destructor));
 
 #endif
 
-#if DEBUG
+#if VDPAU_DEBUG
 
 static void _vdp_wrapper_error_breakpoint(char const * file, int line, char const * function)
 {

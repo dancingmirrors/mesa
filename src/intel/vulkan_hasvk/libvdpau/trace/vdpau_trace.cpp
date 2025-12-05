@@ -35,7 +35,7 @@
 
 #define _VDP_TRACE_ARSIZE(_x_) ((sizeof (_x_)) / (sizeof ((_x_)[0])))
 
-#if DEBUG
+#if VDPAU_DEBUG
 
 static void _vdp_trace_error_breakpoint(char const * file, int line, char const * function)
 {

@@ -302,6 +302,32 @@ presentation_thread(void *param)
                 // task is ready to go
                 g_queue_pop_head(int_q); // remove it from queue
 
+                // Frame dropping: Check if we're significantly behind schedule.
+                // Drop frames that are too late to allow weak hardware to maintain
+                // real-time playback. The threshold is adaptive - we use 2 frame times
+                // as a conservative value to avoid dropping frames unnecessarily while
+                // still allowing catch-up. For most content (24-60fps), this is 33-83ms.
+                // At 60fps: 1 frame = 16.67ms, threshold = 2 frames = 33.33ms
+                // At 30fps: 1 frame = 33.33ms, threshold = 2 frames = 66.67ms
+                // At 24fps: 1 frame = 41.67ms, threshold = 2 frames = 83.33ms
+                const gint64 frame_drop_threshold_us = -33333; // -33.33ms in microseconds
+                if (timeout < frame_drop_threshold_us) {
+                    // Frame is too late, drop it
+                    VdpOutputSurfaceData *surfData = handle_acquire(task->surface, HANDLETYPE_OUTPUT_SURFACE);
+                    if (surfData) {
+                        // Mark surface as idle without displaying
+                        surfData->first_presentation_time = timespec2vdptime(now);
+                        surfData->status = VDP_PRESENTATION_QUEUE_STATUS_IDLE;
+                        handle_release(task->surface);
+                    }
+                    if (global.quirks.log_pq_delay) {
+                        traceInfo("Frame dropped: %lld us late (threshold: %lld us)\n",
+                                  (long long)(-timeout), (long long)(-frame_drop_threshold_us));
+                    }
+                    g_slice_free(struct task_s, task);
+                    continue;
+                }
+
                 // run the task
                 do_presentation_queue_display(task);
                 g_slice_free(struct task_s, task);
