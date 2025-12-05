@@ -54,23 +54,30 @@ _dev_icd = custom_target(
 
 devenv.append('VK_DRIVER_FILES', _dev_icd.full_path())
 
-# Build bundled intel-vaapi-driver as part of Mesa
-# This provides the VA-API driver that is preferred over system-installed versions
-# JPEG support has been removed to prevent GPU hangs
-subdir('intel-vaapi-driver')
+# Don't build bundled libraries on Android (very niche and might cause issues)
+if not with_platform_android
+  # Build bundled intel-vaapi-driver as part of Mesa
+  # This provides the VA-API driver that is preferred over system-installed versions
+  # JPEG support has been removed to prevent GPU hangs
+  subdir('intel-vaapi-driver')
 
-# Build bundled libvdpau as part of Mesa
-# This provides the VDPAU wrapper library that takes priority over system-installed versions
-subdir('libvdpau')
+  # Build bundled libvdpau as part of Mesa
+  # This provides the VDPAU wrapper library that takes priority over system-installed versions
+  subdir('libvdpau')
 
-# Use bundled libvdpau for hasvk (always available since we bundle it)
-dep_hasvk_vdpau = dep_hasvk_bundled_vdpau
-hasvk_has_vdpau = true
+  # Use bundled libvdpau for hasvk (always available since we bundle it)
+  dep_hasvk_vdpau = dep_hasvk_bundled_vdpau
+  hasvk_has_vdpau = true
 
-# Build libvdpau-va-gl as part of Mesa
-# This is the VDPAU driver (by Rinat Ibragimov) that provides video decode
-# support via VA-API/OpenGL, built and installed alongside hasvk.
-subdir('libvdpau_va_gl')
+  # Build libvdpau-va-gl as part of Mesa
+  # This is the VDPAU driver (by Rinat Ibragimov) that provides video decode
+  # support via VA-API/OpenGL, built and installed alongside hasvk.
+  subdir('libvdpau_va_gl')
+else
+  # On Android, we don't bundle VDPAU libraries
+  dep_hasvk_vdpau = []  # Empty dependency for Android
+  hasvk_has_vdpau = false
+endif
 
 libanv_per_hw_ver_libs = []
 anv_per_hw_ver_files = files(
@@ -80,14 +87,22 @@ anv_per_hw_ver_files = files(
   'genX_pipeline.c',
   'genX_query.c',
   'genX_state.c',
-  'genX_video.c',  # Always include video support since we bundle libvdpau
 )
 
-# Build c_args for per-hw-ver libs, always include HAVE_VDPAU
+# Add video support files only when we have VDPAU
+if hasvk_has_vdpau
+  anv_per_hw_ver_files += files('genX_video.c')
+endif
+
+# Build c_args for per-hw-ver libs
 _per_hw_ver_c_args = [
   no_override_init_args, sse2_args,
-  '-DHAVE_VDPAU',  # Always defined since we bundle libvdpau
 ]
+
+# Add HAVE_VDPAU define when VDPAU is available
+if hasvk_has_vdpau
+  _per_hw_ver_c_args += '-DHAVE_VDPAU'
+endif
 
 foreach g : [['70', ['gfx7_cmd_buffer.c']],
              ['75', ['gfx7_cmd_buffer.c']],
@@ -142,13 +157,15 @@ libanv_files = files(
   'anv_wsi.c',
 )
 
-# Always add video decode files since we bundle libvdpau
-libanv_files += files(
-  'anv_video.c',
-  'anv_video_vdpau_bridge.c',
-  'anv_video_vdpau_h264.c',
-  'anv_video_cross_device.c',
-)
+# Add video decode files only when we have VDPAU
+if hasvk_has_vdpau
+  libanv_files += files(
+    'anv_video.c',
+    'anv_video_vdpau_bridge.c',
+    'anv_video_vdpau_h264.c',
+    'anv_video_cross_device.c',
+  )
+endif
 
 anv_deps = [
   dep_libdrm,
@@ -159,14 +176,22 @@ anv_deps = [
   idep_vulkan_util_headers,
   idep_vulkan_runtime_headers,
   idep_vulkan_wsi_headers,
-  dep_hasvk_vdpau,  # Always add bundled VDPAU dependency
 ]
+
+# Add VDPAU dependency when available
+if hasvk_has_vdpau
+  anv_deps += dep_hasvk_vdpau
+endif
 
 anv_flags = [
   no_override_init_args,
   sse2_args,
-  '-DHAVE_VDPAU',  # Always defined since we bundle libvdpau
 ]
+
+# Add HAVE_VDPAU define when VDPAU is available
+if hasvk_has_vdpau
+  anv_flags += '-DHAVE_VDPAU'
+endif
 
 anv_cpp_flags = []
 
