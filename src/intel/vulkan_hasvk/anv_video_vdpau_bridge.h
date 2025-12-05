@@ -125,6 +125,8 @@ struct anv_vdpau_session {
    uint32_t width;                 /* Video frame width */
    uint32_t height;                /* Video frame height */
    VdpDecoderProfile vdp_profile;  /* VDPAU profile (e.g., VDP_DECODER_PROFILE_H264_HIGH) */
+   uint32_t max_dpb_slots;         /* Maximum DPB slots for decoder creation */
+   bool decoder_created;           /* True if decoder has been lazily created */
 
    /* X11 Display for VDPAU initialization */
    void *x11_display;              /* X11 Display pointer (NULL if not using X11) */

@@ -445,8 +445,6 @@ anv_vdpau_session_create(struct anv_device *device,
                          struct anv_video_session *vid,
                          const VkVideoSessionCreateInfoKHR *pCreateInfo)
 {
-   VdpStatus vdp_status;
-
    /* Allocate VDPAU session structure */
    vid->vdpau_session =
       vk_alloc(&device->vk.alloc, sizeof(struct anv_vdpau_session), 8,
@@ -477,7 +475,7 @@ anv_vdpau_session_create(struct anv_device *device,
       return result;
    }
 
-   /* Store video dimensions */
+   /* Store video dimensions from maxCodedExtent (will be overridden on first decode) */
    session->width = pCreateInfo->maxCodedExtent.width;
    session->height = pCreateInfo->maxCodedExtent.height;
 
@@ -492,25 +490,17 @@ anv_vdpau_session_create(struct anv_device *device,
       return vk_error(device, VK_ERROR_VIDEO_PROFILE_OPERATION_NOT_SUPPORTED_KHR);
    }
 
-   /* Create VDPAU decoder
-    * max_references is maxDpbSlots which is the maximum number of reference frames
+   /* Store maxDpbSlots for later decoder creation */
+   session->max_dpb_slots = pCreateInfo->maxDpbSlots;
+   session->decoder_created = false;
+   session->vdp_decoder = 0;  /* Will be created lazily on first decode (0 is invalid for VdpDecoder) */
+
+   /* VDPAU decoder will be created lazily on first decode operation with actual
+    * video dimensions instead of using maxCodedExtent. This prevents pitch mismatch
+    * issues where VA-API surfaces are created at 4096x4096 (maxCodedExtent) but
+    * actual video is much smaller (e.g., 1920x1080), causing incorrect pitch
+    * (4096 vs 2048) and video corruption.
     */
-   vdp_status = session->vdp_decoder_create(session->vdp_device,
-                                            session->vdp_profile,
-                                            session->width,
-                                            session->height,
-                                            pCreateInfo->maxDpbSlots,
-                                            &session->vdp_decoder);
-   if (vdp_status != VDP_STATUS_OK) {
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         const char *err_str = session->vdp_get_error_string ?
-            session->vdp_get_error_string(vdp_status) : "unknown";
-         fprintf(stderr, "VDPAU: Failed to create decoder: %s (%d)\n", err_str, vdp_status);
-      }
-      vk_free(&device->vk.alloc, vid->vdpau_session);
-      vid->vdpau_session = NULL;
-      return vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
-   }
 
    /* Allocate DPB surfaces array */
    session->num_surfaces = pCreateInfo->maxDpbSlots + 1;  /* +1 for current frame */
@@ -518,7 +508,6 @@ anv_vdpau_session_create(struct anv_device *device,
                                     session->num_surfaces * sizeof(VdpVideoSurface),
                                     8, VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
    if (!session->vdp_surfaces) {
-      session->vdp_decoder_destroy(session->vdp_decoder);
       vk_free(&device->vk.alloc, vid->vdpau_session);
       vid->vdpau_session = NULL;
       return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
@@ -538,16 +527,14 @@ anv_vdpau_session_create(struct anv_device *device,
                                    8, VK_SYSTEM_ALLOCATION_SCOPE_OBJECT);
    if (!session->surface_map) {
       vk_free(&device->vk.alloc, session->vdp_surfaces);
-      session->vdp_decoder_destroy(session->vdp_decoder);
       vk_free(&device->vk.alloc, vid->vdpau_session);
       vid->vdpau_session = NULL;
       return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
    }
 
    if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-      fprintf(stderr, "VDPAU session created: %ux%u, profile=%d, decoder=%u\n",
-              session->width, session->height, session->vdp_profile,
-              session->vdp_decoder);
+      fprintf(stderr, "VDPAU session created: max %ux%u, profile=%d (decoder will be created on first decode)\n",
+              session->width, session->height, session->vdp_profile);
    }
 
    return VK_SUCCESS;
@@ -1267,6 +1254,78 @@ anv_vdpau_decode_frame(struct anv_cmd_buffer *cmd_buffer,
       return vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
    }
    struct anv_image *dst_image = (struct anv_image *)dst_image_view->image;
+
+   /* Lazy decoder creation: Create VDPAU decoder on first decode with actual dimensions
+    * This fixes pitch mismatch issues where maxCodedExtent (4096x4096) would cause
+    * VA-API surfaces to be created with 4096-byte pitch, but actual video is smaller
+    * (e.g., 1920x1080 needs 2048-byte pitch). Creating decoder with actual dimensions
+    * ensures VA-API surfaces match the video size and pitch.
+    */
+   uint32_t actual_width = dst_image->vk.extent.width;
+   uint32_t actual_height = dst_image->vk.extent.height;
+
+   if (!session->decoder_created ||
+       session->width != actual_width ||
+       session->height != actual_height) {
+
+      /* If decoder exists but dimensions changed, recreate it */
+      if (session->decoder_created) {
+         if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+            fprintf(stderr, "VDPAU: Video dimensions changed from %ux%u to %ux%u, recreating decoder\n",
+                    session->width, session->height, actual_width, actual_height);
+         }
+
+         /* Destroy old decoder */
+         if (session->vdp_decoder && session->vdp_decoder_destroy) {
+            session->vdp_decoder_destroy(session->vdp_decoder);
+            session->vdp_decoder = 0;  /* 0 is invalid for VdpDecoder */
+            session->decoder_created = false;
+         }
+
+         /* Clear surface mappings as they're tied to old decoder */
+         for (uint32_t i = 0; i < session->surface_map_size; i++) {
+            if (session->surface_map[i].vdp_surface != VDP_INVALID_HANDLE &&
+                session->vdp_video_surface_destroy) {
+               session->vdp_video_surface_destroy(session->surface_map[i].vdp_surface);
+               session->surface_map[i].vdp_surface = VDP_INVALID_HANDLE;
+            }
+         }
+         session->surface_map_size = 0;
+      } else {
+         if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+            fprintf(stderr, "VDPAU: Creating decoder with actual dimensions %ux%u (was max %ux%u)\n",
+                    actual_width, actual_height, session->width, session->height);
+         }
+      }
+
+      /* Update session dimensions to actual video size */
+      session->width = actual_width;
+      session->height = actual_height;
+
+      /* Create VDPAU decoder with actual dimensions */
+      VdpStatus vdp_status = session->vdp_decoder_create(session->vdp_device,
+                                                         session->vdp_profile,
+                                                         session->width,
+                                                         session->height,
+                                                         session->max_dpb_slots,
+                                                         &session->vdp_decoder);
+      if (vdp_status != VDP_STATUS_OK) {
+         if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+            const char *err_str = session->vdp_get_error_string ?
+               session->vdp_get_error_string(vdp_status) : "unknown";
+            fprintf(stderr, "VDPAU: Failed to create decoder: %s (%d)\n", err_str, vdp_status);
+         }
+         return vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
+      }
+
+      session->decoder_created = true;
+
+      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+         fprintf(stderr, "VDPAU: Decoder created successfully: %ux%u, profile=%d, decoder=%u\n",
+                 session->width, session->height, session->vdp_profile,
+                 session->vdp_decoder);
+      }
+   }
 
    /* Create or reuse destination surface */
    VdpVideoSurface dst_surface;
