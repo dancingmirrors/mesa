@@ -9,8 +9,6 @@
 #ifndef VA_GL_SRC_COMPAT_H
 #define VA_GL_SRC_COMPAT_H
 
-#include <libavutil/avutil.h>
-#include <libavutil/pixfmt.h>
 #include <unistd.h>
 #include <sys/syscall.h>
 #ifdef __FreeBSD__
@@ -24,17 +22,6 @@
 #ifndef unlikely
 #define unlikely(x) __builtin_expect(!!(x), 0)
 #endif
-
-#if (LIBAVUTIL_VERSION_INT < AV_VERSION_INT(51, 42, 0)) || \
-    (LIBAVUTIL_VERSION_INT == AV_VERSION_INT(51, 73, 101))
-
-#define AV_PIX_FMT_NONE         PIX_FMT_NONE
-#define AV_PIX_FMT_NV12         PIX_FMT_NV12
-#define AV_PIX_FMT_YUV420P      PIX_FMT_YUV420P
-#define AV_PIX_FMT_UYVY422      PIX_FMT_UYVY422
-#define AV_PIX_FMT_YUYV422      PIX_FMT_YUYV422
-
-#endif // old libavutil version
 
 
 #if defined(__linux__)

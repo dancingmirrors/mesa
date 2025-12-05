@@ -20,7 +20,7 @@
 
 
 static char const *
-implemetation_description_string = "OpenGL/VAAPI/libswscale backend for VDPAU";
+implemetation_description_string = "OpenGL/VA-API backend for VDPAU";
 
 
 static void
@@ -218,7 +218,7 @@ vdpDeviceCreateX11(Display *display_orig, int screen, VdpDevice *device,
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
 
-    // initialize VAAPI
+    // initialize VA-API
     if (global.quirks.avoid_va) {
         // pretend there is no VA-API available
         data->va_available = 0;

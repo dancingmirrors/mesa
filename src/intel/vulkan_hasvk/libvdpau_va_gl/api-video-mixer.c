@@ -308,7 +308,7 @@ vdpVideoMixerRender(VdpVideoMixer mixer, VdpOutputSurface background_surface,
     VdpStatus err_code;
     (void)mixer;    // TODO: mixer should be used to get mixing parameters
     // TODO: current implementation ignores previous and future surfaces, using only current.
-    // Is that acceptable for interlaced video? Will VAAPI handle deinterlacing?
+    // Is that acceptable for interlaced video? Will VA-API handle deinterlacing?
 
     (void)background_surface;   // TODO: background_surface. Is it safe to just ignore it?
     (void)background_source_rect;
