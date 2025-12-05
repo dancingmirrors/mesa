@@ -27,7 +27,7 @@ jobs:
             /etc/apt/sources.list.d/ubuntu.sources
           sudo apt-get update
           sudo apt-get build-dep -y mesa
-          sudo apt-get install -y libva-dev libvdpau-dev ninja-build pkg-config python3-pip
+          sudo apt-get install -y ninja-build pkg-config python3-pip
           pip3 install --user meson
 
           echo "$HOME/.local/bin" >> $GITHUB_PATH
@@ -35,12 +35,12 @@ jobs:
       - name: Configure Mesa with Meson
         run: |
           meson setup --prefix=/usr/local -Dgallium-drivers=crocus \
-            -Dllvm=disabled -Dvulkan-drivers=intel_hasvk -Dvideo-codecs=all_free \
-            -Dwerror=true build
+            -Dllvm=disabled -Dshared-llvm=enabled -Dvulkan-drivers=intel_hasvk \
+            -Dvideo-codecs=all_free -Dwerror=true build-64
 
       - name: Build Mesa
         run: |
-          ninja -C build
+          ninja -C build-64
 
   intel-78-32:
     runs-on: ubuntu-latest
@@ -77,13 +77,13 @@ jobs:
           apt-get update
           apt-get build-dep -y mesa
 
-          apt-get install -y libva-dev libvdpau-dev libvulkan-dev meson ninja-build pkg-config
+          apt-get install -y libvulkan-dev meson ninja-build pkg-config
 
       - name: Configure Mesa with Meson for 32-bit
         run: |
           cd /workspace
           meson setup --prefix=/usr/local -Dgallium-drivers=crocus \
-            -Dllvm=disabled -Dvulkan-drivers=intel_hasvk \
+            -Dllvm=disabled -Dshared-llvm=disabled -Dvulkan-drivers=intel_hasvk \
             -Dvideo-codecs=all_free -Dwerror=true build-32
 
       - name: Build Mesa
