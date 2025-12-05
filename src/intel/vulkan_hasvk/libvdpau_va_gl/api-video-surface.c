@@ -19,6 +19,7 @@
 #include <vdpau/vdpau.h>
 #include "api.h"
 #include "trace.h"
+#include "globals.h"
 
 
 VdpStatus
@@ -70,6 +71,15 @@ vdpVideoSurfaceCreate(VdpDevice device, VdpChromaType chroma_type, uint32_t widt
         break;
     }
     data->chroma_stride = (data->chroma_width + 0xfu) & (~0xfu);
+
+    if (unlikely(global.quirks.log_stride)) {
+        traceInfo("HASVK: vdpVideoSurfaceCreate - Surface parameters:\n");
+        traceInfo("  Size: %ux%u\n", width, height);
+        traceInfo("  Chroma type: %d\n", chroma_type);
+        traceInfo("  Y stride: %u\n", data->stride);
+        traceInfo("  Chroma size: %ux%u\n", data->chroma_width, data->chroma_height);
+        traceInfo("  Chroma stride: %u\n", data->chroma_stride);
+    }
 
     data->va_surf = VA_INVALID_SURFACE;
     data->tex_id = 0;
@@ -188,6 +198,27 @@ vdpVideoSurfaceGetBitsYCbCr(VdpVideoSurface surface,
          */
         vaSyncSurface(va_dpy, srcSurfData->va_surf);
         vaDeriveImage(va_dpy, srcSurfData->va_surf, &q);
+
+        if (unlikely(global.quirks.log_stride)) {
+            const char *fourcc_str = (const char *)&q.format.fourcc;
+            traceInfo("HASVK: vdpVideoSurfaceGetBitsYCbCr - VA-API Image Info:\n");
+            traceInfo("  FOURCC: %c%c%c%c (0x%08x)\n",
+                     fourcc_str[0], fourcc_str[1], fourcc_str[2], fourcc_str[3],
+                     q.format.fourcc);
+            traceInfo("  Surface size: %ux%u\n", srcSurfData->width, srcSurfData->height);
+            traceInfo("  Image dimensions: %ux%u\n", q.width, q.height);
+            traceInfo("  Num planes: %u\n", q.num_planes);
+            for (unsigned int i = 0; i < q.num_planes && i < 3; i++) {
+                traceInfo("  Plane[%u]: pitch=%u offset=%u\n",
+                         i, q.pitches[i], q.offsets[i]);
+            }
+            traceInfo("  Destination format: %s\n",
+                     reverse_ycbcr_format(destination_ycbcr_format));
+            traceInfo("  Destination pitches: [0]=%u [1]=%u [2]=%u\n",
+                     destination_pitches[0], destination_pitches[1],
+                     destination_pitches[2]);
+        }
+
         if (VA_FOURCC('N', 'V', '1', '2') == q.format.fourcc &&
             VDP_YCBCR_FORMAT_NV12 == destination_ycbcr_format)
         {
@@ -211,10 +242,29 @@ vdpVideoSurfaceGetBitsYCbCr(VdpVideoSurface surface,
                 /* copy full rows including padding */
                 size_t y_total = (size_t)q.pitches[0] * (size_t)srcSurfData->height;
                 size_t uv_total = (size_t)q.pitches[1] * (size_t)(srcSurfData->height / 2);
+
+                if (unlikely(global.quirks.log_stride)) {
+                    traceInfo("  NV12: Using bulk copy (pitches match)\n");
+                    traceInfo("    Y plane: copying %zu bytes (%u x %u)\n",
+                             y_total, q.pitches[0], srcSurfData->height);
+                    traceInfo("    UV plane: copying %zu bytes (%u x %u)\n",
+                             uv_total, q.pitches[1], srcSurfData->height / 2);
+                }
+
                 memcpy(dst_y, src_y, y_total);
                 memcpy(dst_uv, src_uv, uv_total);
             } else {
                 /* copy row-by-row, honoring source and destination pitches */
+                if (unlikely(global.quirks.log_stride)) {
+                    traceInfo("  NV12: Using row-by-row copy (pitch mismatch)\n");
+                    traceInfo("    Y plane: src_pitch=%u dst_pitch=%u width=%u height=%u\n",
+                             q.pitches[0], destination_pitches[0],
+                             srcSurfData->width, srcSurfData->height);
+                    traceInfo("    UV plane: src_pitch=%u dst_pitch=%u width=%u height=%u\n",
+                             q.pitches[1], destination_pitches[1],
+                             srcSurfData->width, srcSurfData->height / 2);
+                }
+
                 for (unsigned int y = 0; y < srcSurfData->height; y++) {
                     memcpy(dst_y, src_y, srcSurfData->width);
                     src_y += q.pitches[0];
@@ -240,8 +290,22 @@ vdpVideoSurfaceGetBitsYCbCr(VdpVideoSurface surface,
             /* Y plane */
             if (destination_pitches[0] == q.pitches[0]) {
                 size_t y_total = (size_t)q.pitches[0] * (size_t)srcSurfData->height;
+
+                if (unlikely(global.quirks.log_stride)) {
+                    traceInfo("  YV12: Y plane bulk copy (pitches match)\n");
+                    traceInfo("    Copying %zu bytes (%u x %u)\n",
+                             y_total, q.pitches[0], srcSurfData->height);
+                }
+
                 memcpy(dst_y, src_y, y_total);
             } else {
+                if (unlikely(global.quirks.log_stride)) {
+                    traceInfo("  YV12: Y plane row-by-row copy (pitch mismatch)\n");
+                    traceInfo("    src_pitch=%u dst_pitch=%u width=%u height=%u\n",
+                             q.pitches[0], destination_pitches[0],
+                             srcSurfData->width, srcSurfData->height);
+                }
+
                 for (unsigned int y = 0; y < srcSurfData->height; y ++) {
                     memcpy (dst_y, src_y, srcSurfData->width);
                     src_y += q.pitches[0];
@@ -250,6 +314,14 @@ vdpVideoSurfaceGetBitsYCbCr(VdpVideoSurface surface,
             }
 
             /* unpack mixed UV to separate planes (row-by-row required for unpack) */
+            if (unlikely(global.quirks.log_stride)) {
+                traceInfo("  YV12: Unpacking interleaved UV to separate V and U planes\n");
+                traceInfo("    src_pitch=%u dst_pitch_u=%u dst_pitch_v=%u\n",
+                         q.pitches[1], destination_pitches[1], destination_pitches[2]);
+                traceInfo("    chroma_width=%u chroma_height=%u\n",
+                         srcSurfData->width/2, srcSurfData->height/2);
+            }
+
             for (unsigned int y = 0; y < srcSurfData->height/2; y ++) {
                 uint8_t *src = img_data + q.offsets[1] + y * q.pitches[1];
                 uint8_t *dst_u = destination_data[1] + y * destination_pitches[1];
