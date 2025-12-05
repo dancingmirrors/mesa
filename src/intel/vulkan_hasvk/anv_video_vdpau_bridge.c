@@ -51,6 +51,7 @@
 #include <inttypes.h>
 #include <dlfcn.h>
 #include <libgen.h>
+#include <pthread.h>
 
 #include "vk_video/vulkan_video_codecs_common.h"
 #include "vk_video/vulkan_video_codec_h264std.h"
@@ -243,17 +244,30 @@ get_vdpau_procs(struct anv_vdpau_session *session)
  *
  * VDPAU requires an X11 display for initialization when using libvdpau-va-gl.
  * We attempt to open a connection to the default X11 display.
+ *
+ * Thread-safe: Uses device mutex to prevent race conditions when multiple
+ * decode threads try to create the VDPAU device simultaneously.
  */
 VdpDevice
 anv_vdpau_get_device(struct anv_device *device)
 {
-   /* Check if VDPAU device already exists */
+   /* Fast path: Check if VDPAU device already exists without locking */
    if (device->vdp_device != VDP_INVALID_HANDLE)
       return device->vdp_device;
+
+   /* Slow path: Need to create the device, acquire lock to prevent races */
+   pthread_mutex_lock(&device->mutex);
+
+   /* Double-check after acquiring lock - another thread might have created it */
+   if (device->vdp_device != VDP_INVALID_HANDLE) {
+      pthread_mutex_unlock(&device->mutex);
+      return device->vdp_device;
+   }
 
    /* Try to open X11 display for VDPAU */
    void *libX11 = dlopen("libX11.so.6", RTLD_LAZY);
    if (!libX11) {
+      pthread_mutex_unlock(&device->mutex);
       return VDP_INVALID_HANDLE;
    }
 
@@ -261,6 +275,7 @@ anv_vdpau_get_device(struct anv_device *device)
    XOpenDisplay_fn XOpenDisplay_ptr = (XOpenDisplay_fn)dlsym(libX11, "XOpenDisplay");
    if (!XOpenDisplay_ptr) {
       dlclose(libX11);
+      pthread_mutex_unlock(&device->mutex);
       return VDP_INVALID_HANDLE;
    }
 
@@ -268,6 +283,7 @@ anv_vdpau_get_device(struct anv_device *device)
    void *x11_display = XOpenDisplay_ptr(NULL);
    if (!x11_display) {
       dlclose(libX11);
+      pthread_mutex_unlock(&device->mutex);
       return VDP_INVALID_HANDLE;
    }
 
@@ -285,6 +301,7 @@ anv_vdpau_get_device(struct anv_device *device)
       if (XCloseDisplay_ptr)
          XCloseDisplay_ptr(x11_display);
       dlclose(libX11);
+      pthread_mutex_unlock(&device->mutex);
       return VDP_INVALID_HANDLE;
    }
 
@@ -298,6 +315,7 @@ anv_vdpau_get_device(struct anv_device *device)
       if (XCloseDisplay_ptr)
          XCloseDisplay_ptr(x11_display);
       dlclose(libX11);
+      pthread_mutex_unlock(&device->mutex);
       return VDP_INVALID_HANDLE;
    }
 
@@ -311,6 +329,7 @@ anv_vdpau_get_device(struct anv_device *device)
       if (XCloseDisplay_ptr)
          XCloseDisplay_ptr(x11_display);
       dlclose(libX11);
+      pthread_mutex_unlock(&device->mutex);
       return VDP_INVALID_HANDLE;
    }
 
@@ -321,6 +340,7 @@ anv_vdpau_get_device(struct anv_device *device)
    device->libX11 = libX11;
    device->libvdpau = libvdpau;
 
+   pthread_mutex_unlock(&device->mutex);
    return vdp_device;
 }
 
@@ -613,11 +633,10 @@ anv_vdpau_copy_surface_to_image(struct anv_device *device,
       return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
    }
 
-   /* Zero the entire allocated buffers to avoid uninitialized data issues */
-   memset(linear_y, 0, y_alloc_size);
-   memset(linear_uv, 128, uv_alloc_size);  /* 128 = neutral UV for NV12 */
-
-   /* Get decoded data from VDPAU surface into linear buffers */
+   /* Get decoded data from VDPAU surface into linear buffers
+    * NOTE: We don't need to zero the buffers beforehand since
+    * vdp_video_surface_get_bits_ycbcr will fill them completely
+    */
    void *linear_data[2] = { linear_y, linear_uv };
    uint32_t linear_pitches[2] = { linear_y_pitch, linear_uv_pitch };
 
@@ -944,11 +963,6 @@ anv_vdpau_decode_frame(struct anv_cmd_buffer *cmd_buffer,
    /* Add command to the deferred execution queue */
    util_dynarray_append(&cmd_buffer->video.vdpau_decodes, decode_cmd);
 
-   /* Add texture cache invalidate for coherency */
-   anv_add_pending_pipe_bits(cmd_buffer,
-                             ANV_PIPE_TEXTURE_CACHE_INVALIDATE_BIT,
-                             "VDPAU decode texture cache invalidate");
-
    return VK_SUCCESS;
 }
 
@@ -956,6 +970,10 @@ anv_vdpau_decode_frame(struct anv_cmd_buffer *cmd_buffer,
  * Execute deferred VDPAU decode commands
  *
  * Called at QueueSubmit time to execute all VDPAU decode operations.
+ *
+ * Performance optimization: Submit all decode operations first to allow
+ * VA-API/GPU pipelining, then copy the results. This avoids serializing
+ * decodes where decode N+1 can't start until decode N is fully copied.
  */
 VkResult
 anv_vdpau_execute_deferred_decodes(struct anv_device *device,
@@ -971,11 +989,14 @@ anv_vdpau_execute_deferred_decodes(struct anv_device *device,
               decode_count);
    }
 
-   /* Execute each deferred decode command */
+   /* Phase 1: Submit all decode operations to VA-API
+    * This allows VA-API to pipeline multiple decodes on the GPU instead of
+    * serializing them. Each vdp_decoder_render submits work to VA-API but
+    * doesn't wait for completion.
+    */
    util_dynarray_foreach(&cmd_buffer->video.vdpau_decodes,
                          struct anv_vdpau_decode_cmd, decode_cmd)
    {
-      /* Call VDPAU decoder render */
       vdp_status = decode_cmd->session->vdp_decoder_render(
          decode_cmd->decoder,
          decode_cmd->target_surface,
@@ -985,11 +1006,22 @@ anv_vdpau_execute_deferred_decodes(struct anv_device *device,
 
       if (vdp_status != VDP_STATUS_OK) {
          result = vk_error(device, VK_ERROR_UNKNOWN);
-      } else {
-         /* Copy decoded data from VDPAU surface to Vulkan image */
-         struct anv_image *target_image = NULL;
+         break;
+      }
+   }
 
+   /* Phase 2: Copy decoded results from VDPAU surfaces to Vulkan images
+    * Only proceed if all decodes were submitted successfully.
+    * The vdp_video_surface_get_bits_ycbcr call will sync and wait for
+    * GPU decode completion, but at this point all decodes have been
+    * submitted and can execute in parallel on the GPU.
+    */
+   if (result == VK_SUCCESS) {
+      util_dynarray_foreach(&cmd_buffer->video.vdpau_decodes,
+                            struct anv_vdpau_decode_cmd, decode_cmd)
+      {
          /* Find the Vulkan image for this surface */
+         struct anv_image *target_image = NULL;
          for (uint32_t i = 0; i < decode_cmd->session->surface_map_size; i++) {
             if (decode_cmd->session->surface_map[i].vdp_surface == decode_cmd->target_surface) {
                target_image = (struct anv_image *)decode_cmd->session->surface_map[i].image;
@@ -1005,7 +1037,12 @@ anv_vdpau_execute_deferred_decodes(struct anv_device *device,
             }
          }
       }
+   }
 
+   /* Phase 3: Clean up resources */
+   util_dynarray_foreach(&cmd_buffer->video.vdpau_decodes,
+                         struct anv_vdpau_decode_cmd, decode_cmd)
+   {
       /* Clean up bitstream buffers */
       vk_free(&device->vk.alloc, decode_cmd->bitstream_buffers);
 
@@ -1018,14 +1055,22 @@ anv_vdpau_execute_deferred_decodes(struct anv_device *device,
       if (decode_cmd->ref_surfaces) {
          vk_free(&device->vk.alloc, decode_cmd->ref_surfaces);
       }
-
-      if (result != VK_SUCCESS) {
-         break;
-      }
    }
 
    /* Clear the deferred commands after execution */
    util_dynarray_clear(&cmd_buffer->video.vdpau_decodes);
+
+   /* Add texture cache invalidate for coherency after all decodes are complete
+    * We only need to invalidate once after all video frames have been decoded
+    * and copied, not once per frame. This significantly reduces cache thrashing
+    * and improves performance.
+    *
+    * Note: We invalidate even if there were errors to ensure cache coherency
+    * for any frames that did successfully decode.
+    */
+   anv_add_pending_pipe_bits(cmd_buffer,
+                             ANV_PIPE_TEXTURE_CACHE_INVALIDATE_BIT,
+                             "VDPAU decode batch texture cache invalidate");
 
    return result;
 }
