@@ -193,10 +193,7 @@ vdpVideoSurfaceGetBitsYCbCr(VdpVideoSurface surface,
 
     if (deviceData->va_available) {
         VAImage q;
-        /* Sync to ensure VA-API decode is complete before reading surface data.
-         * This is critical on Haswell which needs explicit MFX synchronization.
-         */
-        vaSyncSurface(va_dpy, srcSurfData->va_surf);
+
         vaDeriveImage(va_dpy, srcSurfData->va_surf, &q);
 
         if (unlikely(global.quirks.log_stride)) {
