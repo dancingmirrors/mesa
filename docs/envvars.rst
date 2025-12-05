@@ -1045,23 +1045,6 @@ Hasvk driver environment variables
    effect on hardware that doesn't support soft-pinning (Ivybridge,
    Haswell, Cherryview).
 
-.. envvar:: HASVK_VIDEO_MAX_FRAMES_PER_SUBMIT
-
-   Controls the maximum number of video decode frames processed per
-   ``vkQueueSubmit`` call. This prevents excessive frame queue buildup
-   when using hardware video decode with ``--hwdec=vulkan-copy`` in mpv
-   or similar applications. Frames beyond this limit are dropped to
-   improve performance on slower hardware.
-   
-   Default: ``2`` (process up to 2 frames per submit)
-   
-   Set to ``0`` to process all queued frames (old behavior).
-   
-   This is particularly useful for Gen7/7.5/8 hardware where video
-   decode is slower. By limiting frame processing, the application's
-   presentation timing logic can better manage frame pacing and avoid
-   processing frames that will never be displayed.
-
 DRI environment variables
 -------------------------
 
