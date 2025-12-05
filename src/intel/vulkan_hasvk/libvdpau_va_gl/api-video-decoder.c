@@ -347,10 +347,13 @@ vdpDecoderQueryCapabilities(VdpDevice device, VdpDecoderProfile profile, VdpBool
     free(va_profile_list);
 
     *is_supported = 0;
-    // TODO: How to determine max width and height width libva?
-    *max_width = 2048;
-    *max_height = 2048;
-    *max_macroblocks = 16384;
+    // hasvk hardware supports up to 4096x4096 for video decode.
+    // This matches VdpVideoSurfaceQueryCapabilities and allows 4k video playback.
+    // The actual decoder surfaces are created at real video dimensions (not max)
+    // to ensure correct pitch, preventing display corruption.
+    *max_width = 4096;
+    *max_height = 4096;
+    *max_macroblocks = 65536;  // (4096/16) * (4096/16) = 256 * 256 = 65536
     switch (profile) {
     case VDP_DECODER_PROFILE_MPEG2_SIMPLE:
         *is_supported = available_profiles.mpeg2_simple;
