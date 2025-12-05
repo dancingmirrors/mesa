@@ -75,6 +75,7 @@ if with_libvdpau_va_gl
     dep_gl,
     dep_x11,
     dep_thread,
+    dep_hasvk_bundled_vdpau,  # Link against bundled libvdpau (higher priority)
   ]
 
   if dep_glu.found()
@@ -92,6 +93,8 @@ if with_libvdpau_va_gl
     version : '1',
     install : true,
     install_dir : get_option('libdir') / 'vdpau',
+    # Use RPATH to find bundled libvdpau in parent directory
+    install_rpath : '$ORIGIN/..',
   )
 
   # Create a symlink in $libdir pointing to the vdpau subdir
