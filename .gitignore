@@ -1,10 +1,11 @@
-.cache
-.vscode*
 *.kdev4
+*.mda.tar
+*.out
 *.pyc
 *.pyo
-*.out
+.cache
+.venv/
+.vscode*
 /build
 /build-32
-.venv/
-*.mda.tar
+/build-64
