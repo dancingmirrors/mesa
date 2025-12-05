@@ -91,27 +91,8 @@ genX(CmdDecodeVideoKHR) (VkCommandBuffer commandBuffer,
 {
    ANV_FROM_HANDLE(anv_cmd_buffer, cmd_buffer, commandBuffer);
 
-   /* ALWAYS log when this function is called to diagnose missing decode logs */
-   if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-      fprintf(stderr, "CmdDecodeVideoKHR: CALLED (GFX_VERx10=%d)\n",
-              GFX_VERx10);
-   }
-
 #ifdef HAVE_VDPAU
    /* VDPAU bridge is always used for hasvk video decode */
-   if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-      fprintf(stderr, "CmdDecodeVideoKHR: Using VDPAU bridge path\n");
-   }
-   VkResult result = anv_vdpau_decode_frame(cmd_buffer, frame_info);
-   if (result != VK_SUCCESS) {
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "VDPAU decode failed: %d\n", result);
-      }
-   }
-#else
-   if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-      fprintf(stderr,
-              "CmdDecodeVideoKHR: ERROR - HAVE_VDPAU not defined, cannot decode\n");
-   }
+   anv_vdpau_decode_frame(cmd_buffer, frame_info);
 #endif
 }

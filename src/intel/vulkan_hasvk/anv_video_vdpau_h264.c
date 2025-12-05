@@ -86,11 +86,6 @@ anv_vdpau_translate_h264_picture_params(
    }
 
    if (!sps || !pps) {
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "VDPAU H.264: Invalid SPS/PPS IDs: sps_id=%u pps_id=%u\n",
-                 h264_pic_info->pStdPictureInfo->seq_parameter_set_id,
-                 h264_pic_info->pStdPictureInfo->pic_parameter_set_id);
-      }
       return;
    }
 
@@ -167,11 +162,6 @@ anv_vdpau_translate_h264_picture_params(
    /* Populate reference frames from DPB */
    unsigned ref_idx = 0;
 
-   if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-      fprintf(stderr, "VDPAU H.264: Building reference list from %u slots\n",
-              decode_info->referenceSlotCount);
-   }
-
    for (unsigned i = 0; i < decode_info->referenceSlotCount && ref_idx < 16; i++) {
       const VkVideoReferenceSlotInfoKHR *ref_slot = &decode_info->pReferenceSlots[i];
       if (ref_slot->slotIndex < 0 || !ref_slot->pPictureResource)
@@ -192,9 +182,6 @@ anv_vdpau_translate_h264_picture_params(
       /* Lookup VDPAU surface for this image */
       VdpVideoSurface ref_surface = anv_vdpau_lookup_surface(session, ref_image_view->image);
       if (ref_surface == VDP_INVALID_HANDLE) {
-         if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-            fprintf(stderr, "VDPAU H.264: Reference %u not found in surface map\n", i);
-         }
          continue;
       }
 
@@ -220,18 +207,6 @@ anv_vdpau_translate_h264_picture_params(
       ref->field_order_cnt[0] = ref_info->PicOrderCnt[0];
       ref->field_order_cnt[1] = ref_info->PicOrderCnt[1];
 
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "  Ref[%u]: surface=%u frame_num=%u long_term=%d POC=[%d,%d]\n",
-                 ref_idx, ref_surface, ref_info->FrameNum,
-                 ref->is_long_term,
-                 ref_info->PicOrderCnt[0], ref_info->PicOrderCnt[1]);
-      }
-
       ref_idx++;
-   }
-
-   if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-      fprintf(stderr, "VDPAU H.264: Populated %u reference frames, slice_count=%u\n",
-              ref_idx, vdp_pic->slice_count);
    }
 }

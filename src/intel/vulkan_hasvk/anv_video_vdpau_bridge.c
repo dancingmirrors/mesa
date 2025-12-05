@@ -102,56 +102,6 @@
  *   byte_in_tile = oword_col * 512 + row_in_tile * 16 + byte_in_oword
  *   address = tile_base + byte_in_tile
  */
-static void
-linear_to_ytiled_custom(char *dst, const char *src,
-                        uint32_t width, uint32_t height,
-                        uint32_t dst_pitch, uint32_t src_pitch,
-                        int swizzle_mode)
-{
-   /* Calculate number of tiles per row based on destination pitch */
-   uint32_t tiles_per_row = dst_pitch / YTILE_WIDTH;
-   if (tiles_per_row == 0) tiles_per_row = 1;  /* Safety check */
-
-   /* Size of one complete row of tiles in bytes */
-   uint64_t tile_row_stride = (uint64_t)tiles_per_row * (YTILE_WIDTH * YTILE_HEIGHT);
-
-   for (uint32_t y = 0; y < height; y++) {
-      uint32_t tile_row = y / YTILE_HEIGHT;
-      uint32_t row_in_tile = y % YTILE_HEIGHT;
-
-      for (uint32_t x = 0; x < width; x++) {
-         uint32_t tile_col = x / YTILE_WIDTH;
-         uint32_t x_in_tile = x % YTILE_WIDTH;
-         uint32_t oword = x_in_tile / YTILE_SPAN;
-         uint32_t byte_in_oword = x_in_tile % YTILE_SPAN;
-
-         /* Offset within tile (0-4095) */
-         uint32_t tile_offset = oword * (YTILE_SPAN * YTILE_HEIGHT) + row_in_tile * YTILE_SPAN + byte_in_oword;
-
-         /* Apply swizzle to within-tile offset ONLY (not full address)
-          * This matches how ISL applies swizzle - only based on OWord column within tile
-          */
-         uint32_t swizzled_offset = tile_offset;
-         if (swizzle_mode == 1) {
-            /* I915_BIT_6_SWIZZLE_9: XOR bit 6 with bit 9 of tile_offset */
-            if (tile_offset & (1 << 9))
-               swizzled_offset ^= (1 << 6);
-         } else if (swizzle_mode == 3) {
-            /* I915_BIT_6_SWIZZLE_9_10: XOR bit 6 with (bit 9 XOR bit 10) of tile_offset */
-            uint32_t swizzle = ((tile_offset >> 9) & 1) ^ ((tile_offset >> 10) & 1);
-            if (swizzle)
-               swizzled_offset ^= (1 << 6);
-         }
-         /* swizzle_mode 0: no swizzle applied */
-
-         /* Tile address in the surface */
-         uint64_t tile_base = tile_row * tile_row_stride + (uint64_t)tile_col * (YTILE_WIDTH * YTILE_HEIGHT);
-
-         dst[tile_base + swizzled_offset] = src[y * src_pitch + x];
-      }
-   }
-}
-
 /**
  * Map Vulkan video profile to VDPAU decoder profile
  */
@@ -167,37 +117,18 @@ get_vdp_profile(const VkVideoProfileInfoKHR *profile)
       if (h264_profile) {
          switch (h264_profile->stdProfileIdc) {
          case STD_VIDEO_H264_PROFILE_IDC_BASELINE:
-            if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-               fprintf(stderr, "VDPAU: Parsed H.264 profile: Baseline (IDC=%d) -> VDP_DECODER_PROFILE_H264_BASELINE\n",
-                       h264_profile->stdProfileIdc);
-            }
             return VDP_DECODER_PROFILE_H264_BASELINE;
          case STD_VIDEO_H264_PROFILE_IDC_MAIN:
-            if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-               fprintf(stderr, "VDPAU: Parsed H.264 profile: Main (IDC=%d) -> VDP_DECODER_PROFILE_H264_MAIN\n",
-                       h264_profile->stdProfileIdc);
-            }
             return VDP_DECODER_PROFILE_H264_MAIN;
          case STD_VIDEO_H264_PROFILE_IDC_HIGH:
-            if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-               fprintf(stderr, "VDPAU: Parsed H.264 profile: High (IDC=%d) -> VDP_DECODER_PROFILE_H264_HIGH\n",
-                       h264_profile->stdProfileIdc);
-            }
             return VDP_DECODER_PROFILE_H264_HIGH;
          default:
             /* Unsupported H.264 profile, default to Main */
-            if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-               fprintf(stderr, "VDPAU: Unsupported H.264 profile (IDC=%d), defaulting to VDP_DECODER_PROFILE_H264_MAIN\n",
-                       h264_profile->stdProfileIdc);
-            }
             return VDP_DECODER_PROFILE_H264_MAIN;
          }
       }
 
       /* No profile info provided, default to High (most compatible) */
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "VDPAU: No H.264 profile info provided, defaulting to VDP_DECODER_PROFILE_H264_HIGH\n");
-      }
       return VDP_DECODER_PROFILE_H264_HIGH;
    }
 
@@ -226,10 +157,6 @@ setup_vdpau_driver_path(void)
    /* Only set the path if not already explicitly configured by user */
    const char *existing_path = getenv("VDPAU_DRIVER_PATH");
    if (existing_path && existing_path[0] != '\0') {
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "VDPAU: Using user-specified VDPAU_DRIVER_PATH: %s\n",
-                 existing_path);
-      }
       return;
    }
 
@@ -263,14 +190,6 @@ setup_vdpau_driver_path(void)
                struct stat st;
                if (stat(vdpau_path, &st) == 0 && S_ISDIR(st.st_mode)) {
                   setenv("VDPAU_DRIVER_PATH", vdpau_path, 0);
-
-                  if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-                     fprintf(stderr, "VDPAU: Set VDPAU_DRIVER_PATH to Mesa's bundled driver: %s\n",
-                             vdpau_path);
-                  }
-               } else if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-                  fprintf(stderr, "VDPAU: Mesa vdpau directory not found: %s (using system default)\n",
-                          vdpau_path);
                }
 
                free(vdpau_path);
@@ -286,13 +205,6 @@ setup_vdpau_driver_path(void)
    const char *existing_driver = getenv("VDPAU_DRIVER");
    if (!existing_driver || existing_driver[0] == '\0') {
       setenv("VDPAU_DRIVER", "va_gl", 0);
-
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "VDPAU: Set VDPAU_DRIVER to va_gl\n");
-      }
-   } else if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-      fprintf(stderr, "VDPAU: Using user-specified VDPAU_DRIVER: %s\n",
-              existing_driver);
    }
 }
 
@@ -307,9 +219,6 @@ get_vdpau_procs(struct anv_vdpau_session *session)
 #define GET_PROC(id, func) \
    status = session->vdp_get_proc_address(session->vdp_device, id, (void**)&session->func); \
    if (status != VDP_STATUS_OK) { \
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) { \
-         fprintf(stderr, "VDPAU: Failed to get proc " #func ": %d\n", status); \
-      } \
       return VK_ERROR_INITIALIZATION_FAILED; \
    }
 
@@ -345,18 +254,12 @@ anv_vdpau_get_device(struct anv_device *device)
    /* Try to open X11 display for VDPAU */
    void *libX11 = dlopen("libX11.so.6", RTLD_LAZY);
    if (!libX11) {
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "VDPAU: Cannot open libX11.so.6: %s\n", dlerror());
-      }
       return VDP_INVALID_HANDLE;
    }
 
    typedef void *(*XOpenDisplay_fn)(const char *);
    XOpenDisplay_fn XOpenDisplay_ptr = (XOpenDisplay_fn)dlsym(libX11, "XOpenDisplay");
    if (!XOpenDisplay_ptr) {
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "VDPAU: Cannot find XOpenDisplay\n");
-      }
       dlclose(libX11);
       return VDP_INVALID_HANDLE;
    }
@@ -364,9 +267,6 @@ anv_vdpau_get_device(struct anv_device *device)
    /* Open connection to default X11 display */
    void *x11_display = XOpenDisplay_ptr(NULL);
    if (!x11_display) {
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "VDPAU: Cannot open X11 display (is DISPLAY set?)\n");
-      }
       dlclose(libX11);
       return VDP_INVALID_HANDLE;
    }
@@ -379,9 +279,6 @@ anv_vdpau_get_device(struct anv_device *device)
    /* Load VDPAU library and create device */
    void *libvdpau = dlopen("libvdpau.so.1", RTLD_LAZY);
    if (!libvdpau) {
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "VDPAU: Cannot open libvdpau.so.1: %s\n", dlerror());
-      }
       /* Close X11 display */
       typedef int (*XCloseDisplay_fn)(void *);
       XCloseDisplay_fn XCloseDisplay_ptr = (XCloseDisplay_fn)dlsym(libX11, "XCloseDisplay");
@@ -395,9 +292,6 @@ anv_vdpau_get_device(struct anv_device *device)
    vdp_device_create_x11_fn vdp_device_create_x11 =
       (vdp_device_create_x11_fn)dlsym(libvdpau, "vdp_device_create_x11");
    if (!vdp_device_create_x11) {
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "VDPAU: Cannot find vdp_device_create_x11\n");
-      }
       dlclose(libvdpau);
       typedef int (*XCloseDisplay_fn)(void *);
       XCloseDisplay_fn XCloseDisplay_ptr = (XCloseDisplay_fn)dlsym(libX11, "XCloseDisplay");
@@ -411,9 +305,6 @@ anv_vdpau_get_device(struct anv_device *device)
    VdpGetProcAddress *vdp_get_proc_address;
    VdpStatus status = vdp_device_create_x11(x11_display, 0, &vdp_device, &vdp_get_proc_address);
    if (status != VDP_STATUS_OK) {
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "VDPAU: vdp_device_create_x11 failed: %d\n", status);
-      }
       dlclose(libvdpau);
       typedef int (*XCloseDisplay_fn)(void *);
       XCloseDisplay_fn XCloseDisplay_ptr = (XCloseDisplay_fn)dlsym(libX11, "XCloseDisplay");
@@ -421,10 +312,6 @@ anv_vdpau_get_device(struct anv_device *device)
          XCloseDisplay_ptr(x11_display);
       dlclose(libX11);
       return VDP_INVALID_HANDLE;
-   }
-
-   if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-      fprintf(stderr, "VDPAU: Device created successfully (device=%u)\n", vdp_device);
    }
 
    /* Store device and handles in ANV device */
@@ -482,9 +369,6 @@ anv_vdpau_session_create(struct anv_device *device,
    /* Get VDPAU profile from Vulkan profile */
    session->vdp_profile = get_vdp_profile(pCreateInfo->pVideoProfile);
    if (session->vdp_profile == (VdpDecoderProfile)-1) {
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "VDPAU: Unsupported video codec profile\n");
-      }
       vk_free(&device->vk.alloc, vid->vdpau_session);
       vid->vdpau_session = NULL;
       return vk_error(device, VK_ERROR_VIDEO_PROFILE_OPERATION_NOT_SUPPORTED_KHR);
@@ -532,11 +416,6 @@ anv_vdpau_session_create(struct anv_device *device,
       return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
    }
 
-   if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-      fprintf(stderr, "VDPAU session created: max %ux%u, profile=%d (decoder will be created on first decode)\n",
-              session->width, session->height, session->vdp_profile);
-   }
-
    return VK_SUCCESS;
 }
 
@@ -556,11 +435,6 @@ anv_vdpau_session_destroy(struct anv_device *device,
    if (session->surface_map && session->vdp_video_surface_destroy) {
       for (uint32_t i = 0; i < session->surface_map_size; i++) {
          if (session->surface_map[i].vdp_surface != VDP_INVALID_HANDLE) {
-            if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-               fprintf(stderr, "VDPAU: Destroying DPB surface %u for image %p\n",
-                       session->surface_map[i].vdp_surface,
-                       (void *)session->surface_map[i].image);
-            }
             session->vdp_video_surface_destroy(session->surface_map[i].vdp_surface);
          }
       }
@@ -576,10 +450,6 @@ anv_vdpau_session_destroy(struct anv_device *device,
 
    vk_free(&device->vk.alloc, vid->vdpau_session);
    vid->vdpau_session = NULL;
-
-   if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-      fprintf(stderr, "VDPAU session destroyed\n");
-   }
 }
 
 /**
@@ -639,18 +509,7 @@ anv_vdpau_create_surface_from_image(struct anv_device *device,
                                                   image->vk.extent.height,
                                                   surface_id);
    if (vdp_status != VDP_STATUS_OK) {
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         const char *err_str = session->vdp_get_error_string ?
-            session->vdp_get_error_string(vdp_status) : "unknown";
-         fprintf(stderr, "VDPAU: Failed to create video surface: %s (%d)\n",
-                 err_str, vdp_status);
-      }
       return vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
-   }
-
-   if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-      fprintf(stderr, "VDPAU: Created video surface %u (%ux%u)\n",
-              *surface_id, image->vk.extent.width, image->vk.extent.height);
    }
 
    return VK_SUCCESS;
@@ -677,9 +536,6 @@ anv_vdpau_copy_surface_to_image(struct anv_device *device,
       &image->bindings[ANV_IMAGE_MEMORY_BINDING_MAIN];
 
    if (!binding->address.bo) {
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "VDPAU: Image has no backing memory\n");
-      }
       return vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
    }
 
@@ -692,9 +548,6 @@ anv_vdpau_copy_surface_to_image(struct anv_device *device,
     */
    void *tiled_ptr = anv_gem_mmap(device, bo->gem_handle, 0, bo->size, I915_MMAP_WC);
    if (tiled_ptr == MAP_FAILED || tiled_ptr == NULL) {
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "VDPAU: Failed to map BO for surface copy\n");
-      }
       return vk_error(device, VK_ERROR_MEMORY_MAP_FAILED);
    }
 
@@ -715,17 +568,9 @@ anv_vdpau_copy_surface_to_image(struct anv_device *device,
                                                           &surface_width,
                                                           &surface_height);
    if (vdp_status != VDP_STATUS_OK) {
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "VDPAU: Failed to get surface parameters\n");
-      }
       /* Fall back to image dimensions */
       surface_width = width;
       surface_height = height;
-   }
-
-   if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-      fprintf(stderr, "VDPAU: Surface %u actual size: %ux%u (image: %ux%u)\n",
-              surface, surface_width, surface_height, width, height);
    }
 
    /* Use the larger of surface size and image size for allocation
@@ -743,31 +588,10 @@ anv_vdpau_copy_surface_to_image(struct anv_device *device,
     * - VA-API might use 2048-byte pitch (power of 2 alignment)
     * - Height might be padded to 736 or 768
     *
-    * DEBUG: INTEL_HASVK_VIDEO_PITCH env var can override pitch calculation:
-    * - 0 (default): generous 2KB alignment
-    * - 1: align to ISL row pitch (128 bytes for Y-tile)
-    * - 2: use exact width (no alignment)
+    * Use generous 2KB alignment for pitch.
     */
-   static int force_pitch = -1;
-   if (force_pitch < 0) {
-      const char *env = getenv("INTEL_HASVK_VIDEO_PITCH");
-      force_pitch = env ? atoi(env) : 0;
-   }
-
-   uint32_t linear_y_pitch, linear_uv_pitch;
-   if (force_pitch == 1) {
-      /* Use ISL-style 128-byte alignment (Y-tile width) */
-      linear_y_pitch = align(alloc_width, 128);
-      linear_uv_pitch = align(alloc_width, 128);
-   } else if (force_pitch == 2) {
-      /* Use exact width (no alignment) - risky but tests if VDPAU uses this */
-      linear_y_pitch = alloc_width;
-      linear_uv_pitch = alloc_width;
-   } else {
-      /* Default: generous 2KB alignment */
-      linear_y_pitch = MAX2(align(alloc_width, 2048), 2048);
-      linear_uv_pitch = MAX2(align(alloc_width, 2048), 2048);
-   }
+   uint32_t linear_y_pitch = MAX2(align(alloc_width, 2048), 2048);
+   uint32_t linear_uv_pitch = MAX2(align(alloc_width, 2048), 2048);
 
    /* Use very generous height - could be padded to power of 2 or macroblock aligned */
    uint32_t aligned_height = MAX2(align(alloc_height, 64) + 64, 1024);
@@ -793,11 +617,6 @@ anv_vdpau_copy_surface_to_image(struct anv_device *device,
    memset(linear_y, 0, y_alloc_size);
    memset(linear_uv, 128, uv_alloc_size);  /* 128 = neutral UV for NV12 */
 
-   if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-      fprintf(stderr, "VDPAU: Allocated linear buffers: Y=%zu bytes (pitch=%u, h=%u, alloc=%zu), UV=%zu bytes (alloc=%zu)\n",
-              y_size, linear_y_pitch, aligned_height, y_alloc_size, uv_size, uv_alloc_size);
-   }
-
    /* Get decoded data from VDPAU surface into linear buffers */
    void *linear_data[2] = { linear_y, linear_uv };
    uint32_t linear_pitches[2] = { linear_y_pitch, linear_uv_pitch };
@@ -807,70 +626,10 @@ anv_vdpau_copy_surface_to_image(struct anv_device *device,
                                                           linear_data,
                                                           linear_pitches);
    if (vdp_status != VDP_STATUS_OK) {
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         const char *err_str = session->vdp_get_error_string ?
-            session->vdp_get_error_string(vdp_status) : "unknown";
-         fprintf(stderr, "VDPAU: Failed to get surface bits: %s (%d)\n",
-                 err_str, vdp_status);
-      }
       free(linear_y);
       free(linear_uv);
       anv_gem_munmap(device, tiled_ptr, bo->size);
       return vk_error(device, VK_ERROR_UNKNOWN);
-   }
-
-   /* Debug: dump some sample data to verify VDPAU output */
-   if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-      uint8_t *y_data = (uint8_t *)linear_y;
-      fprintf(stderr, "VDPAU: Y data sample (first 8 bytes of rows 0,1,16,17) with pitch=%u:\n", linear_y_pitch);
-      fprintf(stderr, "  Row 0: %02x %02x %02x %02x %02x %02x %02x %02x\n",
-              y_data[0], y_data[1], y_data[2], y_data[3],
-              y_data[4], y_data[5], y_data[6], y_data[7]);
-      fprintf(stderr, "  Row 1 (offset %u): %02x %02x %02x %02x %02x %02x %02x %02x\n",
-              linear_y_pitch,
-              y_data[linear_y_pitch], y_data[linear_y_pitch+1],
-              y_data[linear_y_pitch+2], y_data[linear_y_pitch+3],
-              y_data[linear_y_pitch+4], y_data[linear_y_pitch+5],
-              y_data[linear_y_pitch+6], y_data[linear_y_pitch+7]);
-      /* Also check if VDPAU might be using width as pitch instead */
-      fprintf(stderr, "  Alt Row 1 (offset %u): %02x %02x %02x %02x %02x %02x %02x %02x\n",
-              width,
-              y_data[width], y_data[width+1],
-              y_data[width+2], y_data[width+3],
-              y_data[width+4], y_data[width+5],
-              y_data[width+6], y_data[width+7]);
-      if (height > 16) {
-         fprintf(stderr, "  Row 16: %02x %02x %02x %02x %02x %02x %02x %02x\n",
-                 y_data[16*linear_y_pitch], y_data[16*linear_y_pitch+1],
-                 y_data[16*linear_y_pitch+2], y_data[16*linear_y_pitch+3],
-                 y_data[16*linear_y_pitch+4], y_data[16*linear_y_pitch+5],
-                 y_data[16*linear_y_pitch+6], y_data[16*linear_y_pitch+7]);
-         fprintf(stderr, "  Alt Row 16 (offset %u): %02x %02x %02x %02x %02x %02x %02x %02x\n",
-                 16*width,
-                 y_data[16*width], y_data[16*width+1],
-                 y_data[16*width+2], y_data[16*width+3],
-                 y_data[16*width+4], y_data[16*width+5],
-                 y_data[16*width+6], y_data[16*width+7]);
-         fprintf(stderr, "  Row 17: %02x %02x %02x %02x %02x %02x %02x %02x\n",
-                 y_data[17*linear_y_pitch], y_data[17*linear_y_pitch+1],
-                 y_data[17*linear_y_pitch+2], y_data[17*linear_y_pitch+3],
-                 y_data[17*linear_y_pitch+4], y_data[17*linear_y_pitch+5],
-                 y_data[17*linear_y_pitch+6], y_data[17*linear_y_pitch+7]);
-      }
-      /* Sample more rows to see where corruption starts */
-      uint32_t sample_rows[] = {32, 64, 128, 256, 360, 512, 640};
-      for (unsigned i = 0; i < sizeof(sample_rows)/sizeof(sample_rows[0]); i++) {
-         uint32_t row = sample_rows[i];
-         if (row < height) {
-            size_t offset = (size_t)row * linear_y_pitch;
-            fprintf(stderr, "  Row %u (offset %zu): %02x %02x %02x %02x %02x %02x %02x %02x\n",
-                    row, offset,
-                    y_data[offset], y_data[offset+1],
-                    y_data[offset+2], y_data[offset+3],
-                    y_data[offset+4], y_data[offset+5],
-                    y_data[offset+6], y_data[offset+7]);
-         }
-      }
    }
 
    /* Get destination pointers in the tiled buffer */
@@ -886,10 +645,6 @@ anv_vdpau_copy_surface_to_image(struct anv_device *device,
    if (y_offset % y_alignment != 0) {
       uint64_t misalignment = y_offset % y_alignment;
       if (misalignment == y_alignment - 1) {
-         if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-            fprintf(stderr, "VDPAU: Fixing Y plane off-by-one alignment (offset %lu -> %lu)\n",
-                    (unsigned long)y_offset, (unsigned long)(y_offset + 1));
-         }
          y_offset += 1;
       }
    }
@@ -897,10 +652,6 @@ anv_vdpau_copy_surface_to_image(struct anv_device *device,
    if (uv_offset % uv_alignment != 0) {
       uint64_t misalignment = uv_offset % uv_alignment;
       if (misalignment == uv_alignment - 1) {
-         if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-            fprintf(stderr, "VDPAU: Fixing UV plane off-by-one alignment (offset %lu -> %lu)\n",
-                    (unsigned long)uv_offset, (unsigned long)(uv_offset + 1));
-         }
          uv_offset += 1;
       }
    }
@@ -911,140 +662,18 @@ anv_vdpau_copy_surface_to_image(struct anv_device *device,
    enum isl_tiling tiling = y_surface->isl.tiling;
    bool has_swizzling = device->isl_dev.has_bit6_swizzling;
 
-   /* DEBUG: Allow forcing swizzle mode via INTEL_HASVK_VIDEO_SWIZZLE env var
-    * 0 = no swizzle (custom Y-tile copy)
-    * 1 = bit 9 only (custom Y-tile copy, should match ISL)
-    * 2 = use ISL default (may not work correctly for all swizzle modes)
-    * 3 = bit 9 and 10 swizzle (custom Y-tile copy, some IVB systems)
-    * 4 = simple row-by-row copy (ignore tiling, for comparison)
-    * 5 = test pattern: horizontal gradient (Y value = x % 256)
-    * 6 = test pattern: vertical gradient (Y value = y % 256)
-    *
-    * Also use INTEL_HASVK_VIDEO_PITCH to control VDPAU pitch:
-    * 0 = generous 2KB alignment (default, safe)
-    * 1 = 128-byte alignment (Y-tile width)
-    * 2 = exact width (no alignment)
-    */
-   static int force_swizzle = -1;
-   if (force_swizzle < 0) {
-      const char *env = getenv("INTEL_HASVK_VIDEO_SWIZZLE");
-      if (env) {
-         force_swizzle = atoi(env);
-      } else {
-         force_swizzle = 2; /* Use default (device setting) */
-      }
-   }
-   if (force_swizzle == 0) {
-      has_swizzling = false;
-   } else if (force_swizzle == 1 || force_swizzle == 3) {
-      has_swizzling = true;
-   }
-
-   /* Generate test pattern if requested */
-   if (force_swizzle == 5 || force_swizzle == 6) {
-      uint8_t *y_data = (uint8_t *)linear_y;
-      uint8_t *uv_data = (uint8_t *)linear_uv;
-
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "VDPAU: Generating test pattern (mode %d)\n", force_swizzle);
-      }
-
-      for (uint32_t row = 0; row < height; row++) {
-         for (uint32_t col = 0; col < width; col++) {
-            if (force_swizzle == 5) {
-               /* Horizontal gradient: Y = x % 256 */
-               y_data[row * linear_y_pitch + col] = col % 256;
-            } else {
-               /* Vertical gradient: Y = y % 256 */
-               y_data[row * linear_y_pitch + col] = row % 256;
-            }
-         }
-      }
-
-      /* UV plane: neutral gray (128, 128) */
-      for (uint32_t row = 0; row < height / 2; row++) {
-         for (uint32_t col = 0; col < width; col++) {
-            uv_data[row * linear_uv_pitch + col] = 128;
-         }
-      }
-   }
-
-   /* Mode 7: Dump linear VDPAU data to files for inspection */
-   if (force_swizzle == 7) {
-      static int dump_count = 0;
-      if (dump_count < 5) {  /* Only dump first 5 frames */
-         char filename[256];
-         snprintf(filename, sizeof(filename), "/tmp/vdpau_y_%d_%ux%u_p%u.raw",
-                  dump_count, width, height, linear_y_pitch);
-         FILE *f = fopen(filename, "wb");
-         if (f) {
-            /* Write Y plane row by row with actual pitch */
-            for (uint32_t row = 0; row < height; row++) {
-               fwrite((uint8_t*)linear_y + row * linear_y_pitch, 1, width, f);
-            }
-            fclose(f);
-            fprintf(stderr, "VDPAU: Dumped Y plane to %s (%ux%u)\n", filename, width, height);
-         }
-
-         snprintf(filename, sizeof(filename), "/tmp/vdpau_uv_%d_%ux%u_p%u.raw",
-                  dump_count, width, height/2, linear_uv_pitch);
-         f = fopen(filename, "wb");
-         if (f) {
-            for (uint32_t row = 0; row < height/2; row++) {
-               fwrite((uint8_t*)linear_uv + row * linear_uv_pitch, 1, width, f);
-            }
-            fclose(f);
-            fprintf(stderr, "VDPAU: Dumped UV plane to %s (%ux%u)\n", filename, width, height/2);
-         }
-         dump_count++;
-      }
-   }
-
    /* Bounds checking to prevent buffer overflow */
    size_t y_end_offset = y_offset + y_surface->memory_range.size;
    size_t uv_end_offset = uv_offset + uv_surface->memory_range.size;
    if (y_end_offset > bo->size || uv_end_offset > bo->size) {
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "VDPAU: ERROR - surface would overflow BO!\n");
-         fprintf(stderr, "  BO size=%lu, Y end=%lu, UV end=%lu\n",
-                 (unsigned long)bo->size, (unsigned long)y_end_offset,
-                 (unsigned long)uv_end_offset);
-      }
       free(linear_y);
       free(linear_uv);
       anv_gem_munmap(device, tiled_ptr, bo->size);
       return vk_error(device, VK_ERROR_UNKNOWN);
    }
 
-   /* Debug option: force linear copy to test if VDPAU decode is working */
-   static int force_linear = -1;
-   if (force_linear < 0) {
-      const char *env = getenv("INTEL_HASVK_VIDEO_LINEAR");
-      force_linear = env && atoi(env);
-   }
-
-   if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-      fprintf(stderr, "VDPAU: Y plane: offset=%lu, align=%u, pitch=%u, size=%lu\n",
-              (unsigned long)y_offset, y_alignment, y_surface->isl.row_pitch_B,
-              (unsigned long)y_surface->memory_range.size);
-      fprintf(stderr, "VDPAU: UV plane: offset=%lu, align=%u, pitch=%u, size=%lu\n",
-              (unsigned long)uv_offset, uv_alignment, uv_surface->isl.row_pitch_B,
-              (unsigned long)uv_surface->memory_range.size);
-      fprintf(stderr, "VDPAU: BO size=%lu\n", (unsigned long)bo->size);
-      /* Show ISL surface dimensions vs image dimensions */
-      fprintf(stderr, "VDPAU: ISL Y surf: %ux%u (logical), phys array pitch=%u\n",
-              y_surface->isl.logical_level0_px.width,
-              y_surface->isl.logical_level0_px.height,
-              y_surface->isl.array_pitch_el_rows);
-      fprintf(stderr, "VDPAU: Image dims: %ux%u, copy dims: %ux%u\n",
-              image->vk.extent.width, image->vk.extent.height, width, height);
-   }
-
-   if (tiling == ISL_TILING_LINEAR || force_linear) {
+   if (tiling == ISL_TILING_LINEAR) {
       /* Linear tiling - just memcpy row by row */
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK)) && force_linear && tiling != ISL_TILING_LINEAR) {
-         fprintf(stderr, "VDPAU: WARNING - forcing linear copy to tiled surface (debug mode)\n");
-      }
       for (uint32_t row = 0; row < height; row++) {
          memcpy(tiled_y + row * y_surface->isl.row_pitch_B,
                 (char *)linear_y + row * linear_y_pitch,
@@ -1055,46 +684,6 @@ anv_vdpau_copy_surface_to_image(struct anv_device *device,
                 (char *)linear_uv + row * linear_uv_pitch,
                 width);
       }
-   } else if (force_swizzle == 4) {
-      /* Mode 4: Simple row-by-row copy ignoring tiling
-       * This writes data as if the destination were linear, even though it's tiled.
-       * Useful for diagnosing if the issue is in tiling logic vs GPU sampling.
-       */
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "VDPAU: Using simple row copy (ignoring Y-tile layout) - mode 4\n");
-      }
-      for (uint32_t row = 0; row < height; row++) {
-         memcpy(tiled_y + row * y_surface->isl.row_pitch_B,
-                (char *)linear_y + row * linear_y_pitch,
-                width);
-      }
-      for (uint32_t row = 0; row < height / 2; row++) {
-         memcpy(tiled_uv + row * uv_surface->isl.row_pitch_B,
-                (char *)linear_uv + row * linear_uv_pitch,
-                width);
-      }
-   } else if (tiling == ISL_TILING_Y0 && (force_swizzle == 0 || force_swizzle == 1 || force_swizzle == 3 || force_swizzle == 5 || force_swizzle == 6)) {
-      /* Use custom Y-tile copy for explicit swizzle modes:
-       * - force_swizzle=0: no swizzle (for testing)
-       * - force_swizzle=1: bit 9 swizzle only (should match ISL)
-       * - force_swizzle=3: bit 9+10 swizzle (some IVB systems)
-       * - force_swizzle=5,6: test patterns (use bit 9 swizzle)
-       */
-      int actual_swizzle = (force_swizzle == 5 || force_swizzle == 6) ? 1 : force_swizzle;
-
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "VDPAU: Using custom Y-tile copy with swizzle mode %d\n", actual_swizzle);
-      }
-
-      linear_to_ytiled_custom(tiled_y, (const char *)linear_y,
-                              width, height,
-                              y_surface->isl.row_pitch_B, linear_y_pitch,
-                              actual_swizzle);
-
-      linear_to_ytiled_custom(tiled_uv, (const char *)linear_uv,
-                              width, height / 2,
-                              uv_surface->isl.row_pitch_B, linear_uv_pitch,
-                              actual_swizzle);
    } else {
       /* Y-tiled or X-tiled - use ISL tiled memcpy
        * isl_memcpy_linear_to_tiled copies a rectangular region from linear to tiled
@@ -1124,65 +713,6 @@ anv_vdpau_copy_surface_to_image(struct anv_device *device,
                                  ISL_MEMCPY);
    }
 
-   /* Debug: dump some tiled data to verify copy worked */
-   if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-      uint8_t *tiled_data = (uint8_t *)tiled_y;
-      uint8_t *linear_data = (uint8_t *)linear_y;
-      uint32_t tiles_per_row = y_surface->isl.row_pitch_B / 128;
-      fprintf(stderr, "VDPAU: Tiled Y data sample (tiles_per_row=%u):\n", tiles_per_row);
-
-      /* Show first OWord of each row in the first tile (rows 0-31) */
-      fprintf(stderr, "VDPAU: First tile OWord0 (first 16 bytes of tile):\n");
-      for (int row = 0; row < 32; row++) {
-         /* In Y-tile, row N of OWord 0 is at offset row*16 within the tile */
-         size_t tile_row_offset = row * 16;
-         fprintf(stderr, "  Tile row %2d (linear row %2d): %02x %02x %02x %02x  %02x %02x %02x %02x  ",
-                 row, row,
-                 tiled_data[tile_row_offset], tiled_data[tile_row_offset+1],
-                 tiled_data[tile_row_offset+2], tiled_data[tile_row_offset+3],
-                 tiled_data[tile_row_offset+4], tiled_data[tile_row_offset+5],
-                 tiled_data[tile_row_offset+6], tiled_data[tile_row_offset+7]);
-         /* Compare with linear source */
-         size_t linear_offset = row * linear_y_pitch;
-         fprintf(stderr, "| linear: %02x %02x %02x %02x\n",
-                 linear_data[linear_offset], linear_data[linear_offset+1],
-                 linear_data[linear_offset+2], linear_data[linear_offset+3]);
-      }
-
-      /* Tile row 1 (image row 32): offset = tiles_per_row * 4096 */
-      size_t tile_row1_offset = (size_t)tiles_per_row * 4096;
-      fprintf(stderr, "  Tile[1,0] row 0 (img row 32, offset=%zu): %02x %02x %02x %02x %02x %02x %02x %02x\n",
-              tile_row1_offset,
-              tiled_data[tile_row1_offset], tiled_data[tile_row1_offset+1],
-              tiled_data[tile_row1_offset+2], tiled_data[tile_row1_offset+3],
-              tiled_data[tile_row1_offset+4], tiled_data[tile_row1_offset+5],
-              tiled_data[tile_row1_offset+6], tiled_data[tile_row1_offset+7]);
-      /* Tile row 2 (image row 64): offset = 2 * tiles_per_row * 4096 */
-      size_t tile_row2_offset = 2 * (size_t)tiles_per_row * 4096;
-      fprintf(stderr, "  Tile[2,0] row 0 (img row 64, offset=%zu): %02x %02x %02x %02x %02x %02x %02x %02x\n",
-              tile_row2_offset,
-              tiled_data[tile_row2_offset], tiled_data[tile_row2_offset+1],
-              tiled_data[tile_row2_offset+2], tiled_data[tile_row2_offset+3],
-              tiled_data[tile_row2_offset+4], tiled_data[tile_row2_offset+5],
-              tiled_data[tile_row2_offset+6], tiled_data[tile_row2_offset+7]);
-      /* Also sample tile column 1 (x=128-255) */
-      size_t tile_col1_offset = 4096; /* Second tile in row */
-      fprintf(stderr, "  Tile[0,1] row 0 (img col 128, offset=%zu): %02x %02x %02x %02x %02x %02x %02x %02x\n",
-              tile_col1_offset,
-              tiled_data[tile_col1_offset], tiled_data[tile_col1_offset+1],
-              tiled_data[tile_col1_offset+2], tiled_data[tile_col1_offset+3],
-              tiled_data[tile_col1_offset+4], tiled_data[tile_col1_offset+5],
-              tiled_data[tile_col1_offset+6], tiled_data[tile_col1_offset+7]);
-      /* Sample at image row 360 (middle of frame) - tile row 11 */
-      size_t tile_row11_offset = 11 * (size_t)tiles_per_row * 4096;
-      fprintf(stderr, "  Tile[11,0] row 0 (img row 352, offset=%zu): %02x %02x %02x %02x %02x %02x %02x %02x\n",
-              tile_row11_offset,
-              tiled_data[tile_row11_offset], tiled_data[tile_row11_offset+1],
-              tiled_data[tile_row11_offset+2], tiled_data[tile_row11_offset+3],
-              tiled_data[tile_row11_offset+4], tiled_data[tile_row11_offset+5],
-              tiled_data[tile_row11_offset+6], tiled_data[tile_row11_offset+7]);
-   }
-
    /* Ensure all writes are visible to the GPU by flushing write-combine buffers */
    __builtin_ia32_mfence();
 
@@ -1190,19 +720,6 @@ anv_vdpau_copy_surface_to_image(struct anv_device *device,
    free(linear_y);
    free(linear_uv);
    anv_gem_munmap(device, tiled_ptr, bo->size);
-
-   if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-      fprintf(stderr, "VDPAU: Copied surface %u to image:\n", surface);
-      fprintf(stderr, "  Image: %ux%u, Y pitch=%u, UV pitch=%u\n",
-              width, height, y_surface->isl.row_pitch_B, uv_surface->isl.row_pitch_B);
-      fprintf(stderr, "  Tiling=%d, swizzle=%d\n", tiling, has_swizzling);
-      fprintf(stderr, "  Y offset=%lu, UV offset=%lu\n",
-              (unsigned long)(binding->address.offset + y_surface->memory_range.offset),
-              (unsigned long)(binding->address.offset + uv_surface->memory_range.offset));
-      fprintf(stderr, "  Y surface: size=%lu, UV surface: size=%lu\n",
-              (unsigned long)y_surface->memory_range.size,
-              (unsigned long)uv_surface->memory_range.size);
-   }
 
    return VK_SUCCESS;
 }
@@ -1221,16 +738,7 @@ anv_vdpau_decode_frame(struct anv_cmd_buffer *cmd_buffer,
    struct anv_vdpau_session *session = vid->vdpau_session;
    VkResult result;
 
-   if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-      fprintf(stderr, "anv_vdpau_decode_frame: ENTRY (vid=%p, session=%p)\n",
-              (void *)vid, (void *)session);
-   }
-
    if (!vid || !session) {
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "anv_vdpau_decode_frame: ERROR - vid=%p session=%p\n",
-                 (void *)vid, (void *)session);
-      }
       return vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
    }
 
@@ -1238,9 +746,6 @@ anv_vdpau_decode_frame(struct anv_cmd_buffer *cmd_buffer,
    const VkVideoDecodeH264PictureInfoKHR *h264_pic_info =
       vk_find_struct_const(frame_info->pNext, VIDEO_DECODE_H264_PICTURE_INFO_KHR);
    if (!h264_pic_info) {
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "VDPAU: Missing H.264 picture info in decode\n");
-      }
       return vk_error(device, VK_ERROR_FORMAT_NOT_SUPPORTED);
    }
 
@@ -1248,9 +753,6 @@ anv_vdpau_decode_frame(struct anv_cmd_buffer *cmd_buffer,
    ANV_FROM_HANDLE(anv_image_view, dst_image_view,
                    frame_info->dstPictureResource.imageViewBinding);
    if (!dst_image_view || !dst_image_view->image) {
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "VDPAU: Invalid destination image view\n");
-      }
       return vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
    }
    struct anv_image *dst_image = (struct anv_image *)dst_image_view->image;
@@ -1270,11 +772,6 @@ anv_vdpau_decode_frame(struct anv_cmd_buffer *cmd_buffer,
 
       /* If decoder exists but dimensions changed, recreate it */
       if (session->decoder_created) {
-         if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-            fprintf(stderr, "VDPAU: Video dimensions changed from %ux%u to %ux%u, recreating decoder\n",
-                    session->width, session->height, actual_width, actual_height);
-         }
-
          /* Destroy old decoder */
          if (session->vdp_decoder && session->vdp_decoder_destroy) {
             session->vdp_decoder_destroy(session->vdp_decoder);
@@ -1291,11 +788,6 @@ anv_vdpau_decode_frame(struct anv_cmd_buffer *cmd_buffer,
             }
          }
          session->surface_map_size = 0;
-      } else {
-         if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-            fprintf(stderr, "VDPAU: Creating decoder with actual dimensions %ux%u (was max %ux%u)\n",
-                    actual_width, actual_height, session->width, session->height);
-         }
       }
 
       /* Update session dimensions to actual video size */
@@ -1310,21 +802,10 @@ anv_vdpau_decode_frame(struct anv_cmd_buffer *cmd_buffer,
                                                          session->max_dpb_slots,
                                                          &session->vdp_decoder);
       if (vdp_status != VDP_STATUS_OK) {
-         if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-            const char *err_str = session->vdp_get_error_string ?
-               session->vdp_get_error_string(vdp_status) : "unknown";
-            fprintf(stderr, "VDPAU: Failed to create decoder: %s (%d)\n", err_str, vdp_status);
-         }
          return vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
       }
 
       session->decoder_created = true;
-
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "VDPAU: Decoder created successfully: %ux%u, profile=%d, decoder=%u\n",
-                 session->width, session->height, session->vdp_profile,
-                 session->vdp_decoder);
-      }
    }
 
    /* Create or reuse destination surface */
@@ -1341,9 +822,6 @@ anv_vdpau_decode_frame(struct anv_cmd_buffer *cmd_buffer,
    /* Get video session parameters */
    struct anv_video_session_params *params = cmd_buffer->video.params;
    if (!params) {
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "VDPAU: No video session parameters bound\n");
-      }
       return vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
    }
 
@@ -1398,9 +876,6 @@ anv_vdpau_decode_frame(struct anv_cmd_buffer *cmd_buffer,
    ANV_FROM_HANDLE(anv_buffer, src_buffer, frame_info->srcBuffer);
    if (!src_buffer || !src_buffer->address.bo) {
       vk_free(&device->vk.alloc, ref_surfaces);
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "VDPAU: Invalid source buffer\n");
-      }
       return vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
    }
 
@@ -1409,9 +884,6 @@ anv_vdpau_decode_frame(struct anv_cmd_buffer *cmd_buffer,
                                        0, frame_info->srcBufferRange, 0);
    if (!bitstream_data) {
       vk_free(&device->vk.alloc, ref_surfaces);
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "VDPAU: Failed to map bitstream buffer\n");
-      }
       return vk_error(device, VK_ERROR_MEMORY_MAP_FAILED);
    }
 
@@ -1422,9 +894,6 @@ anv_vdpau_decode_frame(struct anv_cmd_buffer *cmd_buffer,
    if (slice_count == 0) {
       anv_gem_munmap(device, bitstream_data, frame_info->srcBufferRange);
       vk_free(&device->vk.alloc, ref_surfaces);
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "VDPAU: H.264 decode has no slices\n");
-      }
       return vk_error(device, VK_ERROR_FORMAT_NOT_SUPPORTED);
    }
 
@@ -1480,11 +949,6 @@ anv_vdpau_decode_frame(struct anv_cmd_buffer *cmd_buffer,
                              ANV_PIPE_TEXTURE_CACHE_INVALIDATE_BIT,
                              "VDPAU decode texture cache invalidate");
 
-   if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-      fprintf(stderr, "VDPAU: Recorded deferred decode command (%u slices)\n",
-              slice_count);
-   }
-
    return VK_SUCCESS;
 }
 
@@ -1500,15 +964,17 @@ anv_vdpau_execute_deferred_decodes(struct anv_device *device,
    VdpStatus vdp_status;
    VkResult result = VK_SUCCESS;
 
+   if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+      uint32_t decode_count = util_dynarray_num_elements(
+         &cmd_buffer->video.vdpau_decodes, struct anv_vdpau_decode_cmd);
+      fprintf(stderr, "HASVK Performance: Executing %u deferred video decode(s)\n",
+              decode_count);
+   }
+
    /* Execute each deferred decode command */
    util_dynarray_foreach(&cmd_buffer->video.vdpau_decodes,
                          struct anv_vdpau_decode_cmd, decode_cmd)
    {
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "VDPAU: Executing decode: surface=%u, %u bitstream buffers\n",
-                 decode_cmd->target_surface, decode_cmd->bitstream_buffer_count);
-      }
-
       /* Call VDPAU decoder render */
       vdp_status = decode_cmd->session->vdp_decoder_render(
          decode_cmd->decoder,
@@ -1518,11 +984,6 @@ anv_vdpau_execute_deferred_decodes(struct anv_device *device,
          decode_cmd->bitstream_buffers);
 
       if (vdp_status != VDP_STATUS_OK) {
-         if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-            const char *err_str = decode_cmd->session->vdp_get_error_string ?
-               decode_cmd->session->vdp_get_error_string(vdp_status) : "unknown";
-            fprintf(stderr, "VDPAU: Decoder render failed: %s (%d)\n", err_str, vdp_status);
-         }
          result = vk_error(device, VK_ERROR_UNKNOWN);
       } else {
          /* Copy decoded data from VDPAU surface to Vulkan image */
@@ -1565,10 +1026,6 @@ anv_vdpau_execute_deferred_decodes(struct anv_device *device,
 
    /* Clear the deferred commands after execution */
    util_dynarray_clear(&cmd_buffer->video.vdpau_decodes);
-
-   if (unlikely(INTEL_DEBUG(DEBUG_HASVK)) && result == VK_SUCCESS) {
-      fprintf(stderr, "VDPAU: All deferred decodes executed successfully\n");
-   }
 
    return result;
 }

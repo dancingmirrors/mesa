@@ -3369,14 +3369,6 @@ anv_AllocateMemory(VkDevice _device,
             alignment = MAX2(alignment, aux_surface->isl.alignment_B);
          }
       }
-#if 0 /* Debug */
-      if (device->info->verx10 == 70 && image->vk.aspects & VK_IMAGE_ASPECT_DEPTH_BIT) {
-         fprintf(stderr, "Gen7 depth image memory allocation:\n");
-         fprintf(stderr, "  allocationSize = %" PRIu64 "\n", pAllocateInfo->allocationSize);
-         fprintf(stderr, "  computed alignment = %u\n", alignment);
-         fprintf(stderr, "  dedicated = %s\n", dedicated_info ? "yes" : "no");
-      }
-#endif
    }
    result = anv_device_alloc_bo(device, "user", pAllocateInfo->allocationSize,
                                 alloc_flags, client_address, alignment, &mem->bo);
