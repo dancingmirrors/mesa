@@ -119,18 +119,11 @@ anv_video_export_surface_for_cross_device(struct anv_device *device,
    /* Validate handle type */
    if (handle_type != VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT &&
        handle_type != VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT) {
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "Cross-device: Unsupported handle type: 0x%x\n",
-                 handle_type);
-      }
       return vk_error(device, VK_ERROR_FEATURE_NOT_PRESENT);
    }
 
    /* Validate that this is a video image */
    if (!anv_video_image_supports_cross_device(image)) {
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "Cross-device: Image does not support cross-device sharing\n");
-      }
       return vk_error(device, VK_ERROR_FEATURE_NOT_PRESENT);
    }
 
@@ -139,9 +132,6 @@ anv_video_export_surface_for_cross_device(struct anv_device *device,
       &image->bindings[ANV_IMAGE_MEMORY_BINDING_MAIN];
 
    if (!binding->address.bo) {
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "Cross-device: Image has no backing memory\n");
-      }
       return vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
    }
 
@@ -155,21 +145,10 @@ anv_video_export_surface_for_cross_device(struct anv_device *device,
    /* Export the BO as a DMA-buf file descriptor */
    int fd = anv_gem_handle_to_fd(device, bo->gem_handle);
    if (fd < 0) {
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "Cross-device: Failed to export BO as DMA-buf\n");
-      }
       return vk_error(device, VK_ERROR_TOO_MANY_OBJECTS);
    }
 
    *fd_out = fd;
-
-   if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-      fprintf(stderr, "Cross-device: Successfully exported video surface (fd=%d)\n",
-              fd);
-      fprintf(stderr, "  Image size: %ux%u, format: %d\n",
-              image->vk.extent.width, image->vk.extent.height, image->vk.format);
-      fprintf(stderr, "  This surface can now be imported by another Vulkan device\n");
-   }
 
    return VK_SUCCESS;
 }
@@ -252,11 +231,6 @@ anv_video_create_cross_device_sync(struct anv_device *device,
     * 3. Device B imports fd as semaphore
     * 4. Device B waits on semaphore before rendering
     */
-
-   if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-      fprintf(stderr, "Cross-device: Creating sync object for cross-device synchronization\n");
-      fprintf(stderr, "  Handle type: 0x%x\n", handle_type);
-   }
 
    /* Sync object creation is handled by the standard Vulkan sync code
     * This function is a placeholder for future enhancements if needed

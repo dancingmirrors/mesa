@@ -1911,20 +1911,9 @@ anv_bind_image_memory(struct anv_device *device,
       struct anv_bo *bo = image->bindings[ANV_IMAGE_MEMORY_BINDING_MAIN].address.bo;
 
       if (bo && surf->tiling != ISL_TILING_LINEAR) {
-         if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-            const char *usage_type =
-               (image->vk.usage & VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR) ? "DST" : "DPB";
-            fprintf(stderr, "BindImageMemory: Setting BO tiling for video %s image: %ux%u, tiling=%s, pitch=%u, gem_handle=%u\n",
-                    usage_type, image->vk.extent.width, image->vk.extent.height,
-                    isl_tiling_to_name(surf->tiling), surf->row_pitch_B, bo->gem_handle);
-         }
-
          VkResult result = anv_device_set_bo_tiling(device, bo,
                                                     surf->row_pitch_B, surf->tiling);
          if (result != VK_SUCCESS) {
-            if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-               fprintf(stderr, "BindImageMemory: Failed to set BO tiling for video image\n");
-            }
             return result;
          }
       }

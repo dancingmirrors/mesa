@@ -2020,12 +2020,6 @@ anv_device_set_bo_tiling(struct anv_device *device,
                        "failed to set BO tiling: %m");
    }
 
-   if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-      fprintf(stderr, "Successfully set BO tiling: gem_handle=%u, tiling=%s (i915=%d), pitch=%u\n",
-              bo->gem_handle, isl_tiling_to_name(tiling),
-              isl_tiling_to_i915_tiling(tiling), row_pitch_B);
-   }
-
    return VK_SUCCESS;
 }
 
