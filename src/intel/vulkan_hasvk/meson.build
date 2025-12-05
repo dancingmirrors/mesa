@@ -54,6 +54,11 @@ _dev_icd = custom_target(
 
 devenv.append('VK_DRIVER_FILES', _dev_icd.full_path())
 
+# Build bundled intel-vaapi-driver as part of Mesa
+# This provides the VA-API driver that is preferred over system-installed versions
+# JPEG support has been removed to prevent GPU hangs
+subdir('intel-vaapi-driver')
+
 # Build bundled libvdpau as part of Mesa
 # This provides the VDPAU wrapper library that takes priority over system-installed versions
 subdir('libvdpau')
