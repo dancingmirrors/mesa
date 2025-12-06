@@ -84,9 +84,20 @@
 #define YTILE_HEIGHT 32
 #define YTILE_SPAN 16
 
-/* Maximum frames to process per submit for video decode. */
+/* Maximum frames to process per submit for video decode.
+ * Setting this to 0 means unlimited (process all queued frames).
+ *
+ * With multiple decode threads (e.g., mpv --hwdec-threads=4), each thread
+ * submits its own command buffer with decode operations. VA-API can efficiently
+ * handle multiple frames in a single batch, and limiting this artificially
+ * creates serialization bottlenecks.
+ *
+ * Previously set to 1 to avoid race conditions, but with proper per-session
+ * mutex protection, we can safely process all frames in a batch for better
+ * performance and GPU utilization.
+ */
 #ifndef HASVK_MAX_FRAMES_PER_SUBMIT
-#define HASVK_MAX_FRAMES_PER_SUBMIT 1
+#define HASVK_MAX_FRAMES_PER_SUBMIT 0
 #endif
 
 /**
@@ -1500,13 +1511,26 @@ anv_vdpau_execute_deferred_decodes(struct anv_device *device,
       return VK_SUCCESS;
    }
 
+   /* Process all frames in the queue (unlimited).
+    * HASVK_MAX_FRAMES_PER_SUBMIT is set to 0 (unlimited) to allow full batching.
+    * Previously was 1 which artificially limited parallelism.
+    *
+    * Note: We keep frames_to_process as a variable (even though it equals
+    * total_decode_count) to allow easy re-enabling of frame limiting in the
+    * future if needed for debugging or performance tuning.
+    */
    uint32_t frames_to_process = total_decode_count;
 
-#if HASVK_MAX_FRAMES_PER_SUBMIT > 0
-   if (total_decode_count > HASVK_MAX_FRAMES_PER_SUBMIT) {
-      frames_to_process = HASVK_MAX_FRAMES_PER_SUBMIT;
-   }
-#endif
+   /* Acquire VDPAU mutex to serialize decode operations across all sessions.
+    * This is necessary because:
+    * 1. VDPAU decoder operations are not thread-safe
+    * 2. libvdpau-va-gl has internal state that can race
+    * 3. Multiple mpv decode threads (--hwdec-threads=4) call this concurrently
+    *
+    * Without this mutex, we see partial screen flicker (race conditions) and
+    * poor performance due to VA-API internal contention.
+    */
+   pthread_mutex_lock(&device->vdpau_mutex);
 
    /* Phase 1: Submit decode operations to VA-API
     * This allows VA-API to pipeline multiple decodes on the GPU instead of
@@ -1530,54 +1554,65 @@ anv_vdpau_execute_deferred_decodes(struct anv_device *device,
 
       if (vdp_status != VDP_STATUS_OK) {
          result = vk_error(device, VK_ERROR_UNKNOWN);
-         break;
+         break;  /* Exit loop on error, will unlock mutex below */
       }
 
       frame_index++;
    }
 
+   /* Release VDPAU mutex after decode submission (always, success or failure).
+    * Phase 1 (decode submission) needs serialization to prevent VDPAU races.
+    * Phase 2 (copy) can proceed in parallel across threads since each thread
+    * operates on different surfaces/images. This is critical for 4K video
+    * performance where the copy operation is expensive.
+    */
+   pthread_mutex_unlock(&device->vdpau_mutex);
+
+   /* Early exit if decode submission failed */
+   if (result != VK_SUCCESS) {
+      goto cleanup;
+   }
+
    /* Phase 2: Copy decoded results from VDPAU surfaces to Vulkan images
-    * Only proceed if all decodes were submitted successfully.
     * The vdp_video_surface_get_bits_ycbcr call will sync and wait for
     * GPU decode completion, but at this point all decodes have been
     * submitted and can execute in parallel on the GPU.
     *
     * Try DMA-buf zero-copy path first, fall back to CPU copy if unavailable.
     */
-   if (result == VK_SUCCESS) {
-      frame_index = 0;
-      util_dynarray_foreach(&cmd_buffer->video.vdpau_decodes,
-                            struct anv_vdpau_decode_cmd, decode_cmd)
-      {
-         if (frame_index >= frames_to_process) {
+   frame_index = 0;
+   util_dynarray_foreach(&cmd_buffer->video.vdpau_decodes,
+                         struct anv_vdpau_decode_cmd, decode_cmd)
+   {
+      if (frame_index >= frames_to_process) {
+         break;
+      }
+
+      /* Find the Vulkan image for this surface */
+      struct anv_image *target_image = NULL;
+      for (uint32_t i = 0; i < decode_cmd->session->surface_map_size; i++) {
+         if (decode_cmd->session->surface_map[i].vdp_surface == decode_cmd->target_surface) {
+            target_image = (struct anv_image *)decode_cmd->session->surface_map[i].image;
             break;
          }
-
-         /* Find the Vulkan image for this surface */
-         struct anv_image *target_image = NULL;
-         for (uint32_t i = 0; i < decode_cmd->session->surface_map_size; i++) {
-            if (decode_cmd->session->surface_map[i].vdp_surface == decode_cmd->target_surface) {
-               target_image = (struct anv_image *)decode_cmd->session->surface_map[i].image;
-               break;
-            }
-         }
-
-         if (target_image) {
-            /* Try DMA-buf path first (zero-copy GPU-to-GPU)
-             * Falls back to CPU copy automatically if DMA-buf not available
-             */
-            VkResult copy_result = anv_vdpau_copy_surface_to_image_dmabuf(
-               device, decode_cmd->session, decode_cmd->target_surface,
-               target_image, cmd_buffer);
-            if (copy_result != VK_SUCCESS && result == VK_SUCCESS) {
-               result = copy_result;
-            }
-         }
-
-         frame_index++;
       }
+
+      if (target_image) {
+         /* Try DMA-buf path first (zero-copy GPU-to-GPU)
+          * Falls back to CPU copy automatically if DMA-buf not available
+          */
+         VkResult copy_result = anv_vdpau_copy_surface_to_image_dmabuf(
+            device, decode_cmd->session, decode_cmd->target_surface,
+            target_image, cmd_buffer);
+         if (copy_result != VK_SUCCESS && result == VK_SUCCESS) {
+            result = copy_result;
+         }
+      }
+
+      frame_index++;
    }
 
+cleanup:
    /* Phase 3: Clean up resources for ALL frames (even those not decoded)
     * Frames beyond the limit are dropped to prevent resource leaks
     */
