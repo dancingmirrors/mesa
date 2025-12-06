@@ -86,7 +86,7 @@
 
 /* Maximum frames to process per submit for video decode. */
 #ifndef HASVK_MAX_FRAMES_PER_SUBMIT
-#define HASVK_MAX_FRAMES_PER_SUBMIT 0
+#define HASVK_MAX_FRAMES_PER_SUBMIT 1
 #endif
 
 /**
