@@ -269,6 +269,20 @@ vdpOutputSurfaceCreate(VdpDevice device, VdpRGBAFormat rgba_format, uint32_t wid
     data->deviceData = deviceData;
     data->rgba_format = rgba_format;
 
+    if (pthread_mutex_init(&data->status_mutex, NULL) != 0) {
+        traceError("error (%s): pthread_mutex_init failed\n", __func__);
+        free(data);
+        err_code = VDP_STATUS_RESOURCES;
+        goto quit;
+    }
+    if (pthread_cond_init(&data->status_cond, NULL) != 0) {
+        traceError("error (%s): pthread_cond_init failed\n", __func__);
+        pthread_mutex_destroy(&data->status_mutex);
+        free(data);
+        err_code = VDP_STATUS_RESOURCES;
+        goto quit;
+    }
+
     glx_ctx_push_thread_local(deviceData);
     glGenTextures(1, &data->tex_id);
     glBindTexture(GL_TEXTURE_2D, data->tex_id);
@@ -288,6 +302,8 @@ vdpOutputSurfaceCreate(VdpDevice device, VdpRGBAFormat rgba_format, uint32_t wid
         traceError("error (%s): framebuffer not ready, %d, %s\n", __func__, gl_status,
                    gluErrorString(gl_status));
         glx_ctx_pop();
+        pthread_mutex_destroy(&data->status_mutex);
+        pthread_cond_destroy(&data->status_cond);
         free(data);
         err_code = VDP_STATUS_ERROR;
         goto quit;
@@ -301,6 +317,8 @@ vdpOutputSurfaceCreate(VdpDevice device, VdpRGBAFormat rgba_format, uint32_t wid
     glx_ctx_pop();
     if (GL_NO_ERROR != gl_error) {
         traceError("error (%s): gl error %d\n", __func__, gl_error);
+        pthread_mutex_destroy(&data->status_mutex);
+        pthread_cond_destroy(&data->status_cond);
         free(data);
         err_code = VDP_STATUS_ERROR;
         goto quit;
@@ -332,12 +350,31 @@ vdpOutputSurfaceDestroy(VdpOutputSurface surface)
     glx_ctx_pop();
     if (GL_NO_ERROR != gl_error) {
         traceError("error (%s): gl error %d\n", __func__, gl_error);
+        /* On GL error, we return an error but don't destroy the surface.
+         * The surface remains valid and the pthread objects should not be destroyed. */
         err_code = VDP_STATUS_ERROR;
         goto quit;
     }
 
+    /* According to VDPAU specification, applications must ensure surfaces are
+     * idle before destroying them. We add a defensive check here. If the surface
+     * is not idle, we set it to idle which will wake any waiting threads.
+     * This is a safety measure - properly written applications won't hit this.
+     * We do this BEFORE handle_expunge so waiting threads can be properly notified.
+     * We use broadcast (not signal) because we're destroying the object and want
+     * to wake ALL potentially waiting threads. */
+    pthread_mutex_lock(&data->status_mutex);
+    if (data->status != VDP_PRESENTATION_QUEUE_STATUS_IDLE) {
+        data->status = VDP_PRESENTATION_QUEUE_STATUS_IDLE;
+        pthread_cond_broadcast(&data->status_cond);
+    }
+    pthread_mutex_unlock(&data->status_mutex);
+
     handle_expunge(surface);
     unref_device(deviceData);
+
+    pthread_mutex_destroy(&data->status_mutex);
+    pthread_cond_destroy(&data->status_cond);
     free(data);
     return VDP_STATUS_OK;
 

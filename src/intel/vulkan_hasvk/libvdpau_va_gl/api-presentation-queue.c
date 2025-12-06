@@ -132,16 +132,18 @@ vdpPresentationQueueBlockUntilSurfaceIdle(VdpPresentationQueue presentation_queu
     if (NULL == surfData)
         return VDP_STATUS_INVALID_HANDLE;
 
-    // TODO: use locking instead of busy loop
+    /* Use condition variable instead of busy loop.
+     * The handle_acquire above ensures surfData remains valid even if the surface
+     * is being destroyed concurrently. The while loop properly handles spurious
+     * wakeups by rechecking the status. If the surface is destroyed while we wait,
+     * vdpOutputSurfaceDestroy will set status to IDLE and broadcast, waking us up. */
+    pthread_mutex_lock(&surfData->status_mutex);
     while (surfData->status != VDP_PRESENTATION_QUEUE_STATUS_IDLE) {
-        handle_release(surface);
-        usleep(1000);
-        surfData = handle_acquire(surface, HANDLETYPE_OUTPUT_SURFACE);
-        if (!surfData)
-            return VDP_STATUS_ERROR;
+        pthread_cond_wait(&surfData->status_cond, &surfData->status_mutex);
     }
 
     *first_presentation_time = surfData->first_presentation_time;
+    pthread_mutex_unlock(&surfData->status_mutex);
     handle_release(surface);
     return VDP_STATUS_OK;
 }
@@ -163,8 +165,10 @@ vdpPresentationQueueQuerySurfaceStatus(VdpPresentationQueue presentation_queue,
         return VDP_STATUS_INVALID_HANDLE;
     }
 
+    pthread_mutex_lock(&surfData->status_mutex);
     *status = surfData->status;
     *first_presentation_time = surfData->first_presentation_time;
+    pthread_mutex_unlock(&surfData->status_mutex);
 
     handle_release(presentation_queue);
     handle_release(surface);
@@ -310,8 +314,12 @@ do_presentation_queue_display(struct task_s *task)
 
     struct timespec now;
     clock_gettime(CLOCK_REALTIME, &now);
+
+    pthread_mutex_lock(&surfData->status_mutex);
     surfData->first_presentation_time = timespec2vdptime(now);
     surfData->status = VDP_PRESENTATION_QUEUE_STATUS_IDLE;
+    pthread_cond_signal(&surfData->status_cond);
+    pthread_mutex_unlock(&surfData->status_mutex);
 
     if (global.quirks.log_pq_delay) {
             const int64_t delta = timespec2vdptime(now) - surfData->queued_at;
@@ -402,8 +410,11 @@ presentation_thread(void *param)
                     VdpOutputSurfaceData *surfData = handle_acquire(task->surface, HANDLETYPE_OUTPUT_SURFACE);
                     if (surfData) {
                         // Mark surface as idle without displaying
+                        pthread_mutex_lock(&surfData->status_mutex);
                         surfData->first_presentation_time = timespec2vdptime(now);
                         surfData->status = VDP_PRESENTATION_QUEUE_STATUS_IDLE;
+                        pthread_cond_signal(&surfData->status_cond);
+                        pthread_mutex_unlock(&surfData->status_mutex);
                         handle_release(task->surface);
                     }
                     total_dropped++;
@@ -422,8 +433,11 @@ presentation_thread(void *param)
                         g_queue_pop_head(int_q);
                         VdpOutputSurfaceData *nextSurfData = handle_acquire(next->surface, HANDLETYPE_OUTPUT_SURFACE);
                         if (nextSurfData) {
+                            pthread_mutex_lock(&nextSurfData->status_mutex);
                             nextSurfData->first_presentation_time = timespec2vdptime(now);
                             nextSurfData->status = VDP_PRESENTATION_QUEUE_STATUS_IDLE;
+                            pthread_cond_signal(&nextSurfData->status_cond);
+                            pthread_mutex_unlock(&nextSurfData->status_mutex);
                             handle_release(next->surface);
                         }
                         total_dropped++;
@@ -681,8 +695,10 @@ vdpPresentationQueueDisplay(VdpPresentationQueue presentation_queue, VdpOutputSu
     task->surface = surface;
     task->queue_id = presentation_queue;
 
+    pthread_mutex_lock(&surfData->status_mutex);
     surfData->first_presentation_time = 0;
     surfData->status = VDP_PRESENTATION_QUEUE_STATUS_QUEUED;
+    pthread_mutex_unlock(&surfData->status_mutex);
 
     if (global.quirks.log_pq_delay) {
         struct timespec now;
