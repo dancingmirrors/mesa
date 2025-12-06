@@ -1151,6 +1151,7 @@ struct anv_device
    void *x11_display;                     /* X11 Display for VDPAU */
    void *libX11;                          /* libX11 handle */
    void *libvdpau;                        /* libvdpau handle */
+   pthread_mutex_t vdpau_mutex;           /* Mutex for VDPAU operations (thread safety) */
 };
 
 static inline bool

@@ -2715,9 +2715,14 @@ anv_CreateDevice(VkPhysicalDevice physicalDevice,
       goto fail_vmas;
    }
 
+   if (pthread_mutex_init(&device->vdpau_mutex, NULL) != 0) {
+      result = vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
+      goto fail_mutex;
+   }
+
    result = anv_bo_cache_init(&device->bo_cache, device);
    if (result != VK_SUCCESS)
-      goto fail_mutex;
+      goto fail_vdpau_mutex;
 
    anv_bo_pool_init(&device->batch_bo_pool, device, "batch");
 
@@ -2895,6 +2900,8 @@ anv_CreateDevice(VkPhysicalDevice physicalDevice,
  fail_batch_bo_pool:
    anv_bo_pool_finish(&device->batch_bo_pool);
    anv_bo_cache_finish(&device->bo_cache);
+ fail_vdpau_mutex:
+   pthread_mutex_destroy(&device->vdpau_mutex);
  fail_mutex:
    pthread_mutex_destroy(&device->mutex);
  fail_vmas:
@@ -2968,6 +2975,7 @@ anv_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
       util_vma_heap_finish(&device->vma_lo);
    }
 
+   pthread_mutex_destroy(&device->vdpau_mutex);
    pthread_mutex_destroy(&device->mutex);
 
    for (uint32_t i = 0; i < device->queue_count; i++)
