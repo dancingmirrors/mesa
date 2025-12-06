@@ -1,5 +1,5 @@
 /*
- * Copyright 2024  Mesa Contributors
+ * Copyright © 2025 dancingmirrors@icloud.com
  *
  * This file is part of libvdpau-va-gl
  *

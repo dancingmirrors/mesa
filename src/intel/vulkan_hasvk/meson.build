@@ -108,6 +108,20 @@ foreach g : [['70', ['gfx7_cmd_buffer.c']],
              ['75', ['gfx7_cmd_buffer.c']],
              ['80', ['gfx8_cmd_buffer.c']]]
   _gfx_ver = g[0]
+  
+  # Build dependency list for per-hw libraries
+  _per_hw_deps = [
+    dep_libdrm, dep_valgrind, idep_nir_headers, idep_genxml,
+    idep_vulkan_util_headers, idep_vulkan_wsi_headers,
+    idep_vulkan_runtime_headers, idep_intel_driver_ds_headers,
+    idep_intel_blorp_elk, idep_mesautil,
+  ]
+  
+  # Add VDPAU dependency when available for video support
+  if hasvk_has_vdpau
+    _per_hw_deps += dep_hasvk_vdpau
+  endif
+  
   libanv_per_hw_ver_libs += static_library(
     'anv_per_hw_ver@0@'.format(_gfx_ver),
     [anv_per_hw_ver_files, g[1], anv_hasvk_entrypoints[0]],
@@ -118,12 +132,7 @@ foreach g : [['70', ['gfx7_cmd_buffer.c']],
       '-DGFX_VERx10=@0@'.format(_gfx_ver),
     ],
     gnu_symbol_visibility : 'hidden',
-    dependencies : [
-      dep_libdrm, dep_valgrind, idep_nir_headers, idep_genxml,
-      idep_vulkan_util_headers, idep_vulkan_wsi_headers,
-      idep_vulkan_runtime_headers, idep_intel_driver_ds_headers,
-      idep_intel_blorp_elk, idep_mesautil,
-    ],
+    dependencies : _per_hw_deps,
   )
 endforeach
 
@@ -269,7 +278,7 @@ if with_symbols_check
   )
 endif
 
-# HasVK and its tests can only run on x86
+# hasvk and its tests can only run on x86
 if with_tests and host_machine.cpu_family().startswith('x86')
   libvulkan_intel_hasvk_test = static_library(
     'vulkan_intel_hasvk_test',

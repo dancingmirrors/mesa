@@ -14,6 +14,9 @@ dep_gl = dependency('gl', required : false)
 dep_glu = dependency('glu', required : false)
 dep_x11 = dependency('x11', required : false)
 
+# Check for VA-API DRM PRIME support (optional, for DMA-buf export)
+dep_libva_drm = dependency('libva-drm', required : false, version : '>= 1.2.0')
+
 with_libvdpau_va_gl = (
   dep_glib.found() and
   dep_libva_x11.found() and
@@ -79,6 +82,16 @@ if with_libvdpau_va_gl
   if dep_glu.found()
     libvdpau_va_gl_deps += dep_glu
   endif
+  
+  # Add VA-API DRM support if available (for DMA-buf export)
+  libvdpau_va_gl_c_args = ['-fvisibility=hidden', '-std=gnu99']
+  if dep_libva_drm.found()
+    libvdpau_va_gl_deps += dep_libva_drm
+    libvdpau_va_gl_c_args += '-DHAVE_VA_DRM_PRIME'
+    message('libvdpau-va-gl: VA-API DRM PRIME support enabled (DMA-buf export available)')
+  else
+    message('libvdpau-va-gl: VA-API DRM PRIME support not available (DMA-buf export disabled)')
+  endif
 
   # Build the shared library - installed to $libdir/vdpau/
   libvdpau_va_gl = shared_library(
@@ -86,7 +99,7 @@ if with_libvdpau_va_gl
     [libvdpau_va_gl_sources, shaders_ch],
     include_directories : include_directories('.'),
     dependencies : libvdpau_va_gl_deps,
-    c_args : ['-fvisibility=hidden', '-std=gnu99'],
+    c_args : libvdpau_va_gl_c_args,
     link_args : ['-lrt'],
     version : '1',
     install : true,
