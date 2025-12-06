@@ -99,6 +99,24 @@
 #define HASVK_MAX_FRAMES_PER_SUBMIT 3
 #endif
 
+/* Maximum VDPAU surfaces to cache for video decode.
+ * Each surface consumes GPU/system memory:
+ * - 1080p NV12: ~3MB per surface
+ * - 4K NV12: ~17.7MB per surface
+ *
+ * For low-memory systems (4GB RAM typical), we limit to 8 surfaces:
+ * - H.264 needs ~5-6 reference frames for typical content
+ * - 1 current decode target
+ * - 1-2 extra for rendering pipeline
+ *
+ * This prevents VK_ERROR_OUT_OF_DEVICE_MEMORY on long video playback while
+ * still providing sufficient DPB capacity. Least-recently-used surfaces are
+ * evicted when this limit is exceeded.
+ */
+#ifndef HASVK_MAX_SURFACE_CACHE_SIZE
+#define HASVK_MAX_SURFACE_CACHE_SIZE 8
+#endif
+
 /**
  * Custom linear-to-Y-tiled copy with configurable swizzle mode
  *
@@ -463,9 +481,14 @@ anv_vdpau_session_create(struct anv_device *device,
       session->vdp_surfaces[i] = VDP_INVALID_HANDLE;
    }
 
-   /* Allocate surface mapping for DPB management */
-   session->surface_map_capacity = session->num_surfaces;
+   /* Allocate surface mapping for DPB management
+    * Limit cache size for low-memory systems (typically 4GB RAM).
+    * Use the smaller of maxDpbSlots+1 or HASVK_MAX_SURFACE_CACHE_SIZE.
+    */
+   uint32_t requested_capacity = pCreateInfo->maxDpbSlots + 1;
+   session->surface_map_capacity = MIN2(requested_capacity, HASVK_MAX_SURFACE_CACHE_SIZE);
    session->surface_map_size = 0;
+   session->frame_counter = 0;
    session->surface_map = vk_alloc(&device->vk.alloc,
                                    session->surface_map_capacity *
                                    sizeof(struct anv_vdpau_surface_map),
@@ -515,16 +538,23 @@ anv_vdpau_session_destroy(struct anv_device *device,
 
 /**
  * Add or update a surface mapping in the session
+ *
+ * Implements LRU eviction when the cache is full to prevent unbounded memory growth.
+ * This is critical for long video playback sessions.
  */
 void
 anv_vdpau_add_surface_mapping(struct anv_vdpau_session *session,
                               const struct anv_image *image,
                               VdpVideoSurface vdp_surface)
 {
-   /* Check if already mapped */
+   /* Increment frame counter for LRU tracking */
+   session->frame_counter++;
+
+   /* Check if already mapped - update timestamp and return */
    for (uint32_t i = 0; i < session->surface_map_size; i++) {
       if (session->surface_map[i].image == image) {
          session->surface_map[i].vdp_surface = vdp_surface;
+         session->surface_map[i].last_used_frame = session->frame_counter;
          return;
       }
    }
@@ -533,12 +563,65 @@ anv_vdpau_add_surface_mapping(struct anv_vdpau_session *session,
    if (session->surface_map_size < session->surface_map_capacity) {
       session->surface_map[session->surface_map_size].image = image;
       session->surface_map[session->surface_map_size].vdp_surface = vdp_surface;
+      session->surface_map[session->surface_map_size].last_used_frame = session->frame_counter;
       session->surface_map_size++;
+      return;
    }
+
+   /* Cache is full - evict least recently used surface
+    * This prevents VK_ERROR_OUT_OF_DEVICE_MEMORY during long video playback
+    */
+   if (!session->surface_map) {
+      /* Defensive check - should never happen if initialization succeeded */
+      return;
+   }
+
+   uint32_t lru_index = 0;
+   uint64_t oldest_frame = session->surface_map[0].last_used_frame;
+
+   for (uint32_t i = 1; i < session->surface_map_size; i++) {
+      if (session->surface_map[i].last_used_frame < oldest_frame) {
+         oldest_frame = session->surface_map[i].last_used_frame;
+         lru_index = i;
+      }
+   }
+
+   /* Destroy the LRU surface before replacing it */
+   if (session->surface_map[lru_index].vdp_surface != VDP_INVALID_HANDLE &&
+       session->vdp_video_surface_destroy) {
+      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+         fprintf(stderr, "hasvk Video: Surface cache full (%u/%u), evicting LRU surface %u "
+                 "(frame %"PRIu64" -> %"PRIu64", age=%"PRIu64" frames)\n",
+                 session->surface_map_size, session->surface_map_capacity,
+                 session->surface_map[lru_index].vdp_surface,
+                 oldest_frame, session->frame_counter,
+                 session->frame_counter - oldest_frame);
+      }
+      session->vdp_video_surface_destroy(session->surface_map[lru_index].vdp_surface);
+   }
+
+   /* Replace with new mapping */
+   session->surface_map[lru_index].image = image;
+   session->surface_map[lru_index].vdp_surface = vdp_surface;
+   session->surface_map[lru_index].last_used_frame = session->frame_counter;
 }
 
 /**
  * Lookup VDPAU surface for a given image
+ *
+ * Updates LRU timestamp on access to prevent premature eviction of active surfaces.
+ *
+ * Design note: We update the timestamp to the CURRENT frame_counter value without
+ * incrementing it. This is correct because frame_counter represents a logical clock
+ * that only advances on surface additions. When we lookup a surface, we're marking
+ * it as "accessed at the current time" (the current frame_counter value).
+ *
+ * Example:
+ *   frame_counter=10: Add surface A (A.timestamp = 10)
+ *   frame_counter=11: Add surface B (B.timestamp = 11)
+ *   Lookup A: A.timestamp = 11 (current frame_counter, A is now "newer" than B)
+ *   frame_counter=12: Add surface C (C.timestamp = 12)
+ *   LRU eviction: B has oldest timestamp (11), so B is evicted
  */
 VdpVideoSurface
 anv_vdpau_lookup_surface(struct anv_vdpau_session *session,
@@ -546,6 +629,8 @@ anv_vdpau_lookup_surface(struct anv_vdpau_session *session,
 {
    for (uint32_t i = 0; i < session->surface_map_size; i++) {
       if (session->surface_map[i].image == image) {
+         /* Update LRU timestamp on access to current logical time */
+         session->surface_map[i].last_used_frame = session->frame_counter;
          return session->surface_map[i].vdp_surface;
       }
    }

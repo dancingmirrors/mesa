@@ -54,11 +54,12 @@
 
 /**
  * Surface mapping entry for DPB management
- * Maps Vulkan images to VDPAU surfaces
+ * Maps Vulkan images to VDPAU surfaces with LRU tracking
  */
 struct anv_vdpau_surface_map {
    const struct anv_image *image;  /* Vulkan image */
    VdpVideoSurface vdp_surface;    /* Corresponding VDPAU video surface */
+   uint64_t last_used_frame;       /* Frame counter for LRU eviction */
 };
 
 /**
@@ -136,6 +137,7 @@ struct anv_vdpau_session {
    struct anv_vdpau_surface_map *surface_map;  /* Image to VDPAU surface mapping */
    uint32_t surface_map_size;      /* Current number of mapped surfaces */
    uint32_t surface_map_capacity;  /* Maximum capacity of surface map */
+   uint64_t frame_counter;         /* Frame counter for LRU tracking */
 
    /* Session properties */
    uint32_t width;                 /* Video frame width */
