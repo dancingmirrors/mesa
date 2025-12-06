@@ -114,7 +114,6 @@ enum intel_debug_flag {
    DEBUG_NO32,
    DEBUG_DO32,
    DEBUG_HASVK,
-   DEBUG_NO_VIDEO_ALIGN,
 
    /* Must be the last entry */
    INTEL_DEBUG_MAX,
