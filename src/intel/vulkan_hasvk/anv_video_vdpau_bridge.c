@@ -635,7 +635,7 @@ anv_vdpau_copy_surface_to_image_dmabuf(struct anv_device *device,
       fprintf(stderr, "  FD: %d\n", dmabuf_fd);
       fprintf(stderr, "  Dimensions: %ux%u\n", width, height);
       fprintf(stderr, "  FOURCC: 0x%08x\n", fourcc);
-      fprintf(stderr, "  Modifier: 0x%016lx\n", modifier);
+      fprintf(stderr, "  Modifier: 0x%016" PRIx64 "\n", modifier);
       fprintf(stderr, "  Planes: %u\n", num_planes);
       for (uint32_t i = 0; i < num_planes; i++) {
           fprintf(stderr, "    Plane[%u]: pitch=%u offset=%u\n", i, pitches[i], offsets[i]);
