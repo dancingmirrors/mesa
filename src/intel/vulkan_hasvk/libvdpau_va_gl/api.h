@@ -172,6 +172,8 @@ typedef struct {
     int32_t             free_list[MAX_RENDER_TARGETS];
     uint32_t            num_render_targets;
     VAContextID         context_id;     ///< VA-API context id
+    uint8_t            *bitstream_buffer; ///< reusable buffer for bitstream merging (performance)
+    size_t              bitstream_buffer_size; ///< current size of bitstream buffer
 } VdpDecoderData;
 
 
