@@ -590,18 +590,18 @@ anv_vdpau_create_surface_from_image(struct anv_device *device,
 }
 
 /**
- * Copy VDPAU surface to Vulkan image using DMA-buf (zero-copy path)
+ * Copy VDPAU surface to Vulkan image using DMA-buf (optimized path)
  *
- * This function implements the optimized GPU-to-GPU copy path using DMA-buf.
- * It exports the VA-API surface as a DMA-buf FD, imports it into Vulkan as
- * external memory, and uses GPU copy commands to avoid slow CPU readback.
+ * This function implements an optimized copy path using DMA-buf to avoid
+ * the overhead of vdpVideoSurfaceGetBitsYCbCr which does:
+ * - vaSyncSurface (blocking GPU sync)
+ * - VA-API → CPU readback
+ * - Pitch conversion/padding handling
  *
- * Architecture:
- *   1. Export VDPAU surface as DMA-buf using vdpVideoSurfaceExportDmaBufhasvk
- *   2. Import DMA-buf into Vulkan as external memory
- *   3. Create temporary Vulkan image from external memory
- *   4. Use vkCmdCopyImage for GPU-to-GPU copy
- *   5. Close DMA-buf FD and cleanup
+ * Instead, we:
+ * 1. Export VA-API surface as DMA-buf FD (vaExportSurfaceHandle)
+ * 2. Import DMA-buf into Vulkan as external memory (anv_device_import_bo)
+ * 3. CPU copy from imported BO to destination image
  *
  * Falls back to CPU copy if any step fails (e.g., DMA-buf not supported).
  */
@@ -1525,10 +1525,7 @@ anv_vdpau_execute_deferred_decodes(struct anv_device *device,
     * This is necessary because:
     * 1. VDPAU decoder operations are not thread-safe
     * 2. libvdpau-va-gl has internal state that can race
-    * 3. Multiple mpv decode threads (--hwdec-threads=4) call this concurrently
-    *
-    * Without this mutex, we see partial screen flicker (race conditions) and
-    * poor performance due to VA-API internal contention.
+    * 3. VA-API (used by libvdpau-va-gl) serializes operations internally anyway
     */
    pthread_mutex_lock(&device->vdpau_mutex);
 
