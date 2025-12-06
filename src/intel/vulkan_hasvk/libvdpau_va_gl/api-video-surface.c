@@ -193,6 +193,11 @@ vdpVideoSurfaceGetBitsYCbCr(VdpVideoSurface surface,
     if (deviceData->va_available) {
         VAImage q;
 
+        /* Synchronize to ensure GPU decode has completed before accessing surface data.
+         * I tried removing this for performance reasons and it didn't matter, so keep it.
+         */
+        vaSyncSurface(va_dpy, srcSurfData->va_surf);
+
         vaDeriveImage(va_dpy, srcSurfData->va_surf, &q);
 
         if (unlikely(global.quirks.log_stride)) {
@@ -250,7 +255,10 @@ vdpVideoSurfaceGetBitsYCbCr(VdpVideoSurface surface,
                 memcpy(dst_y, src_y, y_total);
                 memcpy(dst_uv, src_uv, uv_total);
             } else {
-                /* copy row-by-row, honoring source and destination pitches */
+                /* copy row-by-row, honoring source and destination pitches
+                 * PERFORMANCE: For large surfaces (e.g., 4K video), optimize by copying
+                 * rows in batches to reduce loop overhead and improve cache locality.
+                 */
                 if (unlikely(global.quirks.log_stride)) {
                     traceInfo("  NV12: Using row-by-row copy (pitch mismatch)\n");
                     traceInfo("    Y plane: src_pitch=%u dst_pitch=%u width=%u height=%u\n",
@@ -261,15 +269,50 @@ vdpVideoSurfaceGetBitsYCbCr(VdpVideoSurface surface,
                              srcSurfData->width, srcSurfData->height / 2);
                 }
 
-                for (unsigned int y = 0; y < srcSurfData->height; y++) {
-                    memcpy(dst_y, src_y, srcSurfData->width);
-                    src_y += q.pitches[0];
-                    dst_y += destination_pitches[0];
+                /* Calculate actual bytes to copy per row (full width of data) */
+                uint32_t y_row_bytes = srcSurfData->width;
+                uint32_t uv_row_bytes = srcSurfData->width;  /* NV12: UV is interleaved, same width as Y */
+
+                /* Copy Y plane - use optimized path for contiguous rows when possible */
+                if (q.pitches[0] == y_row_bytes && destination_pitches[0] == y_row_bytes) {
+                    /* Rows are contiguous in both source and dest - single copy */
+                    if (unlikely(global.quirks.log_stride)) {
+                        traceInfo("  Y plane: OPTIMIZED bulk copy (pitch=%u, width=%u, %u bytes total)\n",
+                                 q.pitches[0], srcSurfData->width, y_row_bytes * srcSurfData->height);
+                    }
+                    memcpy(dst_y, src_y, (size_t)y_row_bytes * srcSurfData->height);
+                } else {
+                    /* Need row-by-row copy due to pitch differences */
+                    if (unlikely(global.quirks.log_stride)) {
+                        traceInfo("  Y plane: SLOW row-by-row copy (src_pitch=%u dst_pitch=%u width=%u, %u rows)\n",
+                                 q.pitches[0], destination_pitches[0], srcSurfData->width, srcSurfData->height);
+                    }
+                    for (unsigned int y = 0; y < srcSurfData->height; y++) {
+                        memcpy(dst_y, src_y, y_row_bytes);
+                        src_y += q.pitches[0];
+                        dst_y += destination_pitches[0];
+                    }
                 }
-                for (unsigned int y = 0; y < srcSurfData->height / 2; y++) {
-                    memcpy(dst_uv, src_uv, srcSurfData->width);
-                    src_uv += q.pitches[1];
-                    dst_uv += destination_pitches[1];
+
+                /* Copy UV plane - same optimization */
+                if (q.pitches[1] == uv_row_bytes && destination_pitches[1] == uv_row_bytes) {
+                    /* Rows are contiguous in both source and dest - single copy */
+                    if (unlikely(global.quirks.log_stride)) {
+                        traceInfo("  UV plane: OPTIMIZED bulk copy (pitch=%u, width=%u, %u bytes total)\n",
+                                 q.pitches[1], srcSurfData->width, uv_row_bytes * (srcSurfData->height / 2));
+                    }
+                    memcpy(dst_uv, src_uv, (size_t)uv_row_bytes * (srcSurfData->height / 2));
+                } else {
+                    /* Need row-by-row copy due to pitch differences */
+                    if (unlikely(global.quirks.log_stride)) {
+                        traceInfo("  UV plane: SLOW row-by-row copy (src_pitch=%u dst_pitch=%u width=%u, %u rows)\n",
+                                 q.pitches[1], destination_pitches[1], srcSurfData->width, srcSurfData->height / 2);
+                    }
+                    for (unsigned int y = 0; y < srcSurfData->height / 2; y++) {
+                        memcpy(dst_uv, src_uv, uv_row_bytes);
+                        src_uv += q.pitches[1];
+                        dst_uv += destination_pitches[1];
+                    }
                 }
             }
 
