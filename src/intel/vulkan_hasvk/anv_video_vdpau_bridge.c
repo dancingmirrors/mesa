@@ -84,6 +84,11 @@
 #define YTILE_HEIGHT 32
 #define YTILE_SPAN 16
 
+/* Maximum frames to process per submit for video decode. */
+#ifndef HASVK_MAX_FRAMES_PER_SUBMIT
+#define HASVK_MAX_FRAMES_PER_SUBMIT 0
+#endif
+
 /**
  * Custom linear-to-Y-tiled copy with configurable swizzle mode
  *
@@ -588,8 +593,6 @@ anv_vdpau_create_surface_from_image(struct anv_device *device,
  *   5. Close DMA-buf FD and cleanup
  *
  * Falls back to CPU copy if any step fails (e.g., DMA-buf not supported).
- *
- * Performance benefit: Eliminates ~1.4 GB/s of CPU memory traffic for 4K@60fps.
  */
 VkResult
 anv_vdpau_copy_surface_to_image_dmabuf(struct anv_device *device,
@@ -807,8 +810,9 @@ anv_vdpau_copy_surface_to_image_dmabuf(struct anv_device *device,
    /* Handle different source/destination tiling combinations */
    if (src_tiling == dst_tiling && src_tiling != ISL_TILING_LINEAR) {
       /* Both tiled with same format - use tiled->linear->tiled to handle padding
-       * and pitch mismatches. Direct memcpy would copy padding rows which causes
-       * artifacts for videos with heights not aligned to tile boundaries (e.g., 1080 vs 1088)
+       * and pitch mismatches. Direct memcpy on tiled surfaces causes corruption
+       * (green rectangles) because it copies tile padding and doesn't respect
+       * tile boundaries properly, especially at frame edges.
        */
       if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
          fprintf(stderr, "hasvk Video DMA-buf: Using tiled->linear->tiled copy (both Y-tiled)\n");
@@ -1243,14 +1247,6 @@ anv_vdpau_copy_surface_to_image(struct anv_device *device,
    free(linear_uv);
    anv_gem_munmap(device, tiled_ptr, bo->size);
 
-   if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-      size_t total_bytes = y_size + uv_size;
-      fprintf(stderr, "hasvk Video: CPU copy completed - copied %zu bytes (Y: %zu + UV: %zu)\n",
-              total_bytes, y_size, uv_size);
-      fprintf(stderr, "  Note: For 4K@60fps this is ~1.4 GB/s of CPU memory traffic!\n");
-      fprintf(stderr, "  DMA-buf zero-copy would eliminate this bottleneck.\n");
-   }
-
    return VK_SUCCESS;
 }
 
@@ -1504,12 +1500,13 @@ anv_vdpau_execute_deferred_decodes(struct anv_device *device,
       return VK_SUCCESS;
    }
 
-   const uint32_t max_frames_per_submit = 1;
    uint32_t frames_to_process = total_decode_count;
 
-   if (total_decode_count > max_frames_per_submit) {
-      frames_to_process = max_frames_per_submit;
+#if HASVK_MAX_FRAMES_PER_SUBMIT > 0
+   if (total_decode_count > HASVK_MAX_FRAMES_PER_SUBMIT) {
+      frames_to_process = HASVK_MAX_FRAMES_PER_SUBMIT;
    }
+#endif
 
    /* Phase 1: Submit decode operations to VA-API
     * This allows VA-API to pipeline multiple decodes on the GPU instead of

@@ -197,11 +197,6 @@ vdpVideoSurfaceGetBitsYCbCr(VdpVideoSurface surface,
     if (deviceData->va_available) {
         VAImage q;
 
-        /* Synchronize to ensure GPU decode has completed before accessing surface data.
-         * I tried removing this for performance reasons and it didn't matter, so keep it.
-         */
-        vaSyncSurface(va_dpy, srcSurfData->va_surf);
-
         vaDeriveImage(va_dpy, srcSurfData->va_surf, &q);
 
         if (unlikely(global.quirks.log_stride)) {
