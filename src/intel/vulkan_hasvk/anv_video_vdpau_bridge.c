@@ -601,19 +601,18 @@ anv_vdpau_copy_surface_to_image(struct anv_device *device,
    uint32_t alloc_width = MAX2(surface_width, width);
    uint32_t alloc_height = MAX2(surface_height, height);
 
-   /* WORKAROUND: libvdpau-va-gl may use VA-API surfaces sized to the decoder's
-    * max dimensions (4096x4096 in our case). The i965 driver uses internal
-    * pitch alignment that can be much larger than the visible width.
-    * Allocate very generously to avoid buffer overflows.
+   /* PERFORMANCE FIX: Use width directly as pitch to match VA-API's pitch.
+    * VA-API typically uses pitch == width for NV12 surfaces, and we need to
+    * match this exactly to enable the fast bulk copy path in vdpVideoSurfaceGetBitsYCbCr.
     *
-    * For 1280x720 video:
-    * - VA-API might use 2048-byte pitch (power of 2 alignment)
-    * - Height might be padded to 736 or 768
+    * Previously, we aligned pitch to 2048 bytes (e.g., 3840 -> 4096), which caused
+    * pitch mismatch and forced slow row-by-row copy (3240 memcpy calls per 4K frame).
     *
-    * Use generous 2KB alignment for pitch.
+    * Now we use the actual width, which matches VA-API pitch and enables fast bulk copy
+    * (2 memcpy calls per frame).
     */
-   uint32_t linear_y_pitch = MAX2(align(alloc_width, 2048), 2048);
-   uint32_t linear_uv_pitch = MAX2(align(alloc_width, 2048), 2048);
+   uint32_t linear_y_pitch = alloc_width;
+   uint32_t linear_uv_pitch = alloc_width;
 
    /* Use very generous height - could be padded to power of 2 or macroblock aligned */
    uint32_t aligned_height = MAX2(align(alloc_height, 64) + 64, 1024);
