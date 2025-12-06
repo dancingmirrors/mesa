@@ -719,13 +719,8 @@ anv_vdpau_copy_surface_to_image_dmabuf(struct anv_device *device,
 
    /* WORKAROUND: Ivy Bridge and Haswell have off-by-one alignment issues similar to
     * depth/stencil surfaces. Check and fix alignment if needed.
-    *
-    * This can be disabled via INTEL_DEBUG=novideoalign for testing.
     */
-   bool apply_alignment_workaround = (device->info->verx10 == 70 || device->info->verx10 == 75) &&
-                                     !INTEL_DEBUG(DEBUG_NO_VIDEO_ALIGN);
-
-   if (apply_alignment_workaround) {
+   if (device->info->verx10 == 70 || device->info->verx10 == 75) {
       uint32_t y_alignment = y_surface->isl.alignment_B;
       uint32_t uv_alignment = uv_surface->isl.alignment_B;
 
@@ -1164,20 +1159,22 @@ anv_vdpau_copy_surface_to_image(struct anv_device *device,
    /* WORKAROUND: Ivy Bridge and Haswell have off-by-one alignment issues similar to
     * depth/stencil surfaces. Check and fix alignment if needed.
     */
-   uint32_t y_alignment = y_surface->isl.alignment_B;
-   uint32_t uv_alignment = uv_surface->isl.alignment_B;
+   if (device->info->verx10 == 70 || device->info->verx10 == 75) {
+      uint32_t y_alignment = y_surface->isl.alignment_B;
+      uint32_t uv_alignment = uv_surface->isl.alignment_B;
 
-   if (y_offset % y_alignment != 0) {
-      uint64_t misalignment = y_offset % y_alignment;
-      if (misalignment == y_alignment - 1) {
-         y_offset += 1;
+      if (y_offset % y_alignment != 0) {
+         uint64_t misalignment = y_offset % y_alignment;
+         if (misalignment == y_alignment - 1) {
+            y_offset += 1;
+         }
       }
-   }
 
-   if (uv_offset % uv_alignment != 0) {
-      uint64_t misalignment = uv_offset % uv_alignment;
-      if (misalignment == uv_alignment - 1) {
-         uv_offset += 1;
+      if (uv_offset % uv_alignment != 0) {
+         uint64_t misalignment = uv_offset % uv_alignment;
+         if (misalignment == uv_alignment - 1) {
+            uv_offset += 1;
+         }
       }
    }
 
@@ -1489,13 +1486,11 @@ anv_vdpau_decode_frame(struct anv_cmd_buffer *cmd_buffer,
  * VA-API/GPU pipelining, then copy the results. This avoids serializing
  * decodes where decode N+1 can't start until decode N is fully copied.
  *
- * Frame limiting optimization: To prevent excessive frame queue buildup
- * when using --hwdec=vulkan-copy, we limit the number of frames processed
- * per QueueSubmit. This allows mpv's presentation timing logic to drop
- * frames that haven't been submitted yet, improving performance on our
- * slow hardware.
+ * Since we bundle our own libvdpau, we can override the traditional
+ * expectation that all queued frames must be processed, enabling
+ * aggressive frame dropping.
  *
- * Configurable via HASVK_VIDEO_MAX_FRAMES_PER_SUBMIT (default: 2)
+ * Can be controlled via HASVK_VIDEO_MAX_FRAMES_PER_SUBMIT (default: 1).
  */
 VkResult
 anv_vdpau_execute_deferred_decodes(struct anv_device *device,
@@ -1511,12 +1506,13 @@ anv_vdpau_execute_deferred_decodes(struct anv_device *device,
       return VK_SUCCESS;
    }
 
-   /* Get maximum frames to process per submit from environment variable
-    * Default to 2 frames to prevent queue buildup while allowing some pipelining.
-    * Set to 0 or very large value to process all frames (old behavior).
+   /* Get maximum frames to process per submit from the environment variable.
+    * Default to 1 frame to maximize frame dropping and improve responsiveness.
+    * This prevents queue buildup on slow hardware while maintaining smooth playback.
+    * Set to higher value (e.g., 2-4) for more pipelining, or 0 to process all frames.
     */
    static bool initialized = false;
-   static uint32_t max_frames_per_submit = 2;
+   static uint32_t max_frames_per_submit = 1;
    if (!initialized) {
       initialized = true;
       const char *env = getenv("HASVK_VIDEO_MAX_FRAMES_PER_SUBMIT");
@@ -1532,11 +1528,11 @@ anv_vdpau_execute_deferred_decodes(struct anv_device *device,
             max_frames_per_submit = (uint32_t)parsed;
          } else {
             fprintf(stderr, "hasvk: Invalid HASVK_VIDEO_MAX_FRAMES_PER_SUBMIT value '%s', "
-                    "using default of 2\n", env);
-            max_frames_per_submit = 2;
+                    "using default of 1\n", env);
+            max_frames_per_submit = 1;
          }
       }
-      /* else: keep default of 2 */
+      /* else: keep default of 1 */
    }
 
    /* Determine how many frames to actually process */
