@@ -1,5 +1,5 @@
 /*
- * Copyright © 2024 Mesa Contributors
+ * Copyright © 2025 dancingmirrors@icloud.com
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -22,7 +22,7 @@
  */
 
 /**
- * Cross-Device Resource Sharing for HasVK Video
+ * Cross-Device Resource Sharing for hasvk Video
  *
  * This module implements cross-device resource sharing for the VDPAU/Vulkan
  * bridge, enabling decoded video frames to be efficiently shared between

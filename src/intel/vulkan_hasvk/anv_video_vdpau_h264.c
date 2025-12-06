@@ -1,5 +1,5 @@
 /*
- * Copyright © 2024 Mesa Contributors
+ * Copyright © 2025 dancingmirrors@icloud.com
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -22,7 +22,7 @@
  */
 
 /**
- * H.264-specific VDPAU parameter translation for HasVK
+ * H.264-specific VDPAU parameter translation for hasvk
  *
  * This module translates Vulkan Video H.264 structures to VDPAU H.264 structures.
  * VDPAU uses a simpler interface than VA-API for H.264 decode, which makes

@@ -1,5 +1,5 @@
 /*
- * Copyright © 2024 Mesa Contributors
+ * Copyright © 2025 dancingmirrors@icloud.com
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -27,13 +27,13 @@
 #include "anv_private.h"
 
 /**
- * Cross-Device Resource Sharing for HasVK Video
+ * Cross-Device Resource Sharing for hasvk Video
  *
  * This module enables video surfaces decoded by one Vulkan device to be
  * efficiently shared with another Vulkan device for rendering or processing.
  *
  * Common Use Case:
- * - FFmpeg creates Vulkan Device A for video decode (using HasVK VA-API bridge)
+ * - FFmpeg creates Vulkan Device A for video decode (using hasvk VA-API bridge)
  * - libplacebo creates Vulkan Device B for rendering
  * - Decoded frames need to be shared from A to B
  *

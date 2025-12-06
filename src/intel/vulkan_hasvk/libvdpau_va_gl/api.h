@@ -272,6 +272,17 @@ VdpVideoSurfaceGetParameters                    vdpVideoSurfaceGetParameters;
 VdpVideoSurfaceGetBitsYCbCr                     vdpVideoSurfaceGetBitsYCbCr;
 VdpVideoSurfacePutBitsYCbCr                     vdpVideoSurfacePutBitsYCbCr;
 
+/* hasvk extension: DMA-buf export for zero-copy GPU decode */
+VdpStatus vdpVideoSurfaceExportDmaBufhasvk(VdpVideoSurface surface,
+                                           int *fd_out,
+                                           uint32_t *width_out,
+                                           uint32_t *height_out,
+                                           uint32_t *fourcc_out,
+                                           uint32_t *num_planes_out,
+                                           uint32_t *pitches_out,
+                                           uint32_t *offsets_out,
+                                           uint64_t *modifier_out);
+
 VdpBitmapSurfaceQueryCapabilities   vdpBitmapSurfaceQueryCapabilities;
 VdpBitmapSurfaceCreate              vdpBitmapSurfaceCreate;
 VdpBitmapSurfaceDestroy             vdpBitmapSurfaceDestroy;

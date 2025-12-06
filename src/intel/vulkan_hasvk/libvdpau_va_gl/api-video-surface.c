@@ -14,7 +14,11 @@
 #include "shaders.h"
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <va/va.h>
+#ifdef HAVE_VA_DRM_PRIME
+#include <va/va_drmcommon.h>
+#endif
 #include <vdpau/vdpau.h>
 #include "api.h"
 #include "trace.h"
@@ -72,7 +76,7 @@ vdpVideoSurfaceCreate(VdpDevice device, VdpChromaType chroma_type, uint32_t widt
     data->chroma_stride = (data->chroma_width + 0xfu) & (~0xfu);
 
     if (unlikely(global.quirks.log_stride)) {
-        traceInfo("HASVK: vdpVideoSurfaceCreate - Surface parameters:\n");
+        traceInfo("hasvk: vdpVideoSurfaceCreate - Surface parameters:\n");
         traceInfo("  Size: %ux%u\n", width, height);
         traceInfo("  Chroma type: %d\n", chroma_type);
         traceInfo("  Y stride: %u\n", data->stride);
@@ -202,7 +206,7 @@ vdpVideoSurfaceGetBitsYCbCr(VdpVideoSurface surface,
 
         if (unlikely(global.quirks.log_stride)) {
             const char *fourcc_str = (const char *)&q.format.fourcc;
-            traceInfo("HASVK: vdpVideoSurfaceGetBitsYCbCr - VA-API Image Info:\n");
+            traceInfo("hasvk: vdpVideoSurfaceGetBitsYCbCr - VA-API Image Info:\n");
             traceInfo("  FOURCC: %c%c%c%c (0x%08x)\n",
                      fourcc_str[0], fourcc_str[1], fourcc_str[2], fourcc_str[3],
                      q.format.fourcc);
@@ -637,4 +641,144 @@ vdpVideoSurfaceQueryGetPutBitsYCbCrCapabilities(VdpDevice device, VdpChromaType 
     // TODO: implement
     *is_supported = 1;
     return VDP_STATUS_OK;
+}
+
+/**
+ * Export VDPAU video surface as DMA-buf file descriptor (hasvk extension)
+ *
+ * This function enables zero-copy GPU-to-GPU transfer by exporting the
+ * underlying VA-API surface as a DMA-buf that can be imported into Vulkan.
+ *
+ * This is a Mesa-specific extension to VDPAU for the hasvk driver.
+ * It's not part of the standard VDPAU API.
+ *
+ * @param surface        VDPAU video surface to export
+ * @param fd_out         Output: DMA-buf file descriptor (caller must close)
+ * @param width_out      Output: Surface width
+ * @param height_out     Output: Surface height
+ * @param fourcc_out     Output: Surface fourcc format
+ * @param num_planes_out Output: Number of planes
+ * @param pitches_out    Output: Array of plane pitches (at least 3 elements)
+ * @param offsets_out    Output: Array of plane offsets (at least 3 elements)
+ * @param modifier_out   Output: DRM format modifier (e.g., Y-tiling)
+ * @return VDP_STATUS_OK on success, error code otherwise
+ *
+ * NOTE: The caller is responsible for closing the FD when done.
+ */
+VdpStatus
+vdpVideoSurfaceExportDmaBufhasvk(VdpVideoSurface surface,
+                                 int *fd_out,
+                                 uint32_t *width_out,
+                                 uint32_t *height_out,
+                                 uint32_t *fourcc_out,
+                                 uint32_t *num_planes_out,
+                                 uint32_t *pitches_out,
+                                 uint32_t *offsets_out,
+                                 uint64_t *modifier_out)
+{
+    /* Validate parameters */
+    if (!fd_out || !width_out || !height_out || !fourcc_out ||
+        !num_planes_out || !pitches_out || !offsets_out || !modifier_out) {
+        return VDP_STATUS_INVALID_POINTER;
+    }
+
+    VdpVideoSurfaceData *surfData = handle_acquire(surface, HANDLETYPE_VIDEO_SURFACE);
+    if (NULL == surfData)
+        return VDP_STATUS_INVALID_HANDLE;
+
+    VdpDeviceData *deviceData = surfData->deviceData;
+    if (!deviceData || !deviceData->va_available) {
+        handle_release(surface);
+        return VDP_STATUS_RESOURCES;
+    }
+
+#ifdef HAVE_VA_DRM_PRIME
+    /* DMA-buf export is only available if VA-API DRM PRIME support is compiled in */
+    VADisplay va_dpy = deviceData->va_dpy;
+    VASurfaceID va_surf = surfData->va_surf;
+
+    if (va_surf == VA_INVALID_SURFACE) {
+        handle_release(surface);
+        return VDP_STATUS_INVALID_HANDLE;
+    }
+
+    /* Try to export the VA-API surface as DMA-buf using VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_2 */
+    VADRMPRIMESurfaceDescriptor prime_desc;
+    memset(&prime_desc, 0, sizeof(prime_desc));
+
+    VAStatus va_status = vaExportSurfaceHandle(va_dpy, va_surf,
+                                               VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_2,
+                                               VA_EXPORT_SURFACE_READ_ONLY |
+                                               VA_EXPORT_SURFACE_SEPARATE_LAYERS,
+                                               &prime_desc);
+
+    if (va_status != VA_STATUS_SUCCESS) {
+        traceError("hasvk DMA-buf export: vaExportSurfaceHandle failed with status %d\n", va_status);
+        handle_release(surface);
+        return VDP_STATUS_RESOURCES;
+    }
+
+    /* Validate the export succeeded */
+    if (prime_desc.num_objects == 0 || prime_desc.num_layers == 0) {
+        traceError("hasvk DMA-buf export: Invalid prime descriptor\n");
+        /* Close any FDs that might have been opened */
+        for (uint32_t i = 0; i < prime_desc.num_objects; i++) {
+            if (prime_desc.objects[i].fd >= 0)
+                close(prime_desc.objects[i].fd);
+        }
+        handle_release(surface);
+        return VDP_STATUS_RESOURCES;
+    }
+
+    /* Fill output parameters
+     * For NV12, we expect 2 planes (Y and UV) in a single object
+     */
+    *fd_out = prime_desc.objects[0].fd;
+    *width_out = prime_desc.width;
+    *height_out = prime_desc.height;
+    *fourcc_out = prime_desc.fourcc;
+    *modifier_out = prime_desc.objects[0].drm_format_modifier;
+
+    /* Count planes across all layers */
+    uint32_t total_planes = 0;
+    for (uint32_t layer = 0; layer < prime_desc.num_layers; layer++) {
+        for (uint32_t plane = 0; plane < prime_desc.layers[layer].num_planes; plane++) {
+            if (total_planes < 3) {  /* Limit to 3 planes max */
+                pitches_out[total_planes] = prime_desc.layers[layer].pitch[plane];
+                offsets_out[total_planes] = prime_desc.layers[layer].offset[plane];
+                total_planes++;
+            }
+        }
+    }
+    *num_planes_out = total_planes;
+
+    if (unlikely(global.quirks.log_stride)) {
+        traceInfo("hasvk DMA-buf export successful:\n");
+        traceInfo("  FD: %d\n", *fd_out);
+        traceInfo("  Size: %ux%u\n", *width_out, *height_out);
+        traceInfo("  FOURCC: 0x%08x\n", *fourcc_out);
+        traceInfo("  Modifier: 0x%016lx\n", *modifier_out);
+        traceInfo("  Planes: %u\n", *num_planes_out);
+        for (uint32_t i = 0; i < *num_planes_out; i++) {
+            traceInfo("    [%u]: pitch=%u offset=%u\n", i, pitches_out[i], offsets_out[i]);
+        }
+    }
+
+    /* Close FDs for any additional objects (we only use the first one) */
+    for (uint32_t i = 1; i < prime_desc.num_objects; i++) {
+        if (prime_desc.objects[i].fd >= 0)
+            close(prime_desc.objects[i].fd);
+    }
+
+    handle_release(surface);
+    return VDP_STATUS_OK;
+#else
+    /* DMA-buf export is not available without VA-API DRM PRIME support */
+    if (unlikely(global.quirks.log_stride)) {
+        traceInfo("hasvk DMA-buf export: Not available (VA-API DRM PRIME support not compiled in)\n");
+    }
+
+    handle_release(surface);
+    return VDP_STATUS_NO_IMPLEMENTATION;
+#endif /* HAVE_VA_DRM_PRIME */
 }

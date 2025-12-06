@@ -1,5 +1,5 @@
 /*
- * Copyright © 2024 Mesa Contributors
+ * Copyright © 2025 dancingmirrors@icloud.com
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -35,14 +35,14 @@
 #include "util/os_misc.h"
 
 /**
- * VDPAU Bridge for HasVK Video Decode
+ * VDPAU Bridge for hasvk Video Decode
  *
  * This module provides a bridge between Vulkan Video decode operations
  * and VDPAU, leveraging the stable VDPAU implementation for H.264 decode
  * through libvdpau-va-gl which translates VDPAU to VA-API/OpenGL.
  *
  * Architecture:
- *   Application → HasVK Vulkan Video API → anv_video.c
+ *   Application → hasvk Vulkan Video API → anv_video.c
  *       → anv_video_vdpau_bridge.c → VDPAU → libvdpau-va-gl → VA-API/GL → Hardware
  *
  * Benefits over direct VA-API:
@@ -95,6 +95,19 @@ struct anv_vdpau_decode_cmd {
  *
  * Manages the VDPAU objects associated with a Vulkan video session.
  */
+
+/* hasvk extension: DMA-buf export function signature */
+typedef VdpStatus (*VdpVideoSurfaceExportDmaBufhasvk_fn)(
+   VdpVideoSurface surface,
+   int *fd_out,
+   uint32_t *width_out,
+   uint32_t *height_out,
+   uint32_t *fourcc_out,
+   uint32_t *num_planes_out,
+   uint32_t *pitches_out,
+   uint32_t *offsets_out,
+   uint64_t *modifier_out);
+
 struct anv_vdpau_session {
    VdpDevice vdp_device;           /* VDPAU device handle */
    VdpDecoder vdp_decoder;         /* VDPAU decoder */
@@ -111,6 +124,9 @@ struct anv_vdpau_session {
    VdpVideoSurfacePutBitsYCbCr *vdp_video_surface_put_bits_ycbcr;
    VdpVideoSurfaceGetParameters *vdp_video_surface_get_parameters;
    VdpGetErrorString *vdp_get_error_string;
+
+   /* hasvk extension: DMA-buf export (optional, for zero-copy) */
+   VdpVideoSurfaceExportDmaBufhasvk_fn vdp_video_surface_export_dmabuf;
 
    /* DPB (Decoded Picture Buffer) surfaces */
    VdpVideoSurface *vdp_surfaces;  /* Array of VDPAU surfaces for reference frames */
@@ -130,6 +146,11 @@ struct anv_vdpau_session {
 
    /* X11 Display for VDPAU initialization */
    void *x11_display;              /* X11 Display pointer (NULL if not using X11) */
+
+   /* VA-API handles for DMA-buf export (optional, for zero-copy path) */
+   void *va_display;               /* VA-API display handle (VADisplay) */
+   void *libva;                    /* libva.so handle for dynamic loading */
+   bool dmabuf_supported;          /* True if DMA-buf export is supported */
 };
 
 /**
@@ -219,6 +240,26 @@ anv_vdpau_copy_surface_to_image(struct anv_device *device,
                                 struct anv_vdpau_session *session,
                                 VdpVideoSurface surface,
                                 struct anv_image *image);
+
+/**
+ * Copy VDPAU surface to Vulkan image using DMA-buf (zero-copy path)
+ *
+ * Attempts to use VA-API DMA-buf export and Vulkan import to avoid
+ * CPU readback. Falls back to CPU copy if DMA-buf is not available.
+ *
+ * @param device      ANV device
+ * @param session     VDPAU session
+ * @param surface     VDPAU surface with decoded data
+ * @param image       Destination Vulkan image
+ * @param cmd_buffer  Command buffer for GPU copy (optional, can be NULL for fallback)
+ * @return VK_SUCCESS on success, error code otherwise
+ */
+VkResult
+anv_vdpau_copy_surface_to_image_dmabuf(struct anv_device *device,
+                                       struct anv_vdpau_session *session,
+                                       VdpVideoSurface surface,
+                                       struct anv_image *image,
+                                       struct anv_cmd_buffer *cmd_buffer);
 
 /**
  * Add surface mapping entry

@@ -1,8 +1,3 @@
-# Copyright © 2025 Mesa Project
-# SPDX-License-Identifier: MIT
-#
-# Build intel-vaapi-driver bundled with Mesa for hasvk
-
 # Version information
 intel_vaapi_driver_version = '2.4.0.1-hasvk'
 intel_vaapi_driver_major_version = '2'
