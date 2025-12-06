@@ -176,6 +176,7 @@ static int bo_set_tiling_internal(struct crocus_bo *bo, uint32_t tiling_mode,
                                   uint32_t stride);
 
 static void bo_free(struct crocus_bo *bo);
+static void evict_bo_cache(struct crocus_bufmgr *bufmgr);
 
 static uint32_t
 key_hash_uint(const void *key)
@@ -417,8 +418,21 @@ bo_alloc_internal(struct crocus_bufmgr *bufmgr,
 
    if (!bo) {
       bo = alloc_fresh_bo(bufmgr, bo_size);
-      if (!bo)
-         return NULL;
+      if (!bo) {
+         /* Allocation failed - try to free cached buffers and retry.
+          * This is especially important for integrated graphics where
+          * system RAM should be available but cache may be holding
+          * memory unnecessarily.
+          */
+         simple_mtx_lock(&bufmgr->lock);
+         evict_bo_cache(bufmgr);
+         simple_mtx_unlock(&bufmgr->lock);
+
+         /* Retry allocation after evicting cache */
+         bo = alloc_fresh_bo(bufmgr, bo_size);
+         if (!bo)
+            return NULL;
+      }
    }
 
    if (bo_set_tiling_internal(bo, tiling_mode, stride))
@@ -699,6 +713,43 @@ cleanup_bo_cache(struct crocus_bufmgr *bufmgr, time_t time)
    }
 
    bufmgr->time = time;
+}
+
+/**
+ * Aggressively evict ALL cached buffers to free memory.
+ *
+ * Called when memory allocation fails, similar to hasvk's eviction strategy.
+ * This helps utilize available system RAM on integrated Intel graphics by
+ * freeing stale cached buffers before giving up.
+ */
+static void
+evict_bo_cache(struct crocus_bufmgr *bufmgr)
+{
+   int i;
+
+   DBG("crocus: Memory allocation failed, evicting BO cache\n");
+
+   /* Free all cached buffers regardless of age */
+   for (i = 0; i < bufmgr->num_buckets; i++) {
+      struct bo_cache_bucket *bucket = &bufmgr->cache_bucket[i];
+
+      list_for_each_entry_safe(struct crocus_bo, bo, &bucket->head, head) {
+         list_del(&bo->head);
+         bo_free(bo);
+      }
+   }
+
+   /* Also clean up zombie list - these are buffers waiting to become idle */
+   list_for_each_entry_safe(struct crocus_bo, bo, &bufmgr->zombie_list, head) {
+      /* Skip busy BOs as they can't be freed yet */
+      if (!bo->idle && crocus_bo_busy(bo))
+         continue;
+
+      list_del(&bo->head);
+      bo_close(bo);
+   }
+
+   DBG("crocus: BO cache eviction complete\n");
 }
 
 static void

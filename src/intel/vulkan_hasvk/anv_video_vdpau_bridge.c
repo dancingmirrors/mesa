@@ -106,21 +106,21 @@
  *
  * Typically hasvk hardware shares system RAM but has limited address space
  * for GPU mappings.
- * For 4K video, we use a smaller cache (5 surfaces = ~88MB) to prevent
- * VK_ERROR_OUT_OF_DEVICE_MEMORY and vaExportSurfaceHandle failures:
- * - H.264 needs ~4-5 reference frames for typical content
- * - 1 current decode target
+ * For 4K video, we need sufficient cache for H.264 DPB (Decoded Picture Buffer):
+ * - H.264 can reference up to 16 frames (though typically 4-5 for most content)
+ * - Need room for current decode target
+ * - Increased from 5 to 8 to prevent premature eviction of reference frames
  *
- * For 1080p and lower, we can use a larger cache (8 surfaces = ~24MB).
- * This prevents memory exhaustion during long video playback while providing
- * sufficient DPB capacity. Least-recently-used surfaces are evicted when full.
+ * For 1080p and lower, we can use a larger cache.
+ * This prevents "no surfaces left in buffer" errors during decoding while
+ * providing sufficient DPB capacity. Least-recently-used surfaces are evicted when full.
  */
 #ifndef HASVK_MAX_SURFACE_CACHE_SIZE_4K
-#define HASVK_MAX_SURFACE_CACHE_SIZE_4K 5
+#define HASVK_MAX_SURFACE_CACHE_SIZE_4K 8
 #endif
 
 #ifndef HASVK_MAX_SURFACE_CACHE_SIZE_HD
-#define HASVK_MAX_SURFACE_CACHE_SIZE_HD 8
+#define HASVK_MAX_SURFACE_CACHE_SIZE_HD 12
 #endif
 
 /**
@@ -891,17 +891,15 @@ anv_vdpau_copy_surface_to_image_dmabuf(struct anv_device *device,
       if (dmabuf_fd >= 0)
          close(dmabuf_fd);
 
-      /* DMA-buf export failure often indicates GPU memory pressure.
-       * Aggressively evict old surfaces to free memory, keeping only 3-4
-       * most recent surfaces (enough for basic H.264 I/P/B frame decode).
+      /* Note: DMA-buf export failures can happen for various reasons
+       * (e.g., VDP_STATUS_INVALID_HANDLE, VDP_STATUS_NO_IMPLEMENTATION).
+       * These are NOT necessarily memory pressure issues, so we should
+       * NOT aggressively evict surfaces here as it can destroy surfaces
+       * that are still needed for decoding reference frames.
+       *
+       * Memory pressure handling is done at the BO import level below,
+       * where we can detect VK_ERROR_OUT_OF_DEVICE_MEMORY specifically.
        */
-      if (vdp_status != VDP_STATUS_OK) {
-         if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-            fprintf(stderr, "hasvk Video DMA-buf: GPU memory pressure detected (VA error %d), "
-                    "evicting old surfaces to free memory\n", vdp_status);
-         }
-         anv_vdpau_evict_old_surfaces(session, 3);
-      }
 
       return anv_vdpau_copy_surface_to_image(device, session, surface, image);
    }
@@ -952,14 +950,19 @@ anv_vdpau_copy_surface_to_image_dmabuf(struct anv_device *device,
       /* Note: FD was already closed by anv_device_import_bo on failure */
 
       /* BO import failure usually means GPU is out of memory or address space.
-       * Aggressively evict old surfaces to free memory.
+       * Evict old surfaces to free memory, but keep enough for reference frames.
+       * For H.264, we need ~4-5 reference frames, so we keep cache_capacity - 2
+       * to ensure we don't break decoding while still freeing some memory.
        */
       if (result == VK_ERROR_OUT_OF_DEVICE_MEMORY) {
+         uint32_t keep_count = session->surface_map_capacity > 2 ?
+                               session->surface_map_capacity - 2 : 3;
          if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
             fprintf(stderr, "hasvk Video DMA-buf: OUT_OF_DEVICE_MEMORY on import, "
-                    "evicting old surfaces\n");
+                    "evicting old surfaces (keeping %u/%u)\n",
+                    keep_count, session->surface_map_capacity);
          }
-         anv_vdpau_evict_old_surfaces(session, 3);
+         anv_vdpau_evict_old_surfaces(session, keep_count);
       }
 
       return anv_vdpau_copy_surface_to_image(device, session, surface, image);
