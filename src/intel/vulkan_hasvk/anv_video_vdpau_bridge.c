@@ -26,8 +26,8 @@
  *
  * This module implements a bridge between Vulkan Video decode operations
  * and VDPAU. It uses libvdpau-va-gl to leverage the stable VA-API/OpenGL
- * implementation on Gen7/7.5/8 hardware through the crocus driver, avoiding
- * the complexity of direct VA-API interfacing.
+ * implementation on generations 7-8 hardware through the crocus driver,
+ * avoiding the complexity of direct VA-API interfacing.
  *
  * Key Benefits:
  * - VDPAU has simpler slice data handling than VA-API
@@ -91,7 +91,7 @@
  * - Bit 9 only swizzle (I915_BIT_6_SWIZZLE_9)
  * - Bit 9 and 10 swizzle (I915_BIT_6_SWIZZLE_9_10)
  *
- * Gen7 systems may use different swizzle modes depending on memory configuration.
+ * The hardware may use different swizzle modes depending on memory configuration.
  *
  * Y-tile layout:
  * - Tile is 128 bytes wide x 32 rows = 4096 bytes
@@ -642,32 +642,398 @@ anv_vdpau_copy_surface_to_image_dmabuf(struct anv_device *device,
       }
    }
 
-   /* TODO: Complete Vulkan DMA-buf import and GPU copy implementation
-    *
-    * Steps needed:
-    * 1. Create VkImage with VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT
-    * 2. Import the DMA-buf FD using VkImportMemoryFdInfoKHR
-    * 3. Bind the imported memory to the image
-    * 4. Use vkCmdCopyImage or compute shader for GPU-to-GPU copy
-    * 5. Proper synchronization (pipeline barriers, semaphores)
-    * 6. Submit command buffer and wait
-    * 7. Clean up imported resources
-    *
-    * Current status: Export infrastructure is complete, import needs to use
-    * proper Vulkan APIs. The FD ownership model and command buffer integration
-    * require careful handling to avoid leaks and ensure correct synchronization.
-    */
-
-   if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-      fprintf(stderr, "hasvk Video DMA-buf: GPU import/copy not yet implemented\n");
-      fprintf(stderr, "  DMA-buf export succeeded - FD %d ready for import\n", dmabuf_fd);
-      fprintf(stderr, "  Falling back to CPU copy until Vulkan import is completed\n");
+   /* Validate dimensions match */
+   if (width != image->vk.extent.width || height != image->vk.extent.height) {
+      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+         fprintf(stderr, "hasvk Video DMA-buf: Dimension mismatch (exported: %ux%u, target: %ux%u), falling back to CPU copy\n",
+                 width, height, image->vk.extent.width, image->vk.extent.height);
+      }
+      close(dmabuf_fd);
+      return anv_vdpau_copy_surface_to_image(device, session, surface, image);
    }
 
-   /* Close the DMA-buf FD and fall back to CPU copy for now */
-   close(dmabuf_fd);
+   /* Validate format (NV12 = 0x3231564E in little endian) */
+   if (fourcc != 0x3231564E) {
+      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+         fprintf(stderr, "hasvk Video DMA-buf: Unsupported FOURCC 0x%08x (expected NV12), falling back to CPU copy\n", fourcc);
+      }
+      close(dmabuf_fd);
+      return anv_vdpau_copy_surface_to_image(device, session, surface, image);
+   }
 
-   return anv_vdpau_copy_surface_to_image(device, session, surface, image);
+   /* Import the DMA-buf FD as a BO using ANV's device import function
+    * This takes ownership of the FD, so we don't need to close it ourselves.
+    */
+   struct anv_bo *imported_bo = NULL;
+   VkResult result = anv_device_import_bo(device, dmabuf_fd,
+                                          ANV_BO_ALLOC_EXTERNAL,
+                                          0 /* client_address */,
+                                          &imported_bo);
+   if (result != VK_SUCCESS || !imported_bo) {
+      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+         fprintf(stderr, "hasvk Video DMA-buf: Failed to import BO (error=%d), falling back to CPU copy\n", result);
+      }
+      /* Note: FD was already closed by anv_device_import_bo on failure */
+      return anv_vdpau_copy_surface_to_image(device, session, surface, image);
+   }
+
+   if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+      fprintf(stderr, "hasvk Video DMA-buf: Successfully imported BO (handle=%u, size=%zu)\n",
+              imported_bo->gem_handle, imported_bo->size);
+   }
+
+   /* Now perform GPU copy from imported BO to destination image using genX_gpu_memcpy
+    * We need to copy both Y and UV planes.
+    *
+    * For NV12 format:
+    * - Plane 0 (Y): Full resolution, 1 byte per pixel
+    * - Plane 1 (UV): Half resolution, 2 bytes per pixel (interleaved U and V)
+    */
+   uint32_t y_plane_idx = anv_image_aspect_to_plane(image, VK_IMAGE_ASPECT_PLANE_0_BIT);
+   uint32_t uv_plane_idx = anv_image_aspect_to_plane(image, VK_IMAGE_ASPECT_PLANE_1_BIT);
+   const struct anv_surface *y_surface = &image->planes[y_plane_idx].primary_surface;
+   const struct anv_surface *uv_surface = &image->planes[uv_plane_idx].primary_surface;
+
+   struct anv_image_binding *dst_binding = &image->bindings[ANV_IMAGE_MEMORY_BINDING_MAIN];
+   if (!dst_binding->address.bo) {
+      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+         fprintf(stderr, "hasvk Video DMA-buf: Destination image has no BO, falling back to CPU copy\n");
+      }
+      anv_device_release_bo(device, imported_bo);
+      return anv_vdpau_copy_surface_to_image(device, session, surface, image);
+   }
+
+   if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+      fprintf(stderr, "hasvk Video DMA-buf: Pitch comparison\n");
+      fprintf(stderr, "  Y plane:  src_pitch=%u  dst_pitch=%u  width=%u\n",
+              pitches[0], y_surface->isl.row_pitch_B, width);
+      fprintf(stderr, "  UV plane: src_pitch=%u  dst_pitch=%u  width=%u\n",
+              pitches[1], uv_surface->isl.row_pitch_B, width);
+      fprintf(stderr, "  Y tiling: %u  UV tiling: %u\n",
+              y_surface->isl.tiling, uv_surface->isl.tiling);
+   }
+
+   /* Calculate destination addresses in the target image */
+   uint64_t y_offset = dst_binding->address.offset + y_surface->memory_range.offset;
+   uint64_t uv_offset = dst_binding->address.offset + uv_surface->memory_range.offset;
+
+   /* WORKAROUND: Ivy Bridge and Haswell have off-by-one alignment issues similar to
+    * depth/stencil surfaces. Check and fix alignment if needed.
+    *
+    * This can be disabled via INTEL_DEBUG=novideoalign for testing.
+    */
+   bool apply_alignment_workaround = (device->info->verx10 == 70 || device->info->verx10 == 75) &&
+                                     !INTEL_DEBUG(DEBUG_NO_VIDEO_ALIGN);
+
+   if (apply_alignment_workaround) {
+      uint32_t y_alignment = y_surface->isl.alignment_B;
+      uint32_t uv_alignment = uv_surface->isl.alignment_B;
+
+      if (y_offset % y_alignment != 0) {
+         uint64_t misalignment = y_offset % y_alignment;
+         if (misalignment == y_alignment - 1) {
+            if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+               fprintf(stderr, "hasvk Video DMA-buf: Applying Y alignment workaround (+1)\n");
+            }
+            y_offset += 1;
+         }
+      }
+
+      if (uv_offset % uv_alignment != 0) {
+         uint64_t misalignment = uv_offset % uv_alignment;
+         if (misalignment == uv_alignment - 1) {
+            if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+               fprintf(stderr, "hasvk Video DMA-buf: Applying UV alignment workaround (+1)\n");
+            }
+            uv_offset += 1;
+         }
+      }
+   }
+
+   /* Determine source tiling from DRM modifier
+    * VA-API usually exports surfaces as Y-tiled.
+    */
+   enum isl_tiling src_tiling = ISL_TILING_LINEAR;
+   if (modifier == I915_FORMAT_MOD_Y_TILED || modifier == DRM_FORMAT_MOD_LINEAR) {
+      /* Explicitly specified tiling */
+      if (modifier == I915_FORMAT_MOD_Y_TILED) {
+         src_tiling = ISL_TILING_Y0;
+      }
+   } else if (modifier != DRM_FORMAT_MOD_INVALID) {
+      /* Unknown modifier - fall back to CPU copy for safety */
+      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+         fprintf(stderr, "hasvk Video DMA-buf: Unknown modifier 0x%016" PRIx64 ", falling back to CPU copy\n", modifier);
+      }
+      anv_device_release_bo(device, imported_bo);
+      return anv_vdpau_copy_surface_to_image(device, session, surface, image);
+   }
+
+   /* Copy data from imported DMA-buf BO to destination image
+    * Handle both tiled and linear sources from VA-API.
+    */
+   enum isl_tiling dst_tiling = y_surface->isl.tiling;
+
+   /* Map both source (imported DMA-buf) and destination BOs for CPU access
+    * Use WC (write-combine) mapping for tiled surfaces
+    */
+   void *src_ptr = anv_gem_mmap(device, imported_bo->gem_handle, 0, imported_bo->size,
+                                src_tiling == ISL_TILING_LINEAR ? 0 : I915_MMAP_WC);
+   void *dst_ptr = anv_gem_mmap(device, dst_binding->address.bo->gem_handle, 0,
+                                dst_binding->address.bo->size,
+                                dst_tiling == ISL_TILING_LINEAR ? 0 : I915_MMAP_WC);
+
+   if (src_ptr == MAP_FAILED || src_ptr == NULL || dst_ptr == MAP_FAILED || dst_ptr == NULL) {
+      if (src_ptr && src_ptr != MAP_FAILED)
+         anv_gem_munmap(device, src_ptr, imported_bo->size);
+      if (dst_ptr && dst_ptr != MAP_FAILED)
+         anv_gem_munmap(device, dst_ptr, dst_binding->address.bo->size);
+      anv_device_release_bo(device, imported_bo);
+      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+         fprintf(stderr, "hasvk Video DMA-buf: Failed to map BOs, falling back to CPU copy\n");
+      }
+      return anv_vdpau_copy_surface_to_image(device, session, surface, image);
+   }
+
+   char *src_y = (char *)src_ptr + offsets[0];
+   char *src_uv = (char *)src_ptr + offsets[1];
+   char *dst_y = (char *)dst_ptr + y_offset;
+   char *dst_uv = (char *)dst_ptr + uv_offset;
+
+   /* For WC-mapped (tiled) memory, ensure all previous writes are visible
+    * This is critical for imported DMA-buf memory that may have been written
+    * by the GPU or video decoder
+    */
+   if (src_tiling != ISL_TILING_LINEAR) {
+      __builtin_ia32_mfence();
+   }
+
+   bool has_swizzling = device->isl_dev.has_bit6_swizzling;
+
+   /* Handle different source/destination tiling combinations */
+   if (src_tiling == dst_tiling && src_tiling != ISL_TILING_LINEAR) {
+      /* Both tiled with same format - use tiled->linear->tiled to handle padding
+       * and pitch mismatches. Direct memcpy would copy padding rows which causes
+       * artifacts for videos with heights not aligned to tile boundaries (e.g., 1080 vs 1088)
+       */
+      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+         fprintf(stderr, "hasvk Video DMA-buf: Using tiled->linear->tiled copy (both Y-tiled)\n");
+      }
+
+      /* Allocate temporary linear buffers for Y and UV planes
+       * Use tight packing (width as pitch) to avoid pitch mismatch issues
+       */
+      size_t y_linear_pitch = width;
+      size_t uv_linear_pitch = width;
+      size_t y_linear_size = height * y_linear_pitch;
+      size_t uv_linear_size = (height / 2) * uv_linear_pitch;
+      char *y_linear = malloc(y_linear_size);
+      char *uv_linear = malloc(uv_linear_size);
+
+      if (!y_linear || !uv_linear) {
+         free(y_linear);
+         free(uv_linear);
+         if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+            fprintf(stderr, "hasvk Video DMA-buf: Failed to allocate linear buffers, falling back\n");
+         }
+         anv_gem_munmap(device, src_ptr, imported_bo->size);
+         anv_gem_munmap(device, dst_ptr, dst_binding->address.bo->size);
+         anv_device_release_bo(device, imported_bo);
+         return anv_vdpau_copy_surface_to_image(device, session, surface, image);
+      }
+
+      /* Y plane: tiled -> linear (using source pitch) */
+      isl_memcpy_tiled_to_linear(0, width,
+                                 0, height,
+                                 y_linear,
+                                 src_y,
+                                 y_linear_pitch,
+                                 pitches[0],
+                                 has_swizzling,
+                                 src_tiling,
+                                 ISL_MEMCPY);
+
+      /* Y plane: linear -> tiled (using dest pitch) */
+      isl_memcpy_linear_to_tiled(0, width,
+                                 0, height,
+                                 dst_y,
+                                 y_linear,
+                                 y_surface->isl.row_pitch_B,
+                                 y_linear_pitch,
+                                 has_swizzling,
+                                 dst_tiling,
+                                 ISL_MEMCPY);
+
+      /* UV plane: tiled -> linear (using source pitch) */
+      isl_memcpy_tiled_to_linear(0, width,
+                                 0, height / 2,
+                                 uv_linear,
+                                 src_uv,
+                                 uv_linear_pitch,
+                                 pitches[1],
+                                 has_swizzling,
+                                 src_tiling,
+                                 ISL_MEMCPY);
+
+      /* UV plane: linear -> tiled (using dest pitch) */
+      isl_memcpy_linear_to_tiled(0, width,
+                                 0, height / 2,
+                                 dst_uv,
+                                 uv_linear,
+                                 uv_surface->isl.row_pitch_B,
+                                 uv_linear_pitch,
+                                 has_swizzling,
+                                 dst_tiling,
+                                 ISL_MEMCPY);
+
+      free(y_linear);
+      free(uv_linear);
+
+      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+         fprintf(stderr, "hasvk Video DMA-buf: Tiled-to-tiled copy completed (Y: %ux%u, UV: %ux%u)\n",
+                 width, height, width, height / 2);
+         fprintf(stderr, "  Pitch conversion: src Y=%u UV=%u, dst Y=%u UV=%u\n",
+                 pitches[0], pitches[1], y_surface->isl.row_pitch_B, uv_surface->isl.row_pitch_B);
+      }
+   } else if (src_tiling != ISL_TILING_LINEAR && dst_tiling != ISL_TILING_LINEAR) {
+      /* Both tiled but different formats - need tiled-to-tiled conversion
+       * This is rare, fall back to CPU copy for safety
+       */
+      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+         fprintf(stderr, "hasvk Video DMA-buf: Different tiling formats (src=%d, dst=%d), falling back to CPU copy\n",
+                 src_tiling, dst_tiling);
+      }
+      anv_gem_munmap(device, src_ptr, imported_bo->size);
+      anv_gem_munmap(device, dst_ptr, dst_binding->address.bo->size);
+      anv_device_release_bo(device, imported_bo);
+      return anv_vdpau_copy_surface_to_image(device, session, surface, image);
+   } else if (src_tiling == ISL_TILING_LINEAR && dst_tiling != ISL_TILING_LINEAR) {
+      /* Linear source, tiled dest - use linear_to_tiled */
+      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+         fprintf(stderr, "hasvk Video DMA-buf: Using ISL linear-to-tiled copy\n");
+      }
+
+      /* Copy Y plane using ISL tiled memcpy
+       * For NV12, Y plane is width×height, 1 byte per pixel = width bytes per row
+       */
+      isl_memcpy_linear_to_tiled(0, width,
+                                 0, height,
+                                 dst_y,
+                                 src_y,
+                                 y_surface->isl.row_pitch_B,
+                                 pitches[0],
+                                 has_swizzling,
+                                 dst_tiling,
+                                 ISL_MEMCPY);
+
+      /* Copy UV plane using ISL tiled memcpy
+       * For NV12, UV plane is (width/2)×(height/2) in pixels, but 2 bytes per pixel
+       * (U and V interleaved), so row width in bytes is: (width/2 pixels) × (2 bytes/pixel) = width bytes
+       */
+      isl_memcpy_linear_to_tiled(0, width,
+                                 0, height / 2,
+                                 dst_uv,
+                                 src_uv,
+                                 uv_surface->isl.row_pitch_B,
+                                 pitches[1],
+                                 has_swizzling,
+                                 dst_tiling,
+                                 ISL_MEMCPY);
+
+      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+         fprintf(stderr, "hasvk Video DMA-buf: Linear-to-tiled copy completed (Y: %ux%u, UV: %ux%u)\n",
+                 width, height, width, height / 2);
+      }
+   } else if (src_tiling != ISL_TILING_LINEAR && dst_tiling == ISL_TILING_LINEAR) {
+      /* Tiled source, linear dest - use tiled_to_linear */
+      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+         fprintf(stderr, "hasvk Video DMA-buf: Using ISL tiled-to-linear copy\n");
+      }
+
+      /* Copy Y plane */
+      isl_memcpy_tiled_to_linear(0, width,
+                                 0, height,
+                                 dst_y,
+                                 src_y,
+                                 y_surface->isl.row_pitch_B,
+                                 pitches[0],
+                                 has_swizzling,
+                                 src_tiling,
+                                 ISL_MEMCPY);
+
+      /* Copy UV plane */
+      isl_memcpy_tiled_to_linear(0, width,
+                                 0, height / 2,
+                                 dst_uv,
+                                 src_uv,
+                                 uv_surface->isl.row_pitch_B,
+                                 pitches[1],
+                                 has_swizzling,
+                                 src_tiling,
+                                 ISL_MEMCPY);
+
+      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+         fprintf(stderr, "hasvk Video DMA-buf: Tiled-to-linear copy completed (Y: %ux%u, UV: %ux%u)\n",
+                 width, height, width, height / 2);
+      }
+   } else {
+      /* Both linear - use direct memcpy or row-by-row copy */
+      if (pitches[0] == y_surface->isl.row_pitch_B && pitches[1] == uv_surface->isl.row_pitch_B) {
+         /* Pitch matches - use bulk memcpy */
+         if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+            fprintf(stderr, "hasvk Video DMA-buf: Using bulk memcpy (pitch match)\n");
+         }
+
+         memcpy(dst_y, src_y, height * pitches[0]);
+         memcpy(dst_uv, src_uv, (height / 2) * pitches[1]);
+      } else {
+         /* Pitch mismatch - copy row by row */
+         if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+            fprintf(stderr, "hasvk Video DMA-buf: Using row-by-row copy (pitch mismatch: src=%u/%u, dst=%u/%u)\n",
+                    pitches[0], pitches[1], y_surface->isl.row_pitch_B, uv_surface->isl.row_pitch_B);
+         }
+
+         uint32_t y_copy_width = MIN2(pitches[0], y_surface->isl.row_pitch_B);
+         uint32_t uv_copy_width = MIN2(pitches[1], uv_surface->isl.row_pitch_B);
+
+         /* Copy Y plane row by row */
+         for (uint32_t row = 0; row < height; row++) {
+            memcpy(dst_y + row * y_surface->isl.row_pitch_B,
+                   src_y + row * pitches[0],
+                   y_copy_width);
+         }
+
+         /* Copy UV plane row by row */
+         for (uint32_t row = 0; row < height / 2; row++) {
+            memcpy(dst_uv + row * uv_surface->isl.row_pitch_B,
+                   src_uv + row * pitches[1],
+                   uv_copy_width);
+         }
+      }
+   }
+
+   /* Ensure all CPU writes are visible to GPU before unmapping
+    * This fence is necessary for all copy modes (tiled and linear) to ensure
+    * proper memory ordering when CPU writes data that GPU will later read.
+    */
+   __builtin_ia32_mfence();
+
+   /* Unmap BOs and release imported BO */
+   anv_gem_munmap(device, src_ptr, imported_bo->size);
+   anv_gem_munmap(device, dst_ptr, dst_binding->address.bo->size);
+   anv_device_release_bo(device, imported_bo);
+
+   if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+      const char *src_tiling_str = (src_tiling == ISL_TILING_LINEAR) ? "linear" :
+                                    (src_tiling == ISL_TILING_Y0) ? "Y-tiled" : "unknown";
+      const char *dst_tiling_str = (dst_tiling == ISL_TILING_LINEAR) ? "linear" :
+                                    (dst_tiling == ISL_TILING_Y0) ? "Y-tiled" : "unknown";
+      fprintf(stderr, "hasvk Video DMA-buf: Zero-copy path completed successfully!\n");
+      fprintf(stderr, "  Copied %ux%u NV12 frame: %s -> %s\n",
+              width, height, src_tiling_str, dst_tiling_str);
+      fprintf(stderr, "  This avoids VDPAU's vdpVideoSurfaceGetBitsYCbCr overhead\n");
+   }
+
+   return VK_SUCCESS;
 }
 
 /**
@@ -675,7 +1041,7 @@ anv_vdpau_copy_surface_to_image_dmabuf(struct anv_device *device,
  *
  * After VDPAU decode completes, copy the decoded data from VDPAU surface
  * to the Vulkan image memory. VDPAU returns linear data, but the Vulkan
- * image may be tiled (Y-tiled on Gen7/7.5/8), so we need to use ISL's
+ * image may be tiled (Y-tiled usually), so we need to use ISL's
  * tiled memcpy functions for the conversion.
  *
  * This is the CPU copy path - slow but always works.
@@ -795,7 +1161,7 @@ anv_vdpau_copy_surface_to_image(struct anv_device *device,
    uint64_t y_offset = binding->address.offset + y_surface->memory_range.offset;
    uint64_t uv_offset = binding->address.offset + uv_surface->memory_range.offset;
 
-   /* WORKAROUND: Gen7 (Ivy Bridge) has off-by-one alignment issues similar to
+   /* WORKAROUND: Ivy Bridge and Haswell have off-by-one alignment issues similar to
     * depth/stencil surfaces. Check and fix alignment if needed.
     */
    uint32_t y_alignment = y_surface->isl.alignment_B;
@@ -856,7 +1222,7 @@ anv_vdpau_copy_surface_to_image(struct anv_device *device,
                                  linear_y,       /* source (linear) */
                                  y_surface->isl.row_pitch_B,  /* dst pitch */
                                  linear_y_pitch,              /* src pitch */
-                                 has_swizzling,  /* bit6 swizzling on Gen7 */
+                                 has_swizzling,  /* bit6 swizzling on Ivy Bridge */
                                  tiling,
                                  ISL_MEMCPY);
 
@@ -867,7 +1233,7 @@ anv_vdpau_copy_surface_to_image(struct anv_device *device,
                                  linear_uv,          /* source (linear) */
                                  uv_surface->isl.row_pitch_B,  /* dst pitch */
                                  linear_uv_pitch,              /* src pitch */
-                                 has_swizzling,      /* bit6 swizzling on Gen7 */
+                                 has_swizzling,      /* bit6 swizzling on Ivy Bridge */
                                  tiling,
                                  ISL_MEMCPY);
    }
@@ -1126,8 +1492,8 @@ anv_vdpau_decode_frame(struct anv_cmd_buffer *cmd_buffer,
  * Frame limiting optimization: To prevent excessive frame queue buildup
  * when using --hwdec=vulkan-copy, we limit the number of frames processed
  * per QueueSubmit. This allows mpv's presentation timing logic to drop
- * frames that haven't been submitted yet, improving performance on slow
- * hardware like Gen7/7.5/8.
+ * frames that haven't been submitted yet, improving performance on our
+ * slow hardware.
  *
  * Configurable via HASVK_VIDEO_MAX_FRAMES_PER_SUBMIT (default: 2)
  */
