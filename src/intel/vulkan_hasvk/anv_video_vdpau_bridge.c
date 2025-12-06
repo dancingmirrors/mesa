@@ -678,7 +678,7 @@ anv_vdpau_copy_surface_to_image_dmabuf(struct anv_device *device,
    }
 
    if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-      fprintf(stderr, "hasvk Video DMA-buf: Successfully imported BO (handle=%u, size=%zu)\n",
+      fprintf(stderr, "hasvk Video DMA-buf: Successfully imported BO (handle=%u, size=%" PRIu64 ")\n",
               imported_bo->gem_handle, imported_bo->size);
    }
 
@@ -1489,8 +1489,6 @@ anv_vdpau_decode_frame(struct anv_cmd_buffer *cmd_buffer,
  * Since we bundle our own libvdpau, we can override the traditional
  * expectation that all queued frames must be processed, enabling
  * aggressive frame dropping.
- *
- * Can be controlled via HASVK_VIDEO_MAX_FRAMES_PER_SUBMIT (default: 1).
  */
 VkResult
 anv_vdpau_execute_deferred_decodes(struct anv_device *device,
@@ -1506,48 +1504,11 @@ anv_vdpau_execute_deferred_decodes(struct anv_device *device,
       return VK_SUCCESS;
    }
 
-   /* Get maximum frames to process per submit from the environment variable.
-    * Default to 1 frame to maximize frame dropping and improve responsiveness.
-    * This prevents queue buildup on slow hardware while maintaining smooth playback.
-    * Set to higher value (e.g., 2-4) for more pipelining, or 0 to process all frames.
-    */
-   static bool initialized = false;
-   static uint32_t max_frames_per_submit = 1;
-   if (!initialized) {
-      initialized = true;
-      const char *env = getenv("HASVK_VIDEO_MAX_FRAMES_PER_SUBMIT");
-      if (env) {
-         char *endptr;
-         long parsed = strtol(env, &endptr, 10);
-
-         /* Validate the input: successful parse, no trailing chars, in valid range
-          * Check against LONG_MAX first, then ensure it fits in uint32_t
-          */
-         if (endptr != env && *endptr == '\0' && parsed >= 0 &&
-             (unsigned long)parsed <= UINT32_MAX) {
-            max_frames_per_submit = (uint32_t)parsed;
-         } else {
-            fprintf(stderr, "hasvk: Invalid HASVK_VIDEO_MAX_FRAMES_PER_SUBMIT value '%s', "
-                    "using default of 1\n", env);
-            max_frames_per_submit = 1;
-         }
-      }
-      /* else: keep default of 1 */
-   }
-
-   /* Determine how many frames to actually process */
+   const uint32_t max_frames_per_submit = 1;
    uint32_t frames_to_process = total_decode_count;
-   if (max_frames_per_submit > 0 && total_decode_count > max_frames_per_submit) {
-      frames_to_process = max_frames_per_submit;
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "hasvk Performance: Limiting decode to %u of %u queued frames\n",
-                 frames_to_process, total_decode_count);
-      }
-   }
 
-   if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-      fprintf(stderr, "hasvk Performance: Executing %u deferred video decode(s)\n",
-              frames_to_process);
+   if (total_decode_count > max_frames_per_submit) {
+      frames_to_process = max_frames_per_submit;
    }
 
    /* Phase 1: Submit decode operations to VA-API
@@ -1638,12 +1599,6 @@ anv_vdpau_execute_deferred_decodes(struct anv_device *device,
       if (decode_cmd->ref_surfaces) {
          vk_free(&device->vk.alloc, decode_cmd->ref_surfaces);
       }
-   }
-
-   /* Log dropped frames for debugging */
-   if (unlikely(INTEL_DEBUG(DEBUG_HASVK)) && total_decode_count > frames_to_process) {
-      fprintf(stderr, "hasvk Performance: Dropped %u frames (processed %u of %u)\n",
-              total_decode_count - frames_to_process, frames_to_process, total_decode_count);
    }
 
    /* Clear all commands from the queue */
