@@ -197,6 +197,8 @@ vdpVideoSurfaceGetBitsYCbCr(VdpVideoSurface surface,
     if (deviceData->va_available) {
         VAImage q;
 
+        vaSyncSurface(va_dpy, srcSurfData->va_surf);
+
         vaDeriveImage(va_dpy, srcSurfData->va_surf, &q);
 
         if (unlikely(global.quirks.log_stride)) {
