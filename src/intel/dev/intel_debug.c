@@ -116,6 +116,7 @@ static const struct debug_control_bitset debug_control[] = {
    OPT1("swsb-stall",        DEBUG_SWSB_STALL),
    OPT1("heaps",             DEBUG_HEAPS),
    OPT1("hasvk",             DEBUG_HASVK),
+   OPT1("novideoalign",      DEBUG_NO_VIDEO_ALIGN),
    OPT1("isl",               DEBUG_ISL),
    OPT1("sparse",            DEBUG_SPARSE),
    OPT1("draw_bkp",          DEBUG_DRAW_BKP),
