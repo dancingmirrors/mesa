@@ -33,6 +33,7 @@ struct task_s {
 
 static GAsyncQueue *async_q = NULL;
 static pthread_t    presentation_thread_id;
+static int          compositor_detected = -1;  // -1 = not checked, 0 = no, 1 = yes
 
 
 static
@@ -50,6 +51,67 @@ vdptime2timespec(VdpTime t)
     res.tv_sec = t / (1000*1000*1000);
     res.tv_nsec = t % (1000*1000*1000);
     return res;
+}
+
+/**
+ * Check if a compositing window manager is running
+ *
+ * Based on mpv's vo_x11_screen_is_composited() implementation.
+ * Compositing window managers cause VDPAU presentation queue timing
+ * to be inaccurate because they buffer frames for composition.
+ *
+ * Detection methods:
+ * 1. X11: Check if selection owner exists for _NET_WM_CM_Sn atom
+ * 2. Wayland: Always composited (Wayland is always compositing)
+ * 3. Environment: Check WAYLAND_DISPLAY to detect Wayland session
+ *
+ * NOTE: For hasvk video decode, the presentation queue is NOT used.
+ * Decoding happens via vdp_decoder_render and data is copied back via
+ * vdp_video_surface_get_bits_ycbcr. Presentation is handled by the
+ * application (e.g., mpv via Vulkan swapchain). This function is only
+ * relevant for applications that use VDPAU's presentation queue directly.
+ *
+ * When compositor is detected, we disable timing-based frame pacing
+ * to avoid stuttering and improve performance for such applications.
+ */
+static
+int
+check_compositor(Display *display, int screen)
+{
+    /* Allow disabling compositor check via environment variable */
+    if (global.quirks.disable_compositor_check)
+        return 0;
+
+    /* Check if we're running under Wayland (always composited)
+     * WAYLAND_DISPLAY is set when running native Wayland or XWayland
+     */
+    const char *wayland_display = getenv("WAYLAND_DISPLAY");
+    if (wayland_display && wayland_display[0] != '\0') {
+        /* Limit display name length for safe logging (prevent log injection) */
+        char safe_display[64];
+        snprintf(safe_display, sizeof(safe_display), "%.63s", wayland_display);
+        traceInfo("Wayland session detected (via WAYLAND_DISPLAY=%s). "
+                  "Presentation queue timing will be disabled.\n", safe_display);
+        return 1;
+    }
+
+    /* Check for X11 compositor using _NET_WM_CM_Sn atom */
+    if (display) {
+        #define COMPOSITOR_ATOM_NAME_SIZE 50
+        char atom_name[COMPOSITOR_ATOM_NAME_SIZE];
+        snprintf(atom_name, sizeof(atom_name), "_NET_WM_CM_S%d", screen);
+        Atom net_wm_cm = XInternAtom(display, atom_name, False);
+        #undef COMPOSITOR_ATOM_NAME_SIZE
+        int is_composited = (XGetSelectionOwner(display, net_wm_cm) != None);
+
+        if (is_composited) {
+            traceInfo("Compositing window manager detected (X11). "
+                      "Presentation queue timing will be disabled for better performance.\n");
+            return 1;
+        }
+    }
+
+    return 0;
 }
 
 VdpStatus
@@ -527,7 +589,38 @@ vdpPresentationQueueGetTime(VdpPresentationQueue presentation_queue, VdpTime *cu
 {
     if (!current_time)
         return VDP_STATUS_INVALID_POINTER;
-    (void)presentation_queue;
+
+    VdpPresentationQueueData *pqData =
+        handle_acquire(presentation_queue, HANDLETYPE_PRESENTATION_QUEUE);
+    if (NULL == pqData) {
+        /* No valid queue, just return current time */
+        struct timespec now;
+        clock_gettime(CLOCK_REALTIME, &now);
+        *current_time = timespec2vdptime(now);
+        return VDP_STATUS_OK;
+    }
+
+    VdpDeviceData *deviceData = pqData->deviceData;
+
+    /* Check for compositor on first call (lazy initialization) */
+    if (compositor_detected == -1) {
+        compositor_detected = check_compositor(deviceData->display, deviceData->screen);
+    }
+
+    handle_release(presentation_queue);
+
+    /* Always return current wall clock time.
+     *
+     * Note: Even without a compositor, VDPAU timing is not accurate enough
+     * for proper frame pacing because:
+     * 1. We don't have access to actual vsync events
+     * 2. The presentation thread uses glFlush() + XFlush() (non-blocking)
+     * 3. Actual presentation time depends on compositor buffering
+     *
+     * Applications like mpv will detect compositor and disable timing-based
+     * frame dropping, relying instead on the presentation queue's own
+     * frame dropping logic in the presentation thread.
+     */
     struct timespec now;
     clock_gettime(CLOCK_REALTIME, &now);
     *current_time = timespec2vdptime(now);
@@ -555,9 +648,34 @@ vdpPresentationQueueDisplay(VdpPresentationQueue presentation_queue, VdpOutputSu
         return VDP_STATUS_HANDLE_DEVICE_MISMATCH;
     }
 
+    /* Check for compositor on first call (lazy initialization) */
+    if (compositor_detected == -1) {
+        compositor_detected = check_compositor(pqData->deviceData->display,
+                                               pqData->deviceData->screen);
+    }
+
     struct task_s *task = g_slice_new0(struct task_s);
 
-    task->when = vdptime2timespec(earliest_presentation_time);
+    /* When compositor is detected, ignore earliest_presentation_time and
+     * display frames immediately (use current time). This prevents the
+     * presentation queue from artificially delaying frames based on
+     * inaccurate timing information from the compositing window manager.
+     *
+     * With a compositor, the window manager buffers frames for composition,
+     * making VDPAU's timing unreliable. By displaying immediately, we:
+     * 1. Reduce input lag
+     * 2. Let the compositor handle frame pacing
+     * 3. Avoid stuttering from incorrect timing predictions
+     * 4. Improve performance by not sleeping when we shouldn't
+     */
+    if (compositor_detected) {
+        struct timespec now;
+        clock_gettime(CLOCK_REALTIME, &now);
+        task->when = now;
+    } else {
+        task->when = vdptime2timespec(earliest_presentation_time);
+    }
+
     task->clip_width = clip_width;
     task->clip_height = clip_height;
     task->surface = surface;

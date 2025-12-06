@@ -66,6 +66,7 @@ initialize_quirks(void)
     global.quirks.log_timestamp = 0;
     global.quirks.avoid_va = 0;
     global.quirks.log_stride = 0;
+    global.quirks.disable_compositor_check = 0;
 
     /* Check INTEL_DEBUG environment variable for hasvk flag */
     const char *intel_debug = getenv("INTEL_DEBUG");
@@ -136,6 +137,9 @@ initialize_quirks(void)
             } else
             if (!strcmp("avoidva", item_start)) {
                 global.quirks.avoid_va = 1;
+            } else
+            if (!strcmp("nocompositorcheck", item_start)) {
+                global.quirks.disable_compositor_check = 1;
             }
 
             item_start = ptr + 1;
