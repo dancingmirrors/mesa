@@ -117,7 +117,7 @@ loader_get_kernel_driver_name(int fd)
    }
 
    driver = strndup(version->name, version->name_len);
-   log_(driver ? _LOADER_DEBUG : _LOADER_WARNING, "using driver %s for %d\n",
+   log_(driver ? _LOADER_DEBUG : _LOADER_WARNING, "kernel driver %s for fd %d\n",
         driver, fd);
 
    drmFreeVersion(version);
@@ -753,7 +753,7 @@ loader_get_pci_driver(int fd)
 
 out:
    log_(driver ? _LOADER_DEBUG : _LOADER_WARNING,
-         "pci id for fd %d: %04x:%04x, driver %s\n",
+         "pci id for fd %d: %04x:%04x, Mesa driver %s\n",
          fd, vendor_id, chip_id, driver);
    return driver;
 }
