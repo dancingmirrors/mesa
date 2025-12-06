@@ -104,17 +104,23 @@
  * - 1080p NV12: ~3MB per surface
  * - 4K NV12: ~17.7MB per surface
  *
- * For low-memory systems (4GB RAM typical), we limit to 8 surfaces:
- * - H.264 needs ~5-6 reference frames for typical content
+ * Typically hasvk hardware shares system RAM but has limited address space
+ * for GPU mappings.
+ * For 4K video, we use a smaller cache (5 surfaces = ~88MB) to prevent
+ * VK_ERROR_OUT_OF_DEVICE_MEMORY and vaExportSurfaceHandle failures:
+ * - H.264 needs ~4-5 reference frames for typical content
  * - 1 current decode target
- * - 1-2 extra for rendering pipeline
  *
- * This prevents VK_ERROR_OUT_OF_DEVICE_MEMORY on long video playback while
- * still providing sufficient DPB capacity. Least-recently-used surfaces are
- * evicted when this limit is exceeded.
+ * For 1080p and lower, we can use a larger cache (8 surfaces = ~24MB).
+ * This prevents memory exhaustion during long video playback while providing
+ * sufficient DPB capacity. Least-recently-used surfaces are evicted when full.
  */
-#ifndef HASVK_MAX_SURFACE_CACHE_SIZE
-#define HASVK_MAX_SURFACE_CACHE_SIZE 8
+#ifndef HASVK_MAX_SURFACE_CACHE_SIZE_4K
+#define HASVK_MAX_SURFACE_CACHE_SIZE_4K 5
+#endif
+
+#ifndef HASVK_MAX_SURFACE_CACHE_SIZE_HD
+#define HASVK_MAX_SURFACE_CACHE_SIZE_HD 8
 #endif
 
 /**
@@ -482,11 +488,29 @@ anv_vdpau_session_create(struct anv_device *device,
    }
 
    /* Allocate surface mapping for DPB management
-    * Limit cache size for low-memory systems (typically 4GB RAM).
-    * Use the smaller of maxDpbSlots+1 or HASVK_MAX_SURFACE_CACHE_SIZE.
+    * Use resolution-based cache sizing to prevent GPU memory exhaustion:
+    * - 4K and above: smaller cache (5 surfaces = ~88MB for 4K NV12)
+    * - 1080p and below: larger cache (8 surfaces = ~24MB for 1080p NV12)
+    *
+    * hasvk hardware typically shares system RAM but has limited GPU address
+    * space.
+    * 4K video surfaces (~17.7MB each) can quickly exhaust this, causing
+    * VK_ERROR_OUT_OF_DEVICE_MEMORY and vaExportSurfaceHandle failures.
     */
    uint32_t requested_capacity = pCreateInfo->maxDpbSlots + 1;
-   session->surface_map_capacity = MIN2(requested_capacity, HASVK_MAX_SURFACE_CACHE_SIZE);
+   uint32_t max_cache_size;
+
+   /* Determine if this is 4K or higher resolution
+    * 4K = 3840x2160, so use 3840 as the threshold
+    */
+   if (pCreateInfo->maxCodedExtent.width >= 3840 ||
+       pCreateInfo->maxCodedExtent.height >= 2160) {
+      max_cache_size = HASVK_MAX_SURFACE_CACHE_SIZE_4K;
+   } else {
+      max_cache_size = HASVK_MAX_SURFACE_CACHE_SIZE_HD;
+   }
+
+   session->surface_map_capacity = MIN2(requested_capacity, max_cache_size);
    session->surface_map_size = 0;
    session->frame_counter = 0;
    session->surface_map = vk_alloc(&device->vk.alloc,
@@ -607,6 +631,147 @@ anv_vdpau_add_surface_mapping(struct anv_vdpau_session *session,
 }
 
 /**
+ * Comparison function for qsort - sorts uint64_t in descending order
+ */
+static int
+compare_uint64_desc(const void *a, const void *b)
+{
+   uint64_t val_a = *(const uint64_t *)a;
+   uint64_t val_b = *(const uint64_t *)b;
+   if (val_a > val_b) return -1;
+   if (val_a < val_b) return 1;
+   return 0;
+}
+
+/**
+ * Aggressively evict old surfaces to free GPU memory
+ *
+ * Called when we detect memory pressure (e.g., DMA-buf export failures).
+ * Evicts surfaces that haven't been used recently, keeping only the most
+ * recent ones needed for reference frames.
+ *
+ * @param session       VDPAU session
+ * @param keep_count    Number of most recently used surfaces to keep (minimum 3)
+ */
+static void
+anv_vdpau_evict_old_surfaces(struct anv_vdpau_session *session,
+                             uint32_t keep_count)
+{
+   if (!session || !session->surface_map || session->surface_map_size == 0)
+      return;
+
+   /* Keep at least 3 surfaces for basic H.264 decode (I, P, B frames) */
+   if (keep_count < 3)
+      keep_count = 3;
+
+   /* If we already have fewer surfaces than keep_count, nothing to evict */
+   if (session->surface_map_size <= keep_count)
+      return;
+
+   /* Find the Nth most recent surface (where N = keep_count)
+    * All surfaces older than this will be evicted
+    */
+   uint64_t eviction_threshold = 0;
+
+   /* Create a sorted list of last_used_frame values
+    * Check for potential integer overflow in allocation size
+    */
+   size_t alloc_size = session->surface_map_size * sizeof(uint64_t);
+   if (session->surface_map_size > 0 &&
+       alloc_size / sizeof(uint64_t) != session->surface_map_size) {
+      /* Integer overflow detected */
+      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+         fprintf(stderr, "hasvk Video: Integer overflow in surface eviction allocation!\n");
+      }
+      return;
+   }
+
+   uint64_t *sorted_frames = malloc(alloc_size);
+   if (!sorted_frames) {
+      /* Memory allocation failed - can't evict surfaces properly.
+       * Log error and return since we can't free memory without sorting.
+       */
+      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+         fprintf(stderr, "hasvk Video: Failed to allocate memory for surface eviction "
+                 "(needed %zu bytes). Cannot free GPU memory!\n", alloc_size);
+      }
+      return;
+   }
+
+   for (uint32_t i = 0; i < session->surface_map_size; i++) {
+      sorted_frames[i] = session->surface_map[i].last_used_frame;
+   }
+
+   /* Sort in descending order (most recent first) using qsort for efficiency */
+   qsort(sorted_frames, session->surface_map_size, sizeof(uint64_t), compare_uint64_desc);
+
+   /* Determine eviction threshold:
+    * - Threshold is the timestamp of the Nth most recent surface
+    * - Surfaces with timestamp < threshold will be evicted
+    * - Surfaces with timestamp >= threshold will be kept
+    *
+    * Example with 5 surfaces, keep_count=3:
+    * - Sorted descending: [100, 90, 80, 70, 60]
+    *   indices:            [0,   1,  2,  3,  4]
+    * - sorted_frames[2] = 80 (the 3rd most recent)
+    * - Keep: timestamps >= 80 (100, 90, 80)
+    * - Evict: timestamps < 80 (70, 60)
+    * - Threshold = sorted_frames[keep_count-1] = sorted_frames[2] = 80
+    *
+    * Edge case: keep_count >= surface_map_size means keep all surfaces.
+    * Set threshold to 0 so all surfaces (frame_counter >= 1) are kept.
+    */
+   if (keep_count < session->surface_map_size) {
+      /* Normal case: evict old surfaces beyond keep_count
+       * keep_count is guaranteed to be >= 3 from earlier check
+       */
+      eviction_threshold = sorted_frames[keep_count - 1];
+   } else {
+      /* Edge case: keep all surfaces (keep_count >= cache size) */
+      eviction_threshold = 0;
+   }
+   free(sorted_frames);
+
+   if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+      fprintf(stderr, "hasvk Video: Memory pressure detected! Aggressively evicting old surfaces\n");
+      fprintf(stderr, "  Current cache size: %u, target: %u, threshold frame: %"PRIu64"\n",
+              session->surface_map_size, keep_count, eviction_threshold);
+   }
+
+   /* Evict all surfaces older than the threshold */
+   uint32_t evicted_count = 0;
+   for (uint32_t i = 0; i < session->surface_map_size; ) {
+      if (session->surface_map[i].last_used_frame < eviction_threshold) {
+         /* Destroy this surface */
+         if (session->surface_map[i].vdp_surface != VDP_INVALID_HANDLE &&
+             session->vdp_video_surface_destroy) {
+            if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+               fprintf(stderr, "  Evicting surface %u (age: %"PRIu64" frames)\n",
+                       session->surface_map[i].vdp_surface,
+                       session->frame_counter - session->surface_map[i].last_used_frame);
+            }
+            session->vdp_video_surface_destroy(session->surface_map[i].vdp_surface);
+            evicted_count++;
+         }
+
+         /* Remove from array by shifting remaining elements */
+         for (uint32_t j = i; j < session->surface_map_size - 1; j++) {
+            session->surface_map[j] = session->surface_map[j + 1];
+         }
+         session->surface_map_size--;
+         /* Don't increment i since we shifted elements */
+      } else {
+         i++;
+      }
+   }
+
+   if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+      fprintf(stderr, "hasvk Video: Evicted %u surfaces, new cache size: %u\n",
+              evicted_count, session->surface_map_size);
+   }
+}
+
+/**
  * Lookup VDPAU surface for a given image
  *
  * Updates LRU timestamp on access to prevent premature eviction of active surfaces.
@@ -720,11 +885,24 @@ anv_vdpau_copy_surface_to_image_dmabuf(struct anv_device *device,
 
    if (vdp_status != VDP_STATUS_OK || dmabuf_fd < 0) {
       if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "hasvk Video DMA-buf: Export failed (status=%d, fd=%d), falling back to CPU copy\n",
+         fprintf(stderr, "hasvk Video DMA-buf: Export failed (status=%d, fd=%d)\n",
                  vdp_status, dmabuf_fd);
       }
       if (dmabuf_fd >= 0)
          close(dmabuf_fd);
+
+      /* DMA-buf export failure often indicates GPU memory pressure.
+       * Aggressively evict old surfaces to free memory, keeping only 3-4
+       * most recent surfaces (enough for basic H.264 I/P/B frame decode).
+       */
+      if (vdp_status != VDP_STATUS_OK) {
+         if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+            fprintf(stderr, "hasvk Video DMA-buf: GPU memory pressure detected (VA error %d), "
+                    "evicting old surfaces to free memory\n", vdp_status);
+         }
+         anv_vdpau_evict_old_surfaces(session, 3);
+      }
+
       return anv_vdpau_copy_surface_to_image(device, session, surface, image);
    }
 
@@ -769,9 +947,21 @@ anv_vdpau_copy_surface_to_image_dmabuf(struct anv_device *device,
                                           &imported_bo);
    if (result != VK_SUCCESS || !imported_bo) {
       if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "hasvk Video DMA-buf: Failed to import BO (error=%d), falling back to CPU copy\n", result);
+         fprintf(stderr, "hasvk Video DMA-buf: Failed to import BO (error=%d)\n", result);
       }
       /* Note: FD was already closed by anv_device_import_bo on failure */
+
+      /* BO import failure usually means GPU is out of memory or address space.
+       * Aggressively evict old surfaces to free memory.
+       */
+      if (result == VK_ERROR_OUT_OF_DEVICE_MEMORY) {
+         if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+            fprintf(stderr, "hasvk Video DMA-buf: OUT_OF_DEVICE_MEMORY on import, "
+                    "evicting old surfaces\n");
+         }
+         anv_vdpau_evict_old_surfaces(session, 3);
+      }
+
       return anv_vdpau_copy_surface_to_image(device, session, surface, image);
    }
 
