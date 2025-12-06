@@ -85,19 +85,18 @@
 #define YTILE_SPAN 16
 
 /* Maximum frames to process per submit for video decode.
- * Setting this to 0 means unlimited (process all queued frames).
+ * When the decode queue exceeds this threshold, we drop intermediate frames
+ * to prevent backlog buildup that causes video freezing.
  *
- * With multiple decode threads (e.g., mpv --hwdec-threads=4), each thread
- * submits its own command buffer with decode operations. VA-API can efficiently
- * handle multiple frames in a single batch, and limiting this artificially
- * creates serialization bottlenecks.
+ * Setting this to 0 means unlimited (process all queued frames), which can
+ * cause freezing with --video-sync=display-vdrop on slow hardware.
  *
- * Previously set to 1 to avoid race conditions, but with proper per-session
- * mutex protection, we can safely process all frames in a batch for better
- * performance and GPU utilization.
+ * For 4K video on Ivy Bridge, processing 2-3 frames per submit provides
+ * good balance between throughput and latency. Frames beyond this limit
+ * are intelligently dropped to maintain real-time playback.
  */
 #ifndef HASVK_MAX_FRAMES_PER_SUBMIT
-#define HASVK_MAX_FRAMES_PER_SUBMIT 0
+#define HASVK_MAX_FRAMES_PER_SUBMIT 3
 #endif
 
 /**
@@ -1511,15 +1510,35 @@ anv_vdpau_execute_deferred_decodes(struct anv_device *device,
       return VK_SUCCESS;
    }
 
-   /* Process all frames in the queue (unlimited).
-    * HASVK_MAX_FRAMES_PER_SUBMIT is set to 0 (unlimited) to allow full batching.
-    * Previously was 1 which artificially limited parallelism.
+   /* Determine how many frames to process based on queue size and limit.
+    * When frames accumulate (e.g., 4K video on slow hardware with --video-sync=display-vdrop),
+    * we drop older frames and only process the most recent ones to prevent freezing.
     *
-    * Note: We keep frames_to_process as a variable (even though it equals
-    * total_decode_count) to allow easy re-enabling of frame limiting in the
-    * future if needed for debugging or performance tuning.
+    * Strategy:
+    * - If queue <= limit or limit is 0 (unlimited): process all frames
+    * - If queue > limit: skip old frames, process only the most recent 'limit' frames
+    *
+    * This prevents the "freeze then catch-up" behavior by maintaining real-time
+    * playback at the cost of dropping frames that are already too old to display.
     */
-   uint32_t frames_to_process = total_decode_count;
+   uint32_t frames_to_process;
+   uint32_t skip_count = 0;  /* Number of old frames to drop */
+   const uint32_t max_frames = HASVK_MAX_FRAMES_PER_SUBMIT;
+
+   if (max_frames == 0 || total_decode_count <= max_frames) {
+      /* Process all frames - queue is manageable or no limit set */
+      frames_to_process = total_decode_count;
+   } else {
+      /* Queue overflow - drop oldest frames, keep newest ones */
+      frames_to_process = max_frames;
+      skip_count = total_decode_count - frames_to_process;
+
+      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+         fprintf(stderr, "hasvk Video: Frame drop - queue overflow! "
+                 "Total=%u, Processing=%u, Dropping=%u oldest frames\n",
+                 total_decode_count, frames_to_process, skip_count);
+      }
+   }
 
    /* Acquire VDPAU mutex to serialize decode operations across all sessions.
     * This is necessary because:
@@ -1533,12 +1552,22 @@ anv_vdpau_execute_deferred_decodes(struct anv_device *device,
     * This allows VA-API to pipeline multiple decodes on the GPU instead of
     * serializing them. Each vdp_decoder_render submits work to VA-API but
     * doesn't wait for completion.
+    *
+    * When dropping frames, we skip the oldest frames and only process the
+    * most recent ones to maintain real-time playback.
     */
    uint32_t frame_index = 0;
    util_dynarray_foreach(&cmd_buffer->video.vdpau_decodes,
                          struct anv_vdpau_decode_cmd, decode_cmd)
    {
-      if (frame_index >= frames_to_process) {
+      /* Skip old frames if we're dropping */
+      if (frame_index < skip_count) {
+         frame_index++;
+         continue;
+      }
+
+      /* Stop after processing the desired number of frames */
+      if (frame_index >= skip_count + frames_to_process) {
          break;
       }
 
@@ -1576,12 +1605,20 @@ anv_vdpau_execute_deferred_decodes(struct anv_device *device,
     * submitted and can execute in parallel on the GPU.
     *
     * Try DMA-buf zero-copy path first, fall back to CPU copy if unavailable.
+    * Only copy frames that were actually decoded (skip old dropped frames).
     */
    frame_index = 0;
    util_dynarray_foreach(&cmd_buffer->video.vdpau_decodes,
                          struct anv_vdpau_decode_cmd, decode_cmd)
    {
-      if (frame_index >= frames_to_process) {
+      /* Skip old frames that were not decoded */
+      if (frame_index < skip_count) {
+         frame_index++;
+         continue;
+      }
+
+      /* Stop after processing the desired number of frames */
+      if (frame_index >= skip_count + frames_to_process) {
          break;
       }
 
