@@ -936,18 +936,22 @@ anv_vdpau_copy_surface_to_image_dmabuf(struct anv_device *device,
    }
 
    /* Import the DMA-buf FD as a BO using ANV's device import function
-    * This takes ownership of the FD, so we don't need to close it ourselves.
+    * Note: DRM_IOCTL_PRIME_FD_TO_HANDLE duplicates the FD internally but
+    * does NOT take ownership. We must close dmabuf_fd ourselves.
     */
    struct anv_bo *imported_bo = NULL;
    VkResult result = anv_device_import_bo(device, dmabuf_fd,
                                           ANV_BO_ALLOC_EXTERNAL,
                                           0 /* client_address */,
                                           &imported_bo);
+
+   /* Close the DMA-buf FD - the kernel has already duplicated it if needed */
+   close(dmabuf_fd);
+
    if (result != VK_SUCCESS || !imported_bo) {
       if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
          fprintf(stderr, "hasvk Video DMA-buf: Failed to import BO (error=%d)\n", result);
       }
-      /* Note: FD was already closed by anv_device_import_bo on failure */
 
       /* BO import failure usually means GPU is out of memory or address space.
        * Evict old surfaces to free memory, but keep enough for reference frames.
