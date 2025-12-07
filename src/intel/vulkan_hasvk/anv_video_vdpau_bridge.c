@@ -106,11 +106,11 @@
  * providing sufficient DPB capacity. Least-recently-used surfaces are evicted when full.
  */
 #ifndef HASVK_MAX_SURFACE_CACHE_SIZE_4K
-#define HASVK_MAX_SURFACE_CACHE_SIZE_4K 8
+#define HASVK_MAX_SURFACE_CACHE_SIZE_4K 12
 #endif
 
 #ifndef HASVK_MAX_SURFACE_CACHE_SIZE_HD
-#define HASVK_MAX_SURFACE_CACHE_SIZE_HD 12
+#define HASVK_MAX_SURFACE_CACHE_SIZE_HD 16
 #endif
 
 /**
