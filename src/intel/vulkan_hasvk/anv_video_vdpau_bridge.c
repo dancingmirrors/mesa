@@ -84,19 +84,9 @@
 #define YTILE_HEIGHT 32
 #define YTILE_SPAN 16
 
-/* Maximum frames to process per submit for video decode.
- * When the decode queue exceeds this threshold, we drop intermediate frames
- * to prevent backlog buildup that causes video freezing.
- *
- * Setting this to 0 means unlimited (process all queued frames), which can
- * cause freezing with --video-sync=display-vdrop on slow hardware.
- *
- * For 4K video on Ivy Bridge, processing 2-3 frames per submit provides
- * good balance between throughput and latency. Frames beyond this limit
- * are intelligently dropped to maintain real-time playback.
- */
+/* Maximum frames to process per submit for video decode. */
 #ifndef HASVK_MAX_FRAMES_PER_SUBMIT
-#define HASVK_MAX_FRAMES_PER_SUBMIT 3
+#define HASVK_MAX_FRAMES_PER_SUBMIT 0
 #endif
 
 /* Maximum VDPAU surfaces to cache for video decode.

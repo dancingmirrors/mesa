@@ -201,6 +201,33 @@ anv_GetPhysicalDeviceVideoFormatPropertiesKHR(VkPhysicalDevice physicalDevice,
       usage_flags |=
          VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
 
+   /* Check if this is for H.264 decode by examining the video profile list */
+   bool is_h264_decode = false;
+   const VkVideoProfileListInfoKHR *profile_list =
+      vk_find_struct_const(pVideoFormatInfo->pNext, VIDEO_PROFILE_LIST_INFO_KHR);
+
+   if (profile_list && profile_list->pProfiles) {
+      for (uint32_t i = 0; i < profile_list->profileCount; i++) {
+         if (profile_list->pProfiles[i].videoCodecOperation ==
+             VK_VIDEO_CODEC_OPERATION_DECODE_H264_BIT_KHR) {
+            is_h264_decode = true;
+            break;
+         }
+      }
+   }
+
+   if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+      fprintf(stderr, "hasvk Video: GetPhysicalDeviceVideoFormatPropertiesKHR called\n");
+      fprintf(stderr, "  profile_list = %p\n", (void*)profile_list);
+      if (profile_list) {
+         fprintf(stderr, "  profileCount = %u\n", profile_list->profileCount);
+         fprintf(stderr, "  pProfiles = %p\n", (void*)profile_list->pProfiles);
+      }
+      fprintf(stderr, "  is_h264_decode = %s\n", is_h264_decode ? "true" : "false");
+      fprintf(stderr, "  returning imageTiling = %s\n",
+              is_h264_decode ? "LINEAR" : "OPTIMAL");
+   }
+
    pVideoFormatProperties[0].sType =
       VK_STRUCTURE_TYPE_VIDEO_FORMAT_PROPERTIES_KHR;
    pVideoFormatProperties[0].pNext = NULL;
@@ -217,7 +244,15 @@ anv_GetPhysicalDeviceVideoFormatPropertiesKHR(VkPhysicalDevice physicalDevice,
       VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT | VK_IMAGE_CREATE_EXTENDED_USAGE_BIT
       | VK_IMAGE_CREATE_ALIAS_BIT;
    pVideoFormatProperties[0].imageType = VK_IMAGE_TYPE_2D;
-   pVideoFormatProperties[0].imageTiling = VK_IMAGE_TILING_OPTIMAL;
+
+   /* Use linear tiling only for H.264 decode to avoid expensive CPU tiling
+    * conversions that cause slow motion playback for 4K video.
+    * For other video operations (encode, other codecs, etc.), use optimal
+    * (Y-tiled) format as required by Ivy Bridge PRM for best performance.
+    */
+   pVideoFormatProperties[0].imageTiling = is_h264_decode ?
+      VK_IMAGE_TILING_LINEAR : VK_IMAGE_TILING_OPTIMAL;
+
    pVideoFormatProperties[0].imageUsageFlags = usage_flags;
    return VK_SUCCESS;
 }
