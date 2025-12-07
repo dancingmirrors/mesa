@@ -17,6 +17,9 @@
 #include "gl-vdpau-interop.h"
 #include "globals.h"
 #include "trace.h"
+#include "api.h"
+#include "handle-storage.h"
+#include "ctx-stack.h"
 
 /* Maximum number of registered surfaces */
 #define MAX_SURFACES 64
@@ -41,10 +44,12 @@ static struct {
     SurfaceRegistration surfaces[MAX_SURFACES];
     GLvdpauSurfaceNV next_handle;
     GLboolean initialized;
+    PFNGLCOPYIMAGESUBDATAPROC glCopyImageSubData_cached;  /* Cached function pointer */
 } vdpau_gl_state = {
     .mutex = PTHREAD_MUTEX_INITIALIZER,
     .next_handle = 1,
     .initialized = GL_FALSE,
+    .glCopyImageSubData_cached = NULL,
 };
 
 /* Find a free surface slot */
@@ -337,15 +342,65 @@ glVDPAUSurfaceAccessNV(GLvdpauSurfaceNV surface, GLenum access)
 }
 
 /*
+ * Helper function to copy texture content from VDPAU internal texture to application texture
+ */
+static void
+copy_texture_to_app(GLuint src_texture_id, GLuint dst_texture_id, GLenum target,
+                   uint32_t width, uint32_t height, VdpDeviceData *deviceData)
+{
+    /* Ensure the destination texture is allocated with correct size/format */
+    glBindTexture(target, dst_texture_id);
+    glTexImage2D(target, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    glTexParameteri(target, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(target, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(target, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(target, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    /* Use cached or fetch glCopyImageSubData function pointer */
+    static int checked_once = 0;
+    if (!checked_once) {
+        vdpau_gl_state.glCopyImageSubData_cached =
+            (PFNGLCOPYIMAGESUBDATAPROC)glXGetProcAddress((const GLubyte *)"glCopyImageSubData");
+        checked_once = 1;
+    }
+
+    if (vdpau_gl_state.glCopyImageSubData_cached) {
+        /* Fast path: use glCopyImageSubData (OpenGL 4.3+) */
+        vdpau_gl_state.glCopyImageSubData_cached(
+            src_texture_id, GL_TEXTURE_2D, 0, 0, 0, 0,
+            dst_texture_id, target, 0, 0, 0, 0,
+            width, height, 1);
+    } else {
+        /* Fallback: use FBO blit */
+        GLuint temp_fbo;
+        glGenFramebuffers(1, &temp_fbo);
+        GLint current_read_fbo, current_draw_fbo;
+        glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &current_read_fbo);
+        glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &current_draw_fbo);
+
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, temp_fbo);
+        glFramebufferTexture2D(GL_READ_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
+                             GL_TEXTURE_2D, src_texture_id, 0);
+
+        glBindTexture(target, dst_texture_id);
+        glCopyTexSubImage2D(target, 0, 0, 0, 0, 0, width, height);
+
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, current_read_fbo);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, current_draw_fbo);
+        glDeleteFramebuffers(1, &temp_fbo);
+    }
+}
+
+/*
  * Map surfaces for GPU access
  *
  * This is where the actual VDPAU surface data is made available to OpenGL textures.
- * For video surfaces, this triggers VA-API to GL texture synchronization.
+ * For video surfaces, this may trigger VA-API to GL texture synchronization.
  * For output surfaces, the GL texture is already up-to-date.
  *
  * The actual implementation relies on the fact that libvdpau-va-gl maintains
- * GL textures for both video and output surfaces. We just need to ensure the
- * textures are up-to-date and bound to the application's texture names.
+ * GL textures for both video and output surfaces. We bind the internal GL texture
+ * to the application's texture names.
  */
 __attribute__((visibility("default")))
 GLAPI void APIENTRY
@@ -364,25 +419,89 @@ glVDPAUMapSurfacesNV(GLsizei numSurfaces, const GLvdpauSurfaceNV *surfaces)
 
     for (GLsizei i = 0; i < numSurfaces; i++) {
         SurfaceRegistration *reg = find_surface(surfaces[i]);
-        if (reg) {
-            reg->is_mapped = GL_TRUE;
+        if (!reg) {
+            continue;
+        }
 
-            /* For video surfaces, we need to ensure VA-API surface is synced to GL texture.
-             * This is normally done in vdpVideoMixerRender, but with GL_NV_vdpau_interop,
-             * the application bypasses the mixer and reads directly from the texture.
-             *
-             * The VDPAU surface pointer actually points to a VdpVideoSurface or VdpOutputSurface
-             * handle. We can't directly access the surface data here without breaking the
-             * abstraction, so we just mark it as mapped. The actual sync happens when the
-             * surface is used (either through the mixer or through direct texture access).
-             *
-             * TODO: For a more complete implementation, this should:
-             * 1. Look up the actual VdpVideoSurfaceData or VdpOutputSurfaceData from the handle
-             * 2. Check if sync_va_to_glx is set (for video surfaces)
-             * 3. Call _render_va_surf_to_texture if needed (from api-video-mixer.c)
-             * 4. Bind the internal GL texture to the application's texture names
-             * This would require access to handle_acquire/handle_release and deviceData.
-             */
+        reg->is_mapped = GL_TRUE;
+
+        /* The vdp_surface field contains the VDPAU surface handle (VdpVideoSurface or VdpOutputSurface).
+         * We need to look up the actual surface data to access the internal GL texture.
+         */
+
+        if (reg->is_video_surface) {
+            /* Look up video surface data */
+            VdpVideoSurface vdp_handle = (VdpVideoSurface)(uintptr_t)reg->vdp_surface;
+            VdpVideoSurfaceData *surfData = handle_acquire(vdp_handle, HANDLETYPE_VIDEO_SURFACE);
+
+            if (surfData && surfData->deviceData && surfData->tex_id != 0) {
+                VdpDeviceData *deviceData = surfData->deviceData;
+
+                /* For video surfaces decoded via hasvk's DMA-buf path, the texture (surfData->tex_id)
+                 * already contains the decoded frame data. The DMA-buf import and tiled-to-linear
+                 * copy happens in anv_video_vdpau_bridge.c during decode, which updates the
+                 * internal GL texture.
+                 *
+                 * We need to make this texture data available through the application's texture names.
+                 * Since OpenGL doesn't support true texture aliasing, we copy the texture content.
+                 */
+
+                glx_ctx_push_thread_local(deviceData);
+
+                /* Save current GL state */
+                GLint current_texture;
+                glGetIntegerv(GL_TEXTURE_BINDING_2D, &current_texture);
+
+                /* Copy to each application texture */
+                for (GLsizei j = 0; j < reg->num_textures; j++) {
+                    if (reg->texture_names[j] != 0) {
+                        copy_texture_to_app(surfData->tex_id, reg->texture_names[j],
+                                          reg->target, surfData->width, surfData->height,
+                                          deviceData);
+                    }
+                }
+
+                /* Restore GL state */
+                glBindTexture(GL_TEXTURE_2D, current_texture);
+                glx_ctx_pop();
+            }
+
+            if (surfData) {
+                handle_release(vdp_handle);
+            }
+        } else {
+            /* Look up output surface data */
+            VdpOutputSurface vdp_handle = (VdpOutputSurface)(uintptr_t)reg->vdp_surface;
+            VdpOutputSurfaceData *surfData = handle_acquire(vdp_handle, HANDLETYPE_OUTPUT_SURFACE);
+
+            if (surfData && surfData->deviceData && surfData->tex_id != 0) {
+                VdpDeviceData *deviceData = surfData->deviceData;
+
+                /* For output surfaces, the texture is always up-to-date as it's the render target */
+
+                glx_ctx_push_thread_local(deviceData);
+
+                /* Save current GL state */
+                GLint current_texture;
+                glGetIntegerv(GL_TEXTURE_BINDING_2D, &current_texture);
+
+                /* Copy to each application texture */
+                for (GLsizei j = 0; j < reg->num_textures; j++) {
+                    if (reg->texture_names[j] != 0) {
+                        copy_texture_to_app(surfData->tex_id, reg->texture_names[j],
+                                          reg->target, surfData->width, surfData->height,
+                                          deviceData);
+                    }
+                }
+
+                /* Restore GL state */
+                glBindTexture(GL_TEXTURE_2D, current_texture);
+                glx_ctx_pop();
+            }
+
+            if (surfData) {
+                handle_release(vdp_handle);
+            }
         }
     }
 
