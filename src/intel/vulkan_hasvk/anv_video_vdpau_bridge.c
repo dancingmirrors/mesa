@@ -967,6 +967,32 @@ anv_vdpau_copy_surface_to_image_dmabuf(struct anv_device *device,
               imported_bo->gem_handle, imported_bo->size);
    }
 
+   /* CRITICAL FOR CACHE COHERENCY: Wait for GPU operations to complete.
+    *
+    * The imported DMA-buf was written by the VA-API video decoder (GPU render domain).
+    * Even though vaSyncSurface was called, we need to ensure the BO is idle before
+    * CPU access. Modern kernels use implicit synchronization instead of the deprecated
+    * set_domain ioctl.
+    *
+    * We use DRM_IOCTL_I915_GEM_WAIT to:
+    * 1. Wait for any pending GPU operations to complete
+    * 2. Allow the kernel to handle cache coherency implicitly
+    *
+    * Without this wait, we see corruption in the top rows of the video frame because
+    * the CPU may try to read before GPU writes complete.
+    *
+    * This is especially critical under heavy system load when cache pressure is high.
+    */
+   int64_t timeout_ns = INT64_MAX; /* Wait indefinitely */
+   int ret = anv_gem_wait(device, imported_bo->gem_handle, &timeout_ns);
+   if (ret != 0) {
+      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+         fprintf(stderr, "hasvk Video DMA-buf: gem_wait failed (ret=%d), "
+                 "may have cache coherency issues\n", ret);
+      }
+      /* Continue anyway - better to have potential corruption than fail completely */
+   }
+
    /* Now perform GPU copy from imported BO to destination image using genX_gpu_memcpy
     * We need to copy both Y and UV planes.
     *
@@ -1053,8 +1079,24 @@ anv_vdpau_copy_surface_to_image_dmabuf(struct anv_device *device,
     */
    enum isl_tiling dst_tiling = y_surface->isl.tiling;
 
+   /* CACHE COHERENCY: Wait for GPU operations on destination BO to complete.
+    * The destination image may have been used by GPU previously, so we need to
+    * ensure it's idle before CPU write access. Modern kernels handle cache
+    * coherency implicitly through the mapping and synchronization primitives.
+    */
+   timeout_ns = INT64_MAX; /* Wait indefinitely */
+   ret = anv_gem_wait(device, dst_binding->address.bo->gem_handle, &timeout_ns);
+   if (ret != 0) {
+      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+         fprintf(stderr, "hasvk Video DMA-buf: gem_wait for destination failed (ret=%d)\n", ret);
+      }
+      /* Continue anyway */
+   }
+
    /* Map both source (imported DMA-buf) and destination BOs for CPU access
-    * Use WC (write-combine) mapping for tiled surfaces
+    * Use WC (write-combine) mapping for tiled surfaces.
+    * For linear surfaces, use regular cached mapping for better read performance
+    * since we'll be doing CPU reads.
     */
    void *src_ptr = anv_gem_mmap(device, imported_bo->gem_handle, 0, imported_bo->size,
                                 src_tiling == ISL_TILING_LINEAR ? 0 : I915_MMAP_WC);
@@ -1259,42 +1301,54 @@ anv_vdpau_copy_surface_to_image_dmabuf(struct anv_device *device,
    } else {
       /* Both linear - use direct memcpy or row-by-row copy */
       if (pitches[0] == y_surface->isl.row_pitch_B && pitches[1] == uv_surface->isl.row_pitch_B) {
-         /* Pitch matches - use bulk memcpy */
+         /* Pitch matches - use bulk memcpy for maximum performance */
          if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-            fprintf(stderr, "hasvk Video DMA-buf: Using bulk memcpy (pitch match)\n");
+            fprintf(stderr, "hasvk Video DMA-buf: Using bulk memcpy (pitch match, linear)\n");
          }
 
          memcpy(dst_y, src_y, height * pitches[0]);
          memcpy(dst_uv, src_uv, (height / 2) * pitches[1]);
       } else {
-         /* Pitch mismatch - copy row by row */
+         /* Pitch mismatch - copy row by row
+          * Use width as the copy width since both surfaces are linear and we're
+          * copying the actual video data (not padding).
+          */
          if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-            fprintf(stderr, "hasvk Video DMA-buf: Using row-by-row copy (pitch mismatch: src=%u/%u, dst=%u/%u)\n",
+            fprintf(stderr, "hasvk Video DMA-buf: Using row-by-row copy (pitch mismatch: src Y=%u UV=%u, dst Y=%u UV=%u)\n",
                     pitches[0], pitches[1], y_surface->isl.row_pitch_B, uv_surface->isl.row_pitch_B);
          }
 
-         uint32_t y_copy_width = MIN2(pitches[0], y_surface->isl.row_pitch_B);
-         uint32_t uv_copy_width = MIN2(pitches[1], uv_surface->isl.row_pitch_B);
+         /* For NV12:
+          * Y plane: width bytes per row (1 byte per pixel)
+          * UV plane: width bytes per row (2 bytes per 2 pixels, interleaved)
+          */
+         uint32_t y_row_bytes = width;
+         uint32_t uv_row_bytes = width;
 
          /* Copy Y plane row by row */
          for (uint32_t row = 0; row < height; row++) {
             memcpy(dst_y + row * y_surface->isl.row_pitch_B,
                    src_y + row * pitches[0],
-                   y_copy_width);
+                   y_row_bytes);
          }
 
          /* Copy UV plane row by row */
          for (uint32_t row = 0; row < height / 2; row++) {
             memcpy(dst_uv + row * uv_surface->isl.row_pitch_B,
                    src_uv + row * pitches[1],
-                   uv_copy_width);
+                   uv_row_bytes);
          }
       }
    }
 
-   /* Ensure all CPU writes are visible to GPU before unmapping
-    * This fence is necessary for all copy modes (tiled and linear) to ensure
-    * proper memory ordering when CPU writes data that GPU will later read.
+   /* Ensure all CPU writes are visible to GPU before unmapping.
+    *
+    * Memory ordering requirements:
+    * - For WC-mapped (tiled) surfaces: mfence ensures WC buffer flush
+    * - For cached (linear) surfaces: mfence ensures store ordering
+    *
+    * Modern kernels handle cache coherency implicitly, but we still need
+    * mfence to ensure all CPU stores complete before releasing the mapping.
     */
    __builtin_ia32_mfence();
 
@@ -1942,18 +1996,24 @@ cleanup:
    /* Clear all commands from the queue */
    util_dynarray_clear(&cmd_buffer->video.vdpau_decodes);
 
-   /* Add texture cache invalidate for coherency after decode attempts
-    * We only need to invalidate once after video frames have been decoded
-    * and copied, not once per frame. This significantly reduces cache thrashing
-    * and improves performance.
+   /* Add cache invalidation for coherency after decode and copy operations.
+    *
+    * We need both texture cache invalidate and data cache flush because:
+    * 1. TEXTURE_CACHE_INVALIDATE: Ensures GPU sampler sees fresh data when
+    *    reading the decoded video frames as textures
+    * 2. DATA_CACHE_FLUSH: Ensures any CPU writes during the copy are visible
+    *    to GPU before it starts using the surfaces
+    *
+    * This is done once per batch (not per frame) to reduce overhead while
+    * still ensuring proper cache coherency. Under heavy system load, cache
+    * pressure is high and these flushes are critical to prevent flickering.
     *
     * We always reach here with total_decode_count > 0 due to early return above.
-    * We invalidate even if some frames were dropped or there were errors, to
-    * ensure cache coherency for frames that were successfully processed.
     */
    anv_add_pending_pipe_bits(cmd_buffer,
-                             ANV_PIPE_TEXTURE_CACHE_INVALIDATE_BIT,
-                             "VDPAU decode batch texture cache invalidate");
+                             ANV_PIPE_TEXTURE_CACHE_INVALIDATE_BIT |
+                             ANV_PIPE_DATA_CACHE_FLUSH_BIT,
+                             "VDPAU decode batch cache coherency");
 
    return result;
 }
