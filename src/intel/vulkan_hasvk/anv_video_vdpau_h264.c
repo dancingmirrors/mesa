@@ -126,7 +126,7 @@ anv_vdpau_translate_h264_picture_params(
    vdp_pic->field_order_cnt[1] = h264_pic_info->pStdPictureInfo->PicOrderCnt[1];
 
    /* Copy scaling lists from PPS if present, otherwise use flat scaling */
-   if (pps->base.pScalingLists) {
+   if (pps->base.flags.pic_scaling_matrix_present_flag && pps->base.pScalingLists) {
       const StdVideoH264ScalingLists *scaling = pps->base.pScalingLists;
 
       /* 4x4 scaling lists (6 lists, 16 coefficients each) */
