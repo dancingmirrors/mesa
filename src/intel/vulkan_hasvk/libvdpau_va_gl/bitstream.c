@@ -70,6 +70,13 @@ rbsp_consume_byte(rbsp_state_t *state)
     else state->zeros_in_row = 0;
 
     if (state->zeros_in_row >= 2) {
+        // Check bounds before reading emulation prevention byte
+        if (state->cur_ptr >= state->buf_ptr + state->byte_count) {
+            // Can't read EPB, rewind and signal error
+            state->cur_ptr--;
+            return -1;
+        }
+
         uint8_t epb = *state->cur_ptr++;
         if (0 != epb) state->zeros_in_row = 0;
         // if epb is not actually have 0x03 value, it's not an emulation prevention
@@ -83,14 +90,20 @@ inline
 int
 rbsp_consume_bit(rbsp_state_t *state)
 {
-    assert (state->cur_ptr < state->buf_ptr + state->byte_count);
+    // Check buffer bounds before reading
+    if (state->cur_ptr >= state->buf_ptr + state->byte_count)
+        return -1;
 
     int value = !!(*state->cur_ptr & (1 << state->bit_ptr));
     if (state->bit_ptr > 0) {
         state->bit_ptr --;
     } else {
+        int byte_result = rbsp_consume_byte(state);
+        if (byte_result < 0) {
+            // Failed to consume next byte - we've read the last bit of the buffer
+            return -1;
+        }
         state->bit_ptr = 7;
-        rbsp_consume_byte(state);   // handles emulation prevention bytes
     }
     state->bits_eaten += 1;
     return value;
@@ -101,8 +114,14 @@ unsigned int
 rbsp_get_u(rbsp_state_t *state, int bitcount)
 {
     unsigned int value = 0;
-    for (int k = 0; k < bitcount; k ++)
-        value = (value << 1) + rbsp_consume_bit(state);
+    for (int k = 0; k < bitcount; k ++) {
+        int bit = rbsp_consume_bit(state);
+        if (bit < 0) {
+            // Error reading bit, return current value
+            return value;
+        }
+        value = (value << 1) + bit;
+    }
 
     return value;
 }
@@ -116,6 +135,10 @@ rbsp_get_uev(rbsp_state_t *state)
     do {
         zerobit_count ++;
         current_bit = rbsp_consume_bit(state);
+        if (current_bit < 0) {
+            // Error reading bit, return 0
+            return 0;
+        }
     } while (0 == current_bit);
 
     if (0 == zerobit_count) return 0;
@@ -132,6 +155,10 @@ rbsp_get_sev(rbsp_state_t *state)
     do {
         zerobit_count ++;
         current_bit = rbsp_consume_bit(state);
+        if (current_bit < 0) {
+            // Error reading bit, return 0
+            return 0;
+        }
     } while (0 == current_bit);
 
     if (0 == zerobit_count) return 0;
