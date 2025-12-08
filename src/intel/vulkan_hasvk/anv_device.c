@@ -1673,18 +1673,11 @@ anv_physical_device_try_create(struct vk_instance *vk_instance,
 
    bool is_alpha = false;
 
-   /* Bay Trail does not have sufficient hardware capabilities for Vulkan */
-   if (devinfo.platform == INTEL_PLATFORM_BYT) {
-      result = vk_errorf(instance, VK_ERROR_INCOMPATIBLE_DRIVER,
-                         "Bay Trail does not support Vulkan");
-      goto fail_fd;
-   }
-
-   /* Gen7 (Ivy Bridge) and Gen7.5 (Haswell) are fully supported */
+    /* I don't know if Bay Trail actually works but we can at least try. */
    if (devinfo.platform == INTEL_PLATFORM_IVB ||
+       devinfo.platform == INTEL_PLATFORM_BYT ||
        devinfo.platform == INTEL_PLATFORM_HSW ||
        devinfo.ver == 8) {
-      /* Gen7/7.5/8 fully supported */
       is_alpha = false;
    }
    else {
