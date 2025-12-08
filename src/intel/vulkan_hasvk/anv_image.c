@@ -1377,18 +1377,6 @@ anv_image_init(struct anv_device *device, struct anv_image *image,
       vk_find_struct_const(pCreateInfo->pNext,
                            VIDEO_PROFILE_LIST_INFO_KHR);
 
-   /* Check if this is H.264 video decode */
-   bool is_h264_decode = false;
-   if (video_profile && video_profile->pProfiles) {
-      for (uint32_t i = 0; i < video_profile->profileCount; i++) {
-         if (video_profile->pProfiles[i].videoCodecOperation ==
-             VK_VIDEO_CODEC_OPERATION_DECODE_H264_BIT_KHR) {
-            is_h264_decode = true;
-            break;
-         }
-      }
-   }
-
    if (video_profile) {
       r = add_video_buffers(device, image, video_profile);
       if (r != VK_SUCCESS)
@@ -1396,26 +1384,24 @@ anv_image_init(struct anv_device *device, struct anv_image *image,
 
       /* Check that video surfaces are using appropriate tiling for Ivy Bridge.
        *
-       * For H.264 decode, linear tiling is acceptable and provides better performance
-       * by avoiding expensive CPU tiling conversions during frame copies.
+       * Y-tiling is required for proper hardware support and optimal performance.
+       * When Vulkan images use Y-tiling to match VA-API surface format, we can
+       * use fast direct memcpy instead of expensive CPU detiling operations.
        *
-       * For other video operations, Y-tiling is required by Ivy Bridge PRM.
        * W-tiling is also acceptable as it's compatible with Y-tiling (same physical
        * footprint: 128B x 32rows, with two rows interleaved for stencil data).
        */
       for (uint32_t p = 0; p < image->n_planes; p++) {
          enum isl_tiling tiling = image->planes[p].primary_surface.isl.tiling;
 
-         /* For H.264 decode, both linear and Y-tiling are acceptable */
+         /* Y-tiling or W-tiling are required for video operations */
          bool tiling_ok = (tiling == ISL_TILING_Y0 || tiling == ISL_TILING_W);
-         if (is_h264_decode) {
-            tiling_ok = tiling_ok || (tiling == ISL_TILING_LINEAR);
-         }
 
          if (!tiling_ok) {
             fprintf(stderr,
                     "hasvk: WARNING: Video surface plane %u is using %s tiling. "
-                    "This may cause video decode failures on Ivy Bridge.\n",
+                    "This may cause video decode failures or poor performance on Ivy Bridge. "
+                    "Y-tiling is required for optimal hardware support.\n",
                     p, isl_tiling_to_name(tiling));
          }
 
@@ -1494,22 +1480,10 @@ anv_image_init_from_create_info(struct anv_device *device,
    const VkVideoProfileListInfoKHR *video_profile =
       vk_find_struct_const(pCreateInfo->pNext, VIDEO_PROFILE_LIST_INFO_KHR);
 
-   /* Check if this is H.264 video decode */
-   bool is_h264_decode = false;
-   if (video_profile && video_profile->pProfiles) {
-      for (uint32_t i = 0; i < video_profile->profileCount; i++) {
-         if (video_profile->pProfiles[i].videoCodecOperation ==
-             VK_VIDEO_CODEC_OPERATION_DECODE_H264_BIT_KHR) {
-            is_h264_decode = true;
-            break;
-         }
-      }
-   }
-
    /* For video surfaces, we need to strip VK_IMAGE_CREATE_BLOCK_TEXEL_VIEW_COMPATIBLE_BIT
     * as it may cause unwanted linear tiling fallback for some video operations.
     *
-    * For H.264 decode specifically, we force linear tiling to avoid expensive CPU
+    * For video decode, we use Y-tiling to match VA-API output format. This enables
     * tiling conversions that cause slow motion playback on 4K video (93% CPU usage).
     * For other video operations (encode, other codecs), we force Y-tiling as required
     * by Ivy Bridge PRM for proper hardware support.
@@ -1519,14 +1493,6 @@ anv_image_init_from_create_info(struct anv_device *device,
       modified_create_info = *pCreateInfo;
       modified_create_info.flags &=
          ~VK_IMAGE_CREATE_BLOCK_TEXEL_VIEW_COMPATIBLE_BIT;
-
-      /* Force linear tiling for H.264 decode to avoid expensive CPU copies */
-      if (is_h264_decode && pCreateInfo->tiling == VK_IMAGE_TILING_OPTIMAL) {
-         modified_create_info.tiling = VK_IMAGE_TILING_LINEAR;
-         if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-            fprintf(stderr, "hasvk Video: Forcing linear tiling for H.264 decode image\n");
-         }
-      }
 
       pCreateInfo = &modified_create_info;
    }
@@ -1547,12 +1513,11 @@ anv_image_init_from_create_info(struct anv_device *device,
        !isl_drm_modifier_has_aux(mod_explicit_info->drmFormatModifier))
       create_info.isl_extra_usage_flags |= ISL_SURF_USAGE_DISABLE_AUX_BIT;
 
-   /* For video surfaces, force Y tiling for proper hardware support,
-    * EXCEPT for H.264 decode which uses linear tiling to avoid expensive
-    * CPU tiling conversions.
+   /* For video surfaces, force Y tiling for proper hardware support.
+    * Y-tiling matches VA-API output format, enabling fast direct memcpy
+    * instead of expensive CPU detiling operations.
     */
-   if (video_profile && pCreateInfo->tiling == VK_IMAGE_TILING_OPTIMAL &&
-       !is_h264_decode) {
+   if (video_profile && pCreateInfo->tiling == VK_IMAGE_TILING_OPTIMAL) {
       create_info.isl_tiling_flags = ISL_TILING_Y0_BIT;
    }
 

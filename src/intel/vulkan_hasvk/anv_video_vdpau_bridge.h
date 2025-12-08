@@ -153,6 +153,14 @@ struct anv_vdpau_session {
    void *va_display;               /* VA-API display handle (VADisplay) */
    void *libva;                    /* libva.so handle for dynamic loading */
    bool dmabuf_supported;          /* True if DMA-buf export is supported */
+
+   /* Cached linear buffers for CPU copy path (reused across frames)
+    * Avoids repeated malloc/free overhead for large 4K video frames
+    */
+   void *linear_y_buffer;          /* Cached Y plane buffer */
+   void *linear_uv_buffer;         /* Cached UV plane buffer */
+   size_t linear_y_buffer_size;    /* Current size of Y buffer */
+   size_t linear_uv_buffer_size;   /* Current size of UV buffer */
 };
 
 /**

@@ -84,17 +84,18 @@
 #define YTILE_HEIGHT 32
 #define YTILE_SPAN 16
 
-/* Maximum frames to process per submit for video decode. */
+/* Maximum frames to process per submit for video decode.
+ * Set to 0 for unlimited - process all queued frames.
+ *
+ * Historical note: This was previously limited to work around FD leaks
+ * causing VK_ERROR_OUT_OF_HOST_MEMORY. The real fix is proper FD management.
+ */
 #ifndef HASVK_MAX_FRAMES_PER_SUBMIT
-#define HASVK_MAX_FRAMES_PER_SUBMIT 2
+#define HASVK_MAX_FRAMES_PER_SUBMIT 0
 #endif
 
-#ifndef HASVK_MAX_SURFACE_CACHE_SIZE_4K
-#define HASVK_MAX_SURFACE_CACHE_SIZE_4K 24
-#endif
-
-#ifndef HASVK_MAX_SURFACE_CACHE_SIZE_HD
-#define HASVK_MAX_SURFACE_CACHE_SIZE_HD 32
+#ifndef HASVK_MAX_SURFACE_CACHE_SIZE
+#define HASVK_MAX_SURFACE_CACHE_SIZE 32
 #endif
 
 /**
@@ -462,31 +463,27 @@ anv_vdpau_session_create(struct anv_device *device,
    }
 
    /* Allocate surface mapping for DPB management
-    * Use resolution-based cache sizing to prevent GPU memory exhaustion:
-    * - 4K and above: smaller cache (5 surfaces = ~88MB for 4K NV12)
-    * - 1080p and below: larger cache (8 surfaces = ~24MB for 1080p NV12)
+    * Use a reasonable cache size to prevent GPU memory exhaustion:
+    * - Video surfaces can be ~17.7MB each for 4K NV12
+    * - 32 surfaces = ~566MB for 4K, ~96MB for 1080p
     *
     * hasvk hardware typically shares system RAM but has limited GPU address
-    * space.
-    * 4K video surfaces (~17.7MB each) can quickly exhaust this, causing
-    * VK_ERROR_OUT_OF_DEVICE_MEMORY and vaExportSurfaceHandle failures.
+    * space (1.7GB GTT aperture). Cache size balances memory usage across
+    * all resolutions.
     */
    uint32_t requested_capacity = pCreateInfo->maxDpbSlots + 1;
-   uint32_t max_cache_size;
-
-   /* Determine if this is 4K or higher resolution
-    * 4K = 3840x2160, so use 3840 as the threshold
-    */
-   if (pCreateInfo->maxCodedExtent.width >= 3840 ||
-       pCreateInfo->maxCodedExtent.height >= 2160) {
-      max_cache_size = HASVK_MAX_SURFACE_CACHE_SIZE_4K;
-   } else {
-      max_cache_size = HASVK_MAX_SURFACE_CACHE_SIZE_HD;
-   }
+   uint32_t max_cache_size = HASVK_MAX_SURFACE_CACHE_SIZE;
 
    session->surface_map_capacity = MIN2(requested_capacity, max_cache_size);
    session->surface_map_size = 0;
    session->frame_counter = 0;
+
+   /* Initialize cached linear buffers (allocated on first use) */
+   session->linear_y_buffer = NULL;
+   session->linear_uv_buffer = NULL;
+   session->linear_y_buffer_size = 0;
+   session->linear_uv_buffer_size = 0;
+
    session->surface_map = vk_alloc(&device->vk.alloc,
                                    session->surface_map_capacity *
                                    sizeof(struct anv_vdpau_surface_map),
@@ -525,6 +522,12 @@ anv_vdpau_session_destroy(struct anv_device *device,
 
    if (session->vdp_surfaces)
       vk_free(&device->vk.alloc, session->vdp_surfaces);
+
+   /* Free cached linear buffers */
+   if (session->linear_y_buffer)
+      free(session->linear_y_buffer);
+   if (session->linear_uv_buffer)
+      free(session->linear_uv_buffer);
 
    /* Destroy decoder */
    if (session->vdp_decoder && session->vdp_decoder_destroy)
@@ -1073,16 +1076,27 @@ anv_vdpau_copy_surface_to_image_dmabuf(struct anv_device *device,
       /* Continue anyway */
    }
 
-   /* Map both source (imported DMA-buf) and destination BOs for CPU access
-    * Use WC (write-combine) mapping for tiled surfaces.
-    * For linear surfaces, use regular cached mapping for better read performance
-    * since we'll be doing CPU reads.
+   /* Map both source (imported DMA-buf) and destination BOs for CPU access.
+    *
+    * For same-tiling direct copies (Y-tiled → Y-tiled), use GTT mapping (cached)
+    * instead of WC for much better memcpy performance. When tiling matches and we're
+    * just doing bulk memcpy, CPU cache helps significantly.
+    *
+    * For tiling conversions (tiled ↔ linear), use WC mapping as ISL functions
+    * are optimized for WC and avoid cache pollution from temporary data.
     */
+   bool use_gtt_for_copy = (src_tiling == dst_tiling &&
+                            src_tiling != ISL_TILING_LINEAR &&
+                            pitches[0] == y_surface->isl.row_pitch_B &&
+                            pitches[1] == uv_surface->isl.row_pitch_B);
+
    void *src_ptr = anv_gem_mmap(device, imported_bo->gem_handle, 0, imported_bo->size,
-                                src_tiling == ISL_TILING_LINEAR ? 0 : I915_MMAP_WC);
+                                use_gtt_for_copy ? 0 :
+                                (src_tiling == ISL_TILING_LINEAR ? 0 : I915_MMAP_WC));
    void *dst_ptr = anv_gem_mmap(device, dst_binding->address.bo->gem_handle, 0,
                                 dst_binding->address.bo->size,
-                                dst_tiling == ISL_TILING_LINEAR ? 0 : I915_MMAP_WC);
+                                use_gtt_for_copy ? 0 :
+                                (dst_tiling == ISL_TILING_LINEAR ? 0 : I915_MMAP_WC));
 
    if (src_ptr == MAP_FAILED || src_ptr == NULL || dst_ptr == MAP_FAILED || dst_ptr == NULL) {
       if (src_ptr && src_ptr != MAP_FAILED)
@@ -1101,11 +1115,12 @@ anv_vdpau_copy_surface_to_image_dmabuf(struct anv_device *device,
    char *dst_y = (char *)dst_ptr + y_offset;
    char *dst_uv = (char *)dst_ptr + uv_offset;
 
-   /* For WC-mapped (tiled) memory, ensure all previous writes are visible
+   /* For cached (GTT) mapped memory, ensure CPU cache coherency.
+    * For WC-mapped memory, ensure all previous writes are visible.
     * This is critical for imported DMA-buf memory that may have been written
-    * by the GPU or video decoder
+    * by the GPU or video decoder.
     */
-   if (src_tiling != ISL_TILING_LINEAR) {
+   if (!use_gtt_for_copy && src_tiling != ISL_TILING_LINEAR) {
       __builtin_ia32_mfence();
    }
 
@@ -1113,89 +1128,149 @@ anv_vdpau_copy_surface_to_image_dmabuf(struct anv_device *device,
 
    /* Handle different source/destination tiling combinations */
    if (src_tiling == dst_tiling && src_tiling != ISL_TILING_LINEAR) {
-      /* Both tiled with same format - use tiled->linear->tiled to handle padding
-       * and pitch mismatches. Direct memcpy on tiled surfaces causes corruption
-       * (green rectangles) because it copies tile padding and doesn't respect
-       * tile boundaries properly, especially at frame edges.
+      /* Both tiled with same format.
+       * If pitches match, we can use direct memcpy which is much faster.
+       * Otherwise, fall back to tiled->linear->tiled for pitch conversion.
        */
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "hasvk Video DMA-buf: Using tiled->linear->tiled copy (both Y-tiled)\n");
-      }
+      if (pitches[0] == y_surface->isl.row_pitch_B &&
+          pitches[1] == uv_surface->isl.row_pitch_B) {
+         /* FAST PATH: Pitches match - use direct tile-aligned memcpy
+          * This avoids the expensive tiled->linear->tiled conversion
+          * and is safe when pitch/tiling are identical.
+          *
+          * Using GTT (cached) mapping for much better memcpy performance
+          * compared to WC (write-combine) mapping. CPU cache makes a huge
+          * difference for bulk memcpy operations on tiled memory.
+          *
+          * IMPORTANT: For Y-tiled surfaces, we must copy the full pitch
+          * worth of data per row because the tiling layout stores data in
+          * a specific pattern (128x32 tiles). Copying only the width would
+          * break the tile structure and cause corruption.
+          */
+         if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+            fprintf(stderr, "hasvk Video DMA-buf: Using direct tiled-to-tiled copy (pitch match, GTT cached)\n");
+            fprintf(stderr, "  Image dimensions: %ux%u\n",
+                    image->vk.extent.width, image->vk.extent.height);
+            fprintf(stderr, "  Y surface: pitch=%u, allocated=%zu bytes\n",
+                    y_surface->isl.row_pitch_B, y_surface->memory_range.size);
+            fprintf(stderr, "  UV surface: pitch=%u, allocated=%zu bytes\n",
+                    uv_surface->isl.row_pitch_B, uv_surface->memory_range.size);
+         }
 
-      /* Allocate temporary linear buffers for Y and UV planes
-       * Use tight packing (width as pitch) to avoid pitch mismatch issues
-       */
-      size_t y_linear_pitch = width;
-      size_t uv_linear_pitch = width;
-      size_t y_linear_size = height * y_linear_pitch;
-      size_t uv_linear_size = (height / 2) * uv_linear_pitch;
-      char *y_linear = malloc(y_linear_size);
-      char *uv_linear = malloc(uv_linear_size);
+         /* For Y-tiled surfaces, we must copy the FULL allocated surface size
+          * (memory_range.size), not just pitch × height. ISL allocates surfaces
+          * with tile alignment padding, so memory_range.size is larger than
+          * pitch × height.
+          *
+          * Example for 4K (3840x2160):
+          * - pitch × height = 3840 × 2160 = 8,294,400 bytes
+          * - memory_range.size = 8,355,840 bytes (tile-aligned)
+          * - Must copy full 8,355,840 bytes to avoid green artifacts
+          *
+          * For 1080p (1920x1088):
+          * - pitch × height = 1920 × 1088 = 2,088,960 bytes
+          * - memory_range.size = 2,088,960 bytes (already tile-aligned)
+          * - Both match, so no issue
+          */
+         size_t y_copy_size = y_surface->memory_range.size;
+         size_t uv_copy_size = uv_surface->memory_range.size;
 
-      if (!y_linear || !uv_linear) {
+         if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+            fprintf(stderr, "  Y copy: %zu bytes (full allocated surface)\n", y_copy_size);
+            fprintf(stderr, "  UV copy: %zu bytes (full allocated surface)\n", uv_copy_size);
+         }
+
+         /* Direct bulk copy - fastest path for matching pitch/tiling */
+         memcpy(dst_y, src_y, y_copy_size);
+         memcpy(dst_uv, src_uv, uv_copy_size);
+
+         if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+            fprintf(stderr, "hasvk Video DMA-buf: Direct tiled copy completed\n");
+            fprintf(stderr, "  Y: %zu bytes copied\n", y_copy_size);
+            fprintf(stderr, "  UV: %zu bytes copied\n", uv_copy_size);
+         }
+      } else {
+         /* SLOW PATH: Pitch mismatch - use tiled->linear->tiled conversion
+          * This handles cases where VA-API and Vulkan use different pitches
+          */
+         if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+            fprintf(stderr, "hasvk Video DMA-buf: Using tiled->linear->tiled copy (pitch mismatch: src Y=%u UV=%u, dst Y=%u UV=%u)\n",
+                    pitches[0], pitches[1], y_surface->isl.row_pitch_B, uv_surface->isl.row_pitch_B);
+         }
+
+         /* Allocate temporary linear buffers for Y and UV planes
+          * Use tight packing (width as pitch) to avoid pitch mismatch issues
+          */
+         size_t y_linear_pitch = width;
+         size_t uv_linear_pitch = width;
+         size_t y_linear_size = height * y_linear_pitch;
+         size_t uv_linear_size = (height / 2) * uv_linear_pitch;
+         char *y_linear = malloc(y_linear_size);
+         char *uv_linear = malloc(uv_linear_size);
+
+         if (!y_linear || !uv_linear) {
+            free(y_linear);
+            free(uv_linear);
+            if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
+               fprintf(stderr, "hasvk Video DMA-buf: Failed to allocate linear buffers, falling back\n");
+            }
+            anv_gem_munmap(device, src_ptr, imported_bo->size);
+            anv_gem_munmap(device, dst_ptr, dst_binding->address.bo->size);
+            anv_device_release_bo(device, imported_bo);
+            return anv_vdpau_copy_surface_to_image(device, session, surface, image);
+         }
+
+         /* Y plane: tiled -> linear (using source pitch) */
+         isl_memcpy_tiled_to_linear(0, width,
+                                    0, height,
+                                    y_linear,
+                                    src_y,
+                                    y_linear_pitch,
+                                    pitches[0],
+                                    has_swizzling,
+                                    src_tiling,
+                                    ISL_MEMCPY);
+
+         /* Y plane: linear -> tiled (using dest pitch) */
+         isl_memcpy_linear_to_tiled(0, width,
+                                    0, height,
+                                    dst_y,
+                                    y_linear,
+                                    y_surface->isl.row_pitch_B,
+                                    y_linear_pitch,
+                                    has_swizzling,
+                                    dst_tiling,
+                                    ISL_MEMCPY);
+
+         /* UV plane: tiled -> linear (using source pitch) */
+         isl_memcpy_tiled_to_linear(0, width,
+                                    0, height / 2,
+                                    uv_linear,
+                                    src_uv,
+                                    uv_linear_pitch,
+                                    pitches[1],
+                                    has_swizzling,
+                                    src_tiling,
+                                    ISL_MEMCPY);
+
+         /* UV plane: linear -> tiled (using dest pitch) */
+         isl_memcpy_linear_to_tiled(0, width,
+                                    0, height / 2,
+                                    dst_uv,
+                                    uv_linear,
+                                    uv_surface->isl.row_pitch_B,
+                                    uv_linear_pitch,
+                                    has_swizzling,
+                                    dst_tiling,
+                                    ISL_MEMCPY);
+
          free(y_linear);
          free(uv_linear);
+
          if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-            fprintf(stderr, "hasvk Video DMA-buf: Failed to allocate linear buffers, falling back\n");
+            fprintf(stderr, "hasvk Video DMA-buf: Tiled-to-tiled copy completed via linear (Y: %ux%u, UV: %ux%u)\n",
+                    width, height, width, height / 2);
          }
-         anv_gem_munmap(device, src_ptr, imported_bo->size);
-         anv_gem_munmap(device, dst_ptr, dst_binding->address.bo->size);
-         anv_device_release_bo(device, imported_bo);
-         return anv_vdpau_copy_surface_to_image(device, session, surface, image);
-      }
-
-      /* Y plane: tiled -> linear (using source pitch) */
-      isl_memcpy_tiled_to_linear(0, width,
-                                 0, height,
-                                 y_linear,
-                                 src_y,
-                                 y_linear_pitch,
-                                 pitches[0],
-                                 has_swizzling,
-                                 src_tiling,
-                                 ISL_MEMCPY);
-
-      /* Y plane: linear -> tiled (using dest pitch) */
-      isl_memcpy_linear_to_tiled(0, width,
-                                 0, height,
-                                 dst_y,
-                                 y_linear,
-                                 y_surface->isl.row_pitch_B,
-                                 y_linear_pitch,
-                                 has_swizzling,
-                                 dst_tiling,
-                                 ISL_MEMCPY);
-
-      /* UV plane: tiled -> linear (using source pitch) */
-      isl_memcpy_tiled_to_linear(0, width,
-                                 0, height / 2,
-                                 uv_linear,
-                                 src_uv,
-                                 uv_linear_pitch,
-                                 pitches[1],
-                                 has_swizzling,
-                                 src_tiling,
-                                 ISL_MEMCPY);
-
-      /* UV plane: linear -> tiled (using dest pitch) */
-      isl_memcpy_linear_to_tiled(0, width,
-                                 0, height / 2,
-                                 dst_uv,
-                                 uv_linear,
-                                 uv_surface->isl.row_pitch_B,
-                                 uv_linear_pitch,
-                                 has_swizzling,
-                                 dst_tiling,
-                                 ISL_MEMCPY);
-
-      free(y_linear);
-      free(uv_linear);
-
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "hasvk Video DMA-buf: Tiled-to-tiled copy completed (Y: %ux%u, UV: %ux%u)\n",
-                 width, height, width, height / 2);
-         fprintf(stderr, "  Pitch conversion: src Y=%u UV=%u, dst Y=%u UV=%u\n",
-                 pitches[0], pitches[1], y_surface->isl.row_pitch_B, uv_surface->isl.row_pitch_B);
       }
    } else if (src_tiling != ISL_TILING_LINEAR && dst_tiling != ISL_TILING_LINEAR) {
       /* Both tiled but different formats - need tiled-to-tiled conversion
@@ -1324,11 +1399,12 @@ anv_vdpau_copy_surface_to_image_dmabuf(struct anv_device *device,
    /* Ensure all CPU writes are visible to GPU before unmapping.
     *
     * Memory ordering requirements:
+    * - For GTT (cached) mappings: mfence + kernel handles cache flushing
     * - For WC-mapped (tiled) surfaces: mfence ensures WC buffer flush
     * - For cached (linear) surfaces: mfence ensures store ordering
     *
-    * Modern kernels handle cache coherency implicitly, but we still need
-    * mfence to ensure all CPU stores complete before releasing the mapping.
+    * Modern kernels handle cache coherency implicitly on unmap, but we still
+    * need mfence to ensure all CPU stores complete before releasing the mapping.
     */
    __builtin_ia32_mfence();
 
@@ -1342,9 +1418,12 @@ anv_vdpau_copy_surface_to_image_dmabuf(struct anv_device *device,
                                     (src_tiling == ISL_TILING_Y0) ? "Y-tiled" : "unknown";
       const char *dst_tiling_str = (dst_tiling == ISL_TILING_LINEAR) ? "linear" :
                                     (dst_tiling == ISL_TILING_Y0) ? "Y-tiled" : "unknown";
+      const char *mapping_type = use_gtt_for_copy ? "GTT cached" : "WC/direct";
       fprintf(stderr, "hasvk Video DMA-buf: Zero-copy path completed successfully!\n");
-      fprintf(stderr, "  Copied %ux%u NV12 frame: %s -> %s\n",
-              width, height, src_tiling_str, dst_tiling_str);
+      fprintf(stderr, "  Video: %ux%u NV12 frame\n",
+              image->vk.extent.width, image->vk.extent.height);
+      fprintf(stderr, "  Tiling: %s -> %s (%s mapping)\n",
+              src_tiling_str, dst_tiling_str, mapping_type);
       fprintf(stderr, "  This avoids VDPAU's vdpVideoSurfaceGetBitsYCbCr overhead\n");
    }
 
@@ -1444,15 +1523,40 @@ anv_vdpau_copy_surface_to_image(struct anv_device *device,
     */
    size_t y_alloc_size = ALIGN_POT(y_size, 4096);
    size_t uv_alloc_size = ALIGN_POT(uv_size, 4096);
-   void *linear_y = aligned_alloc(4096, y_alloc_size);
-   void *linear_uv = aligned_alloc(4096, uv_alloc_size);
 
-   if (!linear_y || !linear_uv) {
-      free(linear_y);
-      free(linear_uv);
-      anv_gem_munmap(device, tiled_ptr, bo->size);
-      return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
+   /* PERFORMANCE: Reuse cached linear buffers instead of allocating per frame.
+    * For 4K video, these buffers are ~16MB each. Reusing them eliminates
+    * malloc/free overhead (~200 μs per frame) and reduces memory fragmentation.
+    * Buffers grow as needed but never shrink (acceptable for decode session lifetime).
+    */
+   void *linear_y = NULL;
+   void *linear_uv = NULL;
+
+   if (session->linear_y_buffer_size < y_alloc_size) {
+      /* Need larger Y buffer - grow it */
+      void *new_buffer = realloc(session->linear_y_buffer, y_alloc_size);
+      if (!new_buffer) {
+         /* realloc failed but old buffer is still valid */
+         anv_gem_munmap(device, tiled_ptr, bo->size);
+         return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
+      }
+      session->linear_y_buffer = new_buffer;
+      session->linear_y_buffer_size = y_alloc_size;
    }
+   linear_y = session->linear_y_buffer;
+
+   if (session->linear_uv_buffer_size < uv_alloc_size) {
+      /* Need larger UV buffer - grow it */
+      void *new_buffer = realloc(session->linear_uv_buffer, uv_alloc_size);
+      if (!new_buffer) {
+         /* realloc failed but old buffer is still valid */
+         anv_gem_munmap(device, tiled_ptr, bo->size);
+         return vk_error(device, VK_ERROR_OUT_OF_HOST_MEMORY);
+      }
+      session->linear_uv_buffer = new_buffer;
+      session->linear_uv_buffer_size = uv_alloc_size;
+   }
+   linear_uv = session->linear_uv_buffer;
 
    /* Get decoded data from VDPAU surface into linear buffers
     * NOTE: We don't need to zero the buffers beforehand since
@@ -1466,8 +1570,7 @@ anv_vdpau_copy_surface_to_image(struct anv_device *device,
                                                           linear_data,
                                                           linear_pitches);
    if (vdp_status != VDP_STATUS_OK) {
-      free(linear_y);
-      free(linear_uv);
+      /* Don't free buffers - they're cached in session */
       anv_gem_munmap(device, tiled_ptr, bo->size);
       return vk_error(device, VK_ERROR_UNKNOWN);
    }
@@ -1558,9 +1661,7 @@ anv_vdpau_copy_surface_to_image(struct anv_device *device,
    /* Ensure all writes are visible to the GPU by flushing write-combine buffers */
    __builtin_ia32_mfence();
 
-   /* Clean up */
-   free(linear_y);
-   free(linear_uv);
+   /* Clean up - note: linear buffers are cached in session, not freed here */
    anv_gem_munmap(device, tiled_ptr, bo->size);
 
    return VK_SUCCESS;
