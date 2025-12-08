@@ -11,6 +11,7 @@
 #include <stdlib.h>
 #include <glib.h>
 #include "h264-parse.h"
+#include "trace.h"
 
 enum {
     SLICE_TYPE_P =  0,
@@ -32,6 +33,9 @@ enum {
 #define NOT_IMPLEMENTED(str)        assert(0 && "not implemented" && str)
 
 #define DESCRIBE(xparam, format)    fprintf(stderr, #xparam " = %" #format "\n", xparam)
+
+// Maximum size of reference picture lists per H.264 spec
+#define MAX_REF_PIC_LIST_SIZE 32
 
 struct slice_parameters {
     int nal_ref_idc;
@@ -75,8 +79,8 @@ struct slice_parameters {
     int slice_alpha_c0_offset_div2;
     int slice_beta_offset_div2;
 
-    VAPictureH264 RefPicList0[32];
-    VAPictureH264 RefPicList1[32];
+    VAPictureH264 RefPicList0[MAX_REF_PIC_LIST_SIZE];
+    VAPictureH264 RefPicList1[MAX_REF_PIC_LIST_SIZE];
 };
 
 static
@@ -198,7 +202,9 @@ comparison_fcn_1(gconstpointer p1, gconstpointer p2, gpointer context)
         value2 = ctx->ReferenceFrames[idx_2].frame_idx;
         break;
     default:
-        assert(0 && "wrong what field");
+        // Invalid comparison field - return neutral value to avoid crash
+        value1 = value2 = 0;
+        break;
     }
 
     int result;
@@ -296,8 +302,22 @@ fill_ref_pic_list(struct slice_parameters *sp, const VAPictureParameterBufferH26
             }
         }
     } else {
-        // TODO: implement interlaced B slices
-        assert(0 && "not implemeted: interlaced SLICE_TYPE_B sorting");
+        // Interlaced B slices not implemented - use simple frame ordering as fallback
+        // This prevents crashes but may cause visual artifacts with interlaced content.
+        // NOTE: The fallback copies RefPicList0 to RefPicList1, which is not correct
+        // for interlaced B-frames but allows decoding to continue. Proper implementation
+        // would require field-specific sorting as described in H.264 spec 8.2.4.2.5.
+        traceInfo("warning (%s): interlaced SLICE_TYPE_B slice sorting not implemented, using fallback\n", __func__);
+
+        // frame_count is already validated to be within bounds by the loop that builds it
+        // Additionally ensure we don't exceed the RefPicList array size
+        int copy_count = (frame_count < MAX_REF_PIC_LIST_SIZE) ? frame_count : MAX_REF_PIC_LIST_SIZE;
+
+        // Copy from already-built RefPicList0 (which is bounded by frame_count from line 232)
+        for (int k = 0; k < copy_count; k ++) {
+            // RefPicList0 was already populated in lines 231-238, just copy to RefPicList1
+            sp->RefPicList1[k] = sp->RefPicList0[k];
+        }
     }
 }
 
@@ -323,7 +343,12 @@ parse_slice_header(rbsp_state_t *st, const VAPictureParameterBufferH264 *vapp,
     }
 
     if (sp.nal_unit_type == 14 || sp.nal_unit_type == 20) {
-        NOT_IMPLEMENTED("nal unit types 14 and 20");
+        // NAL unit types 14 (prefix NAL) and 20 (coded slice extension) are part of
+        // H.264 MVC/SVC extensions which are not fully supported.
+        // Log warning and skip further parsing to prevent crash.
+        traceInfo("warning (%s): NAL unit type %d (MVC/SVC extension) not fully supported, skipping\n",
+                 __func__, sp.nal_unit_type);
+        return;
     }
 
     sp.first_mb_in_slice = rbsp_get_uev(st);
@@ -407,7 +432,10 @@ parse_slice_header(rbsp_state_t *st, const VAPictureParameterBufferH264 *vapp,
     }
 
     if (sp.nal_unit_type == 20) {
-        NOT_IMPLEMENTED("nal unit type 20");
+        // NAL unit type 20 (coded slice extension) for MVC/SVC is not fully supported
+        traceInfo("warning (%s): NAL unit type 20 (MVC/SVC extension) not fully supported\n", __func__);
+        // Skip reference picture list modification to avoid crash
+        return;
     } else {
         parse_ref_pic_list_modification(st, vapp, &sp);
     }
@@ -463,7 +491,11 @@ parse_slice_header(rbsp_state_t *st, const VAPictureParameterBufferH264 *vapp,
     if (vapp->num_slice_groups_minus1 > 0 && vapp->slice_group_map_type >= 3 &&
         vapp->slice_group_map_type <= 5)
     {
-        NOT_IMPLEMENTED("don't know what length to consume\n");
+        // Slice groups (FMO - Flexible Macroblock Ordering) are rarely used in practice.
+        // We don't know the exact length to consume, so log warning and skip
+        traceInfo("warning (%s): slice groups (FMO) with map_type %d not fully supported, skipping\n",
+                 __func__, vapp->slice_group_map_type);
+        // Don't consume any bytes - let decoder try to continue
     }
 #pragma GCC diagnostic pop
 
@@ -537,8 +569,17 @@ parse_ref_pic_list_modification(rbsp_state_t *st, const VAPictureParameterBuffer
                     }
 
                 } else if (modification_of_pic_nums_idc == 2) {
-                    NOT_IMPLEMENTED("long");
-                    fprintf(stderr, "long_term_pic_num = %d\n", rbsp_get_uev(st));
+                    // Long-term reference frames are rarely used but valid H.264 feature
+                    // Read the long_term_pic_num parameter and log a warning
+                    // TODO: Implement proper long-term reference frame reordering per H.264 spec 8.2.4.3.2
+                    int long_term_pic_num = rbsp_get_uev(st);
+                    if (st->error) {
+                        // Buffer overflow, stop processing
+                        return;
+                    }
+                    traceInfo("warning (%s): long-term reference frame reordering (pic_num=%d) not fully implemented\n",
+                             __func__, long_term_pic_num);
+                    // Continue processing - decoder may handle this gracefully
                 }
 
             } while (modification_of_pic_nums_idc != 3);
@@ -549,16 +590,28 @@ parse_ref_pic_list_modification(rbsp_state_t *st, const VAPictureParameterBuffer
     if (sp->slice_type == SLICE_TYPE_B) {
         int ref_pic_list_modification_flag_l1 = rbsp_get_u(st, 1);
         if (ref_pic_list_modification_flag_l1) {
-            NOT_IMPLEMENTED("ref pic list modification 1"); // TODO: implement this
+            // Reference picture list modification for B-frames (list 1)
+            // This is a valid H.264 feature that should be supported
+            // TODO: Implement proper ref pic list 1 modification per H.264 spec 8.2.4.3
+            traceInfo("warning (%s): reference picture list 1 modification for B-frames not fully implemented\n", __func__);
+
             int modification_of_pic_nums_idc;
             do {
                 modification_of_pic_nums_idc = rbsp_get_uev(st);
+                if (st->error) {
+                    // Buffer overflow, stop processing
+                    return;
+                }
                 if (modification_of_pic_nums_idc == 0 ||
                     modification_of_pic_nums_idc == 1)
                 {
-                    fprintf(stderr, "abs_diff_pic_num_minus1 = %d\n", rbsp_get_uev(st));
+                    // Consume abs_diff_pic_num_minus1 from bitstream (not yet processed)
+                    rbsp_get_uev(st);
+                    if (st->error) return;
                 } else if (modification_of_pic_nums_idc == 2) {
-                    fprintf(stderr, "long_term_pic_num = %d\n", rbsp_get_uev(st));
+                    // Consume long_term_pic_num from bitstream (not yet processed)
+                    rbsp_get_uev(st);
+                    if (st->error) return;
                 }
             } while (modification_of_pic_nums_idc != 3);
         }

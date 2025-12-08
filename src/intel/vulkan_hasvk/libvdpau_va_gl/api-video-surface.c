@@ -196,8 +196,21 @@ vdpVideoSurfaceGetBitsYCbCr(VdpVideoSurface surface,
 
     if (deviceData->va_available) {
         VAImage q;
+        VAStatus va_status;
 
-        vaDeriveImage(va_dpy, srcSurfData->va_surf, &q);
+        // Check if VA surface is valid before attempting to derive image
+        if (srcSurfData->va_surf == VA_INVALID_SURFACE) {
+            traceError("error (%s): VA surface is invalid - surface may not be attached to a decoder\n", __func__);
+            err_code = VDP_STATUS_INVALID_HANDLE;
+            goto quit;
+        }
+
+        va_status = vaDeriveImage(va_dpy, srcSurfData->va_surf, &q);
+        if (va_status != VA_STATUS_SUCCESS) {
+            traceError("error (%s): vaDeriveImage failed with status %d\n", __func__, va_status);
+            err_code = VDP_STATUS_ERROR;
+            goto quit;
+        }
 
         if (unlikely(global.quirks.log_stride)) {
             const char *fourcc_str = (const char *)&q.format.fourcc;
@@ -223,7 +236,22 @@ vdpVideoSurfaceGetBitsYCbCr(VdpVideoSurface surface,
             VDP_YCBCR_FORMAT_NV12 == destination_ycbcr_format)
         {
             uint8_t *img_data;
-            vaMapBuffer(va_dpy, q.buf, (void **)&img_data);
+            va_status = vaMapBuffer(va_dpy, q.buf, (void **)&img_data);
+            if (va_status != VA_STATUS_SUCCESS) {
+                traceError("error (%s): vaMapBuffer failed with status %d\n", __func__, va_status);
+                vaDestroyImage(va_dpy, q.image_id);
+                err_code = VDP_STATUS_ERROR;
+                goto quit;
+            }
+
+            // Validate destination_data array pointers before use
+            if (!destination_data[0] || !destination_data[1]) {
+                traceError("error (%s): destination_data array contains null pointers\n", __func__);
+                vaUnmapBuffer(va_dpy, q.buf);
+                vaDestroyImage(va_dpy, q.image_id);
+                err_code = VDP_STATUS_INVALID_POINTER;
+                goto quit;
+            }
 
             /* Note: q.pitches[] may be larger than srcSurfData->width due to row padding.
              * When pitches match destination_pitches it's safe to bulk-copy the entire
@@ -320,7 +348,22 @@ vdpVideoSurfaceGetBitsYCbCr(VdpVideoSurface surface,
                    VDP_YCBCR_FORMAT_YV12 == destination_ycbcr_format)
         {
             uint8_t *img_data;
-            vaMapBuffer(va_dpy, q.buf, (void **)&img_data);
+            va_status = vaMapBuffer(va_dpy, q.buf, (void **)&img_data);
+            if (va_status != VA_STATUS_SUCCESS) {
+                traceError("error (%s): vaMapBuffer failed with status %d\n", __func__, va_status);
+                vaDestroyImage(va_dpy, q.image_id);
+                err_code = VDP_STATUS_ERROR;
+                goto quit;
+            }
+
+            // Validate destination_data array pointers before use
+            if (!destination_data[0] || !destination_data[1] || !destination_data[2]) {
+                traceError("error (%s): destination_data array contains null pointers\n", __func__);
+                vaUnmapBuffer(va_dpy, q.buf);
+                vaDestroyImage(va_dpy, q.image_id);
+                err_code = VDP_STATUS_INVALID_POINTER;
+                goto quit;
+            }
 
             uint8_t *src_y = img_data + q.offsets[0];
             uint8_t *dst_y = destination_data[0];
@@ -469,6 +512,7 @@ vdpVideoSurfacePutBitsYCbCr_glsl(VdpVideoSurface surface, VdpYCbCrFormat source_
     VdpStatus err_code;
     if (!source_data || !source_pitches)
         return VDP_STATUS_INVALID_POINTER;
+
     // TODO: implement VDP_YCBCR_FORMAT_UYVY
     // TODO: implement VDP_YCBCR_FORMAT_YUYV
     // TODO: implement VDP_YCBCR_FORMAT_Y8U8V8A8
@@ -481,8 +525,22 @@ vdpVideoSurfacePutBitsYCbCr_glsl(VdpVideoSurface surface, VdpYCbCrFormat source_
 
     switch (source_ycbcr_format) {
     case VDP_YCBCR_FORMAT_NV12:
+        // NV12 requires source_data[0] (Y) and source_data[1] (UV)
+        if (!source_data[0] || !source_data[1]) {
+            traceError("error (%s): source_data planes are null for NV12 format\n", __func__);
+            err_code = VDP_STATUS_INVALID_POINTER;
+            goto err;
+        }
+        /* do nothing else */
+        break;
     case VDP_YCBCR_FORMAT_YV12:
-        /* do nothing */
+        // YV12 requires source_data[0] (Y), source_data[1] (V), and source_data[2] (U)
+        if (!source_data[0] || !source_data[1] || !source_data[2]) {
+            traceError("error (%s): source_data planes are null for YV12 format\n", __func__);
+            err_code = VDP_STATUS_INVALID_POINTER;
+            goto err;
+        }
+        /* do nothing else */
         break;
     case VDP_YCBCR_FORMAT_UYVY:
     case VDP_YCBCR_FORMAT_YUYV:
@@ -508,8 +566,9 @@ vdpVideoSurfacePutBitsYCbCr_glsl(VdpVideoSurface surface, VdpYCbCrFormat source_
         glBindTexture(GL_TEXTURE_2D, tex_id[1]);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        // UV plane
-        glPixelStorei(GL_UNPACK_ROW_LENGTH, source_pitches[1]);
+        // UV plane - NV12 has interleaved UV (2 bytes per pixel with GL_RG format)
+        // GL_UNPACK_ROW_LENGTH is in pixels, not bytes, so divide pitch by 2
+        glPixelStorei(GL_UNPACK_ROW_LENGTH, source_pitches[1] / 2);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, dstSurfData->width/2, dstSurfData->height/2, 0,
                      GL_RG, GL_UNSIGNED_BYTE, source_data[1]);
 
@@ -517,7 +576,7 @@ vdpVideoSurfacePutBitsYCbCr_glsl(VdpVideoSurface surface, VdpYCbCrFormat source_
         glBindTexture(GL_TEXTURE_2D, tex_id[0]);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        // Y plane
+        // Y plane - 1 byte per pixel with GL_RED format
         glPixelStorei(GL_UNPACK_ROW_LENGTH, source_pitches[0]);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, dstSurfData->width, dstSurfData->height, 0, GL_RED,
                      GL_UNSIGNED_BYTE, source_data[0]);
