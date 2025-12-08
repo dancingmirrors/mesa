@@ -67,7 +67,6 @@ if with_libvdpau_va_gl
     'globals.c',
     'watermark.c',
     'ctx-stack.c',
-    'gl-vdpau-interop.c',
   )
 
   libvdpau_va_gl_deps = [
