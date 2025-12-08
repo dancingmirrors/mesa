@@ -1151,9 +1151,9 @@ anv_vdpau_copy_surface_to_image_dmabuf(struct anv_device *device,
             fprintf(stderr, "hasvk Video DMA-buf: Using direct tiled-to-tiled copy (pitch match, GTT cached)\n");
             fprintf(stderr, "  Image dimensions: %ux%u\n",
                     image->vk.extent.width, image->vk.extent.height);
-            fprintf(stderr, "  Y surface: pitch=%u, allocated=%zu bytes\n",
+            fprintf(stderr, "  Y surface: pitch=%u, allocated=%"PRIu64" bytes\n",
                     y_surface->isl.row_pitch_B, y_surface->memory_range.size);
-            fprintf(stderr, "  UV surface: pitch=%u, allocated=%zu bytes\n",
+            fprintf(stderr, "  UV surface: pitch=%u, allocated=%"PRIu64" bytes\n",
                     uv_surface->isl.row_pitch_B, uv_surface->memory_range.size);
          }
 
