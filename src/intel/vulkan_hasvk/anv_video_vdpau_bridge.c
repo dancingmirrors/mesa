@@ -41,6 +41,7 @@
 
 #include <vdpau/vdpau.h>
 #include <vdpau/vdpau_x11.h>
+#include <assert.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <string.h>
@@ -266,14 +267,6 @@ get_vdpau_procs(struct anv_vdpau_session *session)
       session->vdp_video_surface_export_dmabuf =
          (VdpVideoSurfaceExportDmaBufhasvk_fn)export_fn;
       session->dmabuf_supported = true;
-
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "hasvk Video: DMA-buf export extension loaded successfully\n");
-      }
-   } else {
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "hasvk Video: DMA-buf export extension not available (will use CPU copy)\n");
-      }
    }
 
    return VK_SUCCESS;
@@ -800,18 +793,6 @@ anv_vdpau_create_surface_from_image(struct anv_device *device,
       return vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
    }
 
-   if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-      fprintf(stderr, "hasvk Video: Session created successfully\n");
-      fprintf(stderr, "  Max dimensions: %ux%u\n", session->width, session->height);
-      fprintf(stderr, "  Max DPB slots: %u\n", session->max_dpb_slots);
-      fprintf(stderr, "  DMA-buf support: %s\n", session->dmabuf_supported ? "YES" : "NO");
-      if (session->dmabuf_supported) {
-         fprintf(stderr, "  Zero-copy GPU decode enabled!\n");
-      } else {
-         fprintf(stderr, "  Using slow CPU copy path (consider updating libvdpau-va-gl)\n");
-      }
-   }
-
    return VK_SUCCESS;
 }
 
@@ -839,14 +820,7 @@ anv_vdpau_copy_surface_to_image_dmabuf(struct anv_device *device,
 {
    /* Check if DMA-buf export function is available */
    if (!session->vdp_video_surface_export_dmabuf) {
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "hasvk Video DMA-buf: Export function not available, falling back to CPU copy\n");
-      }
       return anv_vdpau_copy_surface_to_image(device, session, surface, image);
-   }
-
-   if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-      fprintf(stderr, "hasvk Video DMA-buf: Attempting zero-copy GPU path for surface %u\n", surface);
    }
 
    /* Export VDPAU surface as DMA-buf */
@@ -860,10 +834,6 @@ anv_vdpau_copy_surface_to_image_dmabuf(struct anv_device *device,
       &num_planes, pitches, offsets, &modifier);
 
    if (vdp_status != VDP_STATUS_OK || dmabuf_fd < 0) {
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "hasvk Video DMA-buf: Export failed (status=%d, fd=%d)\n",
-                 vdp_status, dmabuf_fd);
-      }
       if (dmabuf_fd >= 0)
          close(dmabuf_fd);
 
@@ -880,33 +850,14 @@ anv_vdpau_copy_surface_to_image_dmabuf(struct anv_device *device,
       return anv_vdpau_copy_surface_to_image(device, session, surface, image);
    }
 
-   if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-      fprintf(stderr, "hasvk Video DMA-buf: Export successful\n");
-      fprintf(stderr, "  FD: %d\n", dmabuf_fd);
-      fprintf(stderr, "  Dimensions: %ux%u\n", width, height);
-      fprintf(stderr, "  FOURCC: 0x%08x\n", fourcc);
-      fprintf(stderr, "  Modifier: 0x%016" PRIx64 "\n", modifier);
-      fprintf(stderr, "  Planes: %u\n", num_planes);
-      for (uint32_t i = 0; i < num_planes; i++) {
-          fprintf(stderr, "    Plane[%u]: pitch=%u offset=%u\n", i, pitches[i], offsets[i]);
-      }
-   }
-
    /* Validate dimensions match */
    if (width != image->vk.extent.width || height != image->vk.extent.height) {
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "hasvk Video DMA-buf: Dimension mismatch (exported: %ux%u, target: %ux%u), falling back to CPU copy\n",
-                 width, height, image->vk.extent.width, image->vk.extent.height);
-      }
       close(dmabuf_fd);
       return anv_vdpau_copy_surface_to_image(device, session, surface, image);
    }
 
    /* Validate format (NV12 = 0x3231564E in little endian) */
    if (fourcc != 0x3231564E) {
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "hasvk Video DMA-buf: Unsupported FOURCC 0x%08x (expected NV12), falling back to CPU copy\n", fourcc);
-      }
       close(dmabuf_fd);
       return anv_vdpau_copy_surface_to_image(device, session, surface, image);
    }
@@ -925,10 +876,6 @@ anv_vdpau_copy_surface_to_image_dmabuf(struct anv_device *device,
    close(dmabuf_fd);
 
    if (result != VK_SUCCESS || !imported_bo) {
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "hasvk Video DMA-buf: Failed to import BO (error=%d)\n", result);
-      }
-
       /* BO import failure usually means GPU is out of memory or address space.
        * Evict old surfaces to free memory, but keep enough for reference frames.
        * For H.264, we need ~4-5 reference frames, so we keep cache_capacity - 2
@@ -937,20 +884,10 @@ anv_vdpau_copy_surface_to_image_dmabuf(struct anv_device *device,
       if (result == VK_ERROR_OUT_OF_DEVICE_MEMORY) {
          uint32_t keep_count = session->surface_map_capacity > 2 ?
                                session->surface_map_capacity - 2 : 3;
-         if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-            fprintf(stderr, "hasvk Video DMA-buf: OUT_OF_DEVICE_MEMORY on import, "
-                    "evicting old surfaces (keeping %u/%u)\n",
-                    keep_count, session->surface_map_capacity);
-         }
          anv_vdpau_evict_old_surfaces(session, keep_count);
       }
 
       return anv_vdpau_copy_surface_to_image(device, session, surface, image);
-   }
-
-   if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-      fprintf(stderr, "hasvk Video DMA-buf: Successfully imported BO (handle=%u, size=%" PRIu64 ")\n",
-              imported_bo->gem_handle, imported_bo->size);
    }
 
    /* CRITICAL FOR CACHE COHERENCY: Wait for GPU operations to complete.
@@ -969,10 +906,6 @@ anv_vdpau_copy_surface_to_image_dmabuf(struct anv_device *device,
    int64_t timeout_ns = INT64_MAX; /* Wait indefinitely */
    int ret = anv_gem_wait(device, imported_bo->gem_handle, &timeout_ns);
    if (ret != 0) {
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "hasvk Video DMA-buf: gem_wait failed (ret=%d), "
-                 "may have cache coherency issues\n", ret);
-      }
       /* Continue anyway - better to have potential corruption than fail completely */
    }
 
@@ -990,9 +923,6 @@ anv_vdpau_copy_surface_to_image_dmabuf(struct anv_device *device,
 
    struct anv_image_binding *dst_binding = &image->bindings[ANV_IMAGE_MEMORY_BINDING_MAIN];
    if (!dst_binding->address.bo) {
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "hasvk Video DMA-buf: Destination image has no BO, falling back to CPU copy\n");
-      }
       anv_device_release_bo(device, imported_bo);
       return anv_vdpau_copy_surface_to_image(device, session, surface, image);
    }
@@ -1021,9 +951,6 @@ anv_vdpau_copy_surface_to_image_dmabuf(struct anv_device *device,
       if (y_offset % y_alignment != 0) {
          uint64_t misalignment = y_offset % y_alignment;
          if (misalignment == y_alignment - 1) {
-            if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-               fprintf(stderr, "hasvk Video DMA-buf: Applying Y alignment workaround (+1)\n");
-            }
             y_offset += 1;
          }
       }
@@ -1031,9 +958,6 @@ anv_vdpau_copy_surface_to_image_dmabuf(struct anv_device *device,
       if (uv_offset % uv_alignment != 0) {
          uint64_t misalignment = uv_offset % uv_alignment;
          if (misalignment == uv_alignment - 1) {
-            if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-               fprintf(stderr, "hasvk Video DMA-buf: Applying UV alignment workaround (+1)\n");
-            }
             uv_offset += 1;
          }
       }
@@ -1050,9 +974,6 @@ anv_vdpau_copy_surface_to_image_dmabuf(struct anv_device *device,
       }
    } else if (modifier != DRM_FORMAT_MOD_INVALID) {
       /* Unknown modifier - fall back to CPU copy for safety */
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "hasvk Video DMA-buf: Unknown modifier 0x%016" PRIx64 ", falling back to CPU copy\n", modifier);
-      }
       anv_device_release_bo(device, imported_bo);
       return anv_vdpau_copy_surface_to_image(device, session, surface, image);
    }
@@ -1070,9 +991,6 @@ anv_vdpau_copy_surface_to_image_dmabuf(struct anv_device *device,
    timeout_ns = INT64_MAX; /* Wait indefinitely */
    ret = anv_gem_wait(device, dst_binding->address.bo->gem_handle, &timeout_ns);
    if (ret != 0) {
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "hasvk Video DMA-buf: gem_wait for destination failed (ret=%d)\n", ret);
-      }
       /* Continue anyway */
    }
 
@@ -1104,9 +1022,6 @@ anv_vdpau_copy_surface_to_image_dmabuf(struct anv_device *device,
       if (dst_ptr && dst_ptr != MAP_FAILED)
          anv_gem_munmap(device, dst_ptr, dst_binding->address.bo->size);
       anv_device_release_bo(device, imported_bo);
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "hasvk Video DMA-buf: Failed to map BOs, falling back to CPU copy\n");
-      }
       return anv_vdpau_copy_surface_to_image(device, session, surface, image);
    }
 
@@ -1193,10 +1108,6 @@ anv_vdpau_copy_surface_to_image_dmabuf(struct anv_device *device,
          /* SLOW PATH: Pitch mismatch - use tiled->linear->tiled conversion
           * This handles cases where VA-API and Vulkan use different pitches
           */
-         if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-            fprintf(stderr, "hasvk Video DMA-buf: Using tiled->linear->tiled copy (pitch mismatch: src Y=%u UV=%u, dst Y=%u UV=%u)\n",
-                    pitches[0], pitches[1], y_surface->isl.row_pitch_B, uv_surface->isl.row_pitch_B);
-         }
 
          /* Allocate temporary linear buffers for Y and UV planes
           * Use tight packing (width as pitch) to avoid pitch mismatch issues
@@ -1211,9 +1122,6 @@ anv_vdpau_copy_surface_to_image_dmabuf(struct anv_device *device,
          if (!y_linear || !uv_linear) {
             free(y_linear);
             free(uv_linear);
-            if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-               fprintf(stderr, "hasvk Video DMA-buf: Failed to allocate linear buffers, falling back\n");
-            }
             anv_gem_munmap(device, src_ptr, imported_bo->size);
             anv_gem_munmap(device, dst_ptr, dst_binding->address.bo->size);
             anv_device_release_bo(device, imported_bo);
@@ -1266,29 +1174,17 @@ anv_vdpau_copy_surface_to_image_dmabuf(struct anv_device *device,
 
          free(y_linear);
          free(uv_linear);
-
-         if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-            fprintf(stderr, "hasvk Video DMA-buf: Tiled-to-tiled copy completed via linear (Y: %ux%u, UV: %ux%u)\n",
-                    width, height, width, height / 2);
-         }
       }
    } else if (src_tiling != ISL_TILING_LINEAR && dst_tiling != ISL_TILING_LINEAR) {
       /* Both tiled but different formats - need tiled-to-tiled conversion
        * This is rare, fall back to CPU copy for safety
        */
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "hasvk Video DMA-buf: Different tiling formats (src=%d, dst=%d), falling back to CPU copy\n",
-                 src_tiling, dst_tiling);
-      }
       anv_gem_munmap(device, src_ptr, imported_bo->size);
       anv_gem_munmap(device, dst_ptr, dst_binding->address.bo->size);
       anv_device_release_bo(device, imported_bo);
       return anv_vdpau_copy_surface_to_image(device, session, surface, image);
    } else if (src_tiling == ISL_TILING_LINEAR && dst_tiling != ISL_TILING_LINEAR) {
       /* Linear source, tiled dest - use linear_to_tiled */
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "hasvk Video DMA-buf: Using ISL linear-to-tiled copy\n");
-      }
 
       /* Copy Y plane using ISL tiled memcpy
        * For NV12, Y plane is width×height, 1 byte per pixel = width bytes per row
@@ -1316,16 +1212,8 @@ anv_vdpau_copy_surface_to_image_dmabuf(struct anv_device *device,
                                  has_swizzling,
                                  dst_tiling,
                                  ISL_MEMCPY);
-
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "hasvk Video DMA-buf: Linear-to-tiled copy completed (Y: %ux%u, UV: %ux%u)\n",
-                 width, height, width, height / 2);
-      }
    } else if (src_tiling != ISL_TILING_LINEAR && dst_tiling == ISL_TILING_LINEAR) {
       /* Tiled source, linear dest - use tiled_to_linear */
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "hasvk Video DMA-buf: Using ISL tiled-to-linear copy\n");
-      }
 
       /* Copy Y plane */
       isl_memcpy_tiled_to_linear(0, width,
@@ -1348,18 +1236,10 @@ anv_vdpau_copy_surface_to_image_dmabuf(struct anv_device *device,
                                  has_swizzling,
                                  src_tiling,
                                  ISL_MEMCPY);
-
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "hasvk Video DMA-buf: Tiled-to-linear copy completed (Y: %ux%u, UV: %ux%u)\n",
-                 width, height, width, height / 2);
-      }
    } else {
       /* Both linear - use direct memcpy or row-by-row copy */
       if (pitches[0] == y_surface->isl.row_pitch_B && pitches[1] == uv_surface->isl.row_pitch_B) {
          /* Pitch matches - use bulk memcpy for maximum performance */
-         if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-            fprintf(stderr, "hasvk Video DMA-buf: Using bulk memcpy (pitch match, linear)\n");
-         }
 
          memcpy(dst_y, src_y, height * pitches[0]);
          memcpy(dst_uv, src_uv, (height / 2) * pitches[1]);
@@ -1368,10 +1248,6 @@ anv_vdpau_copy_surface_to_image_dmabuf(struct anv_device *device,
           * Use width as the copy width since both surfaces are linear and we're
           * copying the actual video data (not padding).
           */
-         if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-            fprintf(stderr, "hasvk Video DMA-buf: Using row-by-row copy (pitch mismatch: src Y=%u UV=%u, dst Y=%u UV=%u)\n",
-                    pitches[0], pitches[1], y_surface->isl.row_pitch_B, uv_surface->isl.row_pitch_B);
-         }
 
          /* For NV12:
           * Y plane: width bytes per row (1 byte per pixel)
@@ -1413,19 +1289,7 @@ anv_vdpau_copy_surface_to_image_dmabuf(struct anv_device *device,
    anv_gem_munmap(device, dst_ptr, dst_binding->address.bo->size);
    anv_device_release_bo(device, imported_bo);
 
-   if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-      const char *src_tiling_str = (src_tiling == ISL_TILING_LINEAR) ? "linear" :
-                                    (src_tiling == ISL_TILING_Y0) ? "Y-tiled" : "unknown";
-      const char *dst_tiling_str = (dst_tiling == ISL_TILING_LINEAR) ? "linear" :
-                                    (dst_tiling == ISL_TILING_Y0) ? "Y-tiled" : "unknown";
-      const char *mapping_type = use_gtt_for_copy ? "GTT cached" : "WC/direct";
-      fprintf(stderr, "hasvk Video DMA-buf: Zero-copy path completed successfully!\n");
-      fprintf(stderr, "  Video: %ux%u NV12 frame\n",
-              image->vk.extent.width, image->vk.extent.height);
-      fprintf(stderr, "  Tiling: %s -> %s (%s mapping)\n",
-              src_tiling_str, dst_tiling_str, mapping_type);
-      fprintf(stderr, "  This avoids VDPAU's vdpVideoSurfaceGetBitsYCbCr overhead\n");
-   }
+
 
    return VK_SUCCESS;
 }
@@ -1447,10 +1311,6 @@ anv_vdpau_copy_surface_to_image(struct anv_device *device,
                                 struct anv_image *image)
 {
    VdpStatus vdp_status;
-
-   if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-      fprintf(stderr, "hasvk Video: Using CPU copy path for surface %u (slow)\n", surface);
-   }
 
    /* Get the main memory binding for the image */
    struct anv_image_binding *binding =

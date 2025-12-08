@@ -19,7 +19,6 @@
 #include "handle-storage.h"
 #include "api.h"
 #include "trace.h"
-#include "watermark.h"
 
 
 struct task_s {
@@ -269,31 +268,6 @@ do_presentation_queue_display(struct task_s *task)
         glTexCoord2i(target_width, target_height); glVertex2i(target_width, target_height);
         glTexCoord2i(0, target_height);            glVertex2i(0, target_height);
     glEnd();
-
-    if (global.quirks.show_watermark) {
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        glBlendEquation(GL_FUNC_ADD);
-        glBindTexture(GL_TEXTURE_2D, deviceData->watermark_tex_id);
-
-        glMatrixMode(GL_TEXTURE);
-        glLoadIdentity();
-
-        glColor4f(1.0, 1.0, 1.0, 0.2);
-        glBegin(GL_QUADS);
-            glTexCoord2i(0, 0);
-            glVertex2i(target_width - watermark_width, target_height - watermark_height);
-
-            glTexCoord2i(1, 0);
-            glVertex2i(target_width, target_height - watermark_height);
-
-            glTexCoord2i(1, 1);
-            glVertex2i(target_width, target_height);
-
-            glTexCoord2i(0, 1);
-            glVertex2i(target_width - watermark_width, target_height);
-        glEnd();
-    }
 
     // Submit rendering commands without waiting for completion.
     // glFlush() ensures GPU commands are submitted but doesn't block.

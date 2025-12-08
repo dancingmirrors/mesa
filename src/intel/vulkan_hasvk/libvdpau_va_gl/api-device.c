@@ -16,7 +16,6 @@
 #include "trace.h"
 #include <va/va_x11.h>
 #include <vdpau/vdpau.h>
-#include "watermark.h"
 
 
 static char const *
@@ -219,39 +218,22 @@ vdpDeviceCreateX11(Display *display_orig, int screen, VdpDevice *device,
     glLoadIdentity();
 
     // initialize VA-API
-    if (global.quirks.avoid_va) {
-        // pretend there is no VA-API available
-        data->va_available = 0;
-    } else {
-        data->va_dpy = vaGetDisplay(display);
-        data->va_available = 0;
+    data->va_dpy = vaGetDisplay(display);
+    data->va_available = 0;
 
-        VAStatus status = vaInitialize(data->va_dpy, &data->va_version_major,
-                                       &data->va_version_minor);
-        if (VA_STATUS_SUCCESS == status) {
-            data->va_available = 1;
-            traceInfo("libva (version %d.%d) library initialized\n",
-                      data->va_version_major, data->va_version_minor);
-        } else {
-            data->va_available = 0;
-            traceInfo("warning: failed to initialize libva. "
-                      "No video decode acceleration available.\n");
-        }
+    VAStatus status = vaInitialize(data->va_dpy, &data->va_version_major,
+                                   &data->va_version_minor);
+    if (VA_STATUS_SUCCESS == status) {
+        data->va_available = 1;
+        traceInfo("libva (version %d.%d) library initialized\n",
+                  data->va_version_major, data->va_version_minor);
+    } else {
+        data->va_available = 0;
+        traceInfo("warning: failed to initialize libva. "
+                  "No video decode acceleration available.\n");
     }
 
     compile_shaders(data);
-
-    glGenTextures(1, &data->watermark_tex_id);
-    glBindTexture(GL_TEXTURE_2D, data->watermark_tex_id);
-
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, watermark_width, watermark_height, 0, GL_BGRA,
-                 GL_UNSIGNED_BYTE, watermark_data);
-    glFinish();
 
     *device = handle_insert(data);
     if (get_proc_address)
@@ -305,7 +287,6 @@ vdpDeviceDestroy(VdpDevice device)
     vaTerminate(data->va_dpy);
 
     glx_ctx_push_thread_local(data);
-    glDeleteTextures(1, &data->watermark_tex_id);
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     destroy_shaders(data);
     glx_ctx_pop();

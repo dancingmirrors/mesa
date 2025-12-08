@@ -59,39 +59,18 @@ void
 initialize_quirks(void)
 {
     global.quirks.buggy_XCloseDisplay = 0;
-    global.quirks.show_watermark = 0;
     global.quirks.log_thread_id = 0;
     global.quirks.log_call_duration = 0;
     global.quirks.log_pq_delay = 0;
     global.quirks.log_timestamp = 0;
-    global.quirks.avoid_va = 0;
     global.quirks.log_stride = 0;
     global.quirks.disable_compositor_check = 0;
 
     /* Check INTEL_DEBUG environment variable for hasvk flag */
     const char *intel_debug = getenv("INTEL_DEBUG");
-    if (intel_debug) {
-        char *intel_debug_lc = strdup(intel_debug);
-        if (intel_debug_lc) {
-            /* Convert to lowercase for case-insensitive matching */
-            for (int k = 0; intel_debug_lc[k] != 0; k++)
-                intel_debug_lc[k] = tolower(intel_debug_lc[k]);
-
-            /* Check for 'hasvk' as a standalone flag (word boundary check) */
-            const char *pos = strstr(intel_debug_lc, "hasvk");
-            if (pos) {
-                /* Verify it's a complete word by checking boundaries */
-                bool is_word_start = (pos == intel_debug_lc || pos[-1] == ',' || pos[-1] == ' ');
-                bool is_word_end = (pos[5] == '\0' || pos[5] == ',' || pos[5] == ' ');
-                if (is_word_start && is_word_end) {
-                    /* Enable stride logging when INTEL_DEBUG=hasvk is set */
-                    global.quirks.log_stride = 1;
-                }
-            }
-            free(intel_debug_lc);
-        }
-        /* If strdup fails, we simply skip INTEL_DEBUG-based logging enable.
-         * User can still use VDPAU_QUIRKS=logstride as fallback. */
+    if (intel_debug && strstr(intel_debug, "hasvk")) {
+        /* Enable stride logging when INTEL_DEBUG contains hasvk */
+        global.quirks.log_stride = 1;
     }
 
     const char *value = getenv("VDPAU_QUIRKS");
@@ -117,9 +96,6 @@ initialize_quirks(void)
             if (!strcmp("xclosedisplay", item_start)) {
                 global.quirks.buggy_XCloseDisplay = 1;
             } else
-            if (!strcmp("showwatermark", item_start)) {
-                global.quirks.show_watermark = 1;
-            } else
             if (!strcmp("logthreadid", item_start)) {
                 global.quirks.log_thread_id = 1;
             } else
@@ -134,9 +110,6 @@ initialize_quirks(void)
             } else
             if (!strcmp("logstride", item_start)) {
                 global.quirks.log_stride = 1;
-            } else
-            if (!strcmp("avoidva", item_start)) {
-                global.quirks.avoid_va = 1;
             } else
             if (!strcmp("nocompositorcheck", item_start)) {
                 global.quirks.disable_compositor_check = 1;

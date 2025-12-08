@@ -16,14 +16,11 @@ struct global_data {
     /** @brief tunables */
     struct {
         int buggy_XCloseDisplay;      ///< avoid calling XCloseDisplay
-        int show_watermark;           ///< show picture over output
         int log_thread_id;            ///< include thread id into the log output
         int log_call_duration;        ///< measure call duration
         int log_pq_delay;             ///< measure delay between queueing and displaying presentation
                                       ///< queue introduces
         int log_timestamp;            ///< display timestamps
-        int avoid_va;                 ///< do not use VA-API video decoding acceleration even if
-                                      ///< available
         int log_stride;               ///< log detailed stride/pitch information for debugging
         int disable_compositor_check; ///< disable automatic compositor detection (for testing)
     } quirks;

@@ -55,7 +55,6 @@ struct VdpDeviceData {
     int             va_available;   ///< 1 if VA-API available
     int             va_version_major;
     int             va_version_minor;
-    GLuint          watermark_tex_id;   ///< GL texture id for watermark
     struct {
         GLuint      f_shader;
         GLuint      program;
