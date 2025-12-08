@@ -584,7 +584,9 @@ vdpVideoSurfacePutBitsYCbCr_glsl(VdpVideoSurface surface, VdpYCbCrFormat source_
     glEnd();
 
     glUseProgram(0);
-    glFinish();
+    // Use glFlush() instead of glFinish() to avoid blocking and improve performance.
+    // The GPU can continue processing asynchronously. glGetError() will sync if needed.
+    glFlush();
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glDeleteTextures(2, tex_id);
 

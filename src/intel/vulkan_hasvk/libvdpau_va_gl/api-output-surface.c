@@ -499,7 +499,8 @@ vdpOutputSurfacePutBitsIndexed(VdpOutputSurface surface, VdpIndexedFormat source
             glTexSubImage2D(GL_TEXTURE_2D, 0, dstRect.x0, dstRect.y0,
                             dstRect.x1 - dstRect.x0, dstRect.y1 - dstRect.y0,
                             GL_BGRA, GL_UNSIGNED_BYTE, unpacked_buf);
-            glFinish();
+            // Use glFlush() instead of glFinish() to avoid blocking on texture upload.
+            glFlush();
             free(unpacked_buf);
 
             GLenum gl_error = glGetError();
@@ -554,7 +555,8 @@ vdpOutputSurfacePutBitsNative(VdpOutputSurface surface, void const *const *sourc
     glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
     if (4 != dstSurfData->bytes_per_pixel)
         glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-    glFinish();
+    // Use glFlush() instead of glFinish() to avoid blocking on texture upload.
+    glFlush();
 
     GLenum gl_error = glGetError();
     glx_ctx_pop();
@@ -743,7 +745,8 @@ vdpOutputSurfaceRenderBitmapSurface(VdpOutputSurface destination_surface,
     compose_surfaces(bs, s_rect, d_rect, colors, flags, !!srcSurfData);
 
     glUseProgram(0);
-    glFinish();
+    // Use glFlush() instead of glFinish() to avoid blocking after compositing.
+    glFlush();
 
     GLenum gl_error = glGetError();
     glx_ctx_pop();
@@ -834,7 +837,8 @@ vdpOutputSurfaceRenderOutputSurface(VdpOutputSurface destination_surface,
     }
 
     compose_surfaces(bs, s_rect, d_rect, colors, flags, !!srcSurfData);
-    glFinish();
+    // Use glFlush() instead of glFinish() to avoid blocking after compositing.
+    glFlush();
 
     GLenum gl_error = glGetError();
     glx_ctx_pop();

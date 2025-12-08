@@ -231,7 +231,8 @@ vdpBitmapSurfacePutBitsNative(VdpBitmapSurface surface, void const *const *sourc
         glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
         if (4 != dstSurfData->bytes_per_pixel)
             glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
-        glFinish();
+        // Use glFlush() instead of glFinish() to avoid blocking on texture upload.
+        glFlush();
 
         GLenum gl_error = glGetError();
         glx_ctx_pop();

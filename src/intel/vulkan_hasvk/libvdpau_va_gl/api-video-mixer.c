@@ -107,7 +107,9 @@ _render_va_surf_to_texture(VdpVideoMixerData *videoMixerData, VdpVideoSurfaceDat
         glTexCoord2f(1, 1); glVertex2f(srcSurfData->width, srcSurfData->height);
         glTexCoord2f(0, 1); glVertex2f(0, srcSurfData->height);
     glEnd();
-    glFinish();
+    // Use glFlush() instead of glFinish() to avoid blocking. The GPU can process
+    // the rendering asynchronously. Texture release is safe after glFlush().
+    glFlush();
 
     deviceData->fn.glXReleaseTexImageEXT(deviceData->display, videoMixerData->glx_pixmap,
                                          GLX_FRONT_EXT);
@@ -396,7 +398,9 @@ vdpVideoMixerRender(VdpVideoMixer mixer, VdpOutputSurface background_surface,
         glTexCoord2i(srcVideoRect.x0, srcVideoRect.y1);
         glVertex2f(dstVideoRect.x0, dstVideoRect.y1);
     glEnd();
-    glFinish();
+    // Use glFlush() instead of glFinish() to avoid expensive blocking.
+    // glGetError() will implicitly synchronize if needed for error reporting.
+    glFlush();
 
     GLenum gl_error = glGetError();
     glx_ctx_pop();
