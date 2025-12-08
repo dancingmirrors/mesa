@@ -172,7 +172,6 @@ if hasvk_has_vdpau
     'anv_video.c',
     'anv_video_vdpau_bridge.c',
     'anv_video_vdpau_h264.c',
-    'anv_video_cross_device.c',
   )
 endif
 
