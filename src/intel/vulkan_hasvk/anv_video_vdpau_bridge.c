@@ -86,31 +86,15 @@
 
 /* Maximum frames to process per submit for video decode. */
 #ifndef HASVK_MAX_FRAMES_PER_SUBMIT
-#define HASVK_MAX_FRAMES_PER_SUBMIT 0
+#define HASVK_MAX_FRAMES_PER_SUBMIT 2
 #endif
 
-/* Maximum VDPAU surfaces to cache for video decode.
- * Each surface consumes GPU/system memory:
- * - 1080p NV12: ~3MB per surface
- * - 4K NV12: ~17.7MB per surface
- *
- * Typically hasvk hardware shares system RAM but has limited address space
- * for GPU mappings.
- * For 4K video, we need sufficient cache for H.264 DPB (Decoded Picture Buffer):
- * - H.264 can reference up to 16 frames (though typically 4-5 for most content)
- * - Need room for current decode target
- * - Increased from 5 to 8 to prevent premature eviction of reference frames
- *
- * For 1080p and lower, we can use a larger cache.
- * This prevents "no surfaces left in buffer" errors during decoding while
- * providing sufficient DPB capacity. Least-recently-used surfaces are evicted when full.
- */
 #ifndef HASVK_MAX_SURFACE_CACHE_SIZE_4K
-#define HASVK_MAX_SURFACE_CACHE_SIZE_4K 12
+#define HASVK_MAX_SURFACE_CACHE_SIZE_4K 24
 #endif
 
 #ifndef HASVK_MAX_SURFACE_CACHE_SIZE_HD
-#define HASVK_MAX_SURFACE_CACHE_SIZE_HD 16
+#define HASVK_MAX_SURFACE_CACHE_SIZE_HD 32
 #endif
 
 /**
@@ -833,7 +817,6 @@ anv_vdpau_create_surface_from_image(struct anv_device *device,
  *
  * This function implements an optimized copy path using DMA-buf to avoid
  * the overhead of vdpVideoSurfaceGetBitsYCbCr which does:
- * - vaSyncSurface (blocking GPU sync)
  * - VA-API → CPU readback
  * - Pitch conversion/padding handling
  *
@@ -970,9 +953,6 @@ anv_vdpau_copy_surface_to_image_dmabuf(struct anv_device *device,
    /* CRITICAL FOR CACHE COHERENCY: Wait for GPU operations to complete.
     *
     * The imported DMA-buf was written by the VA-API video decoder (GPU render domain).
-    * Even though vaSyncSurface was called, we need to ensure the BO is idle before
-    * CPU access. Modern kernels use implicit synchronization instead of the deprecated
-    * set_domain ioctl.
     *
     * We use DRM_IOCTL_I915_GEM_WAIT to:
     * 1. Wait for any pending GPU operations to complete

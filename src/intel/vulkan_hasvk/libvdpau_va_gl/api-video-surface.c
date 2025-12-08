@@ -197,8 +197,6 @@ vdpVideoSurfaceGetBitsYCbCr(VdpVideoSurface surface,
     if (deviceData->va_available) {
         VAImage q;
 
-        vaSyncSurface(va_dpy, srcSurfData->va_surf);
-
         vaDeriveImage(va_dpy, srcSurfData->va_surf, &q);
 
         if (unlikely(global.quirks.log_stride)) {
@@ -699,17 +697,6 @@ vdpVideoSurfaceExportDmaBufhasvk(VdpVideoSurface surface,
     if (va_surf == VA_INVALID_SURFACE) {
         handle_release(surface);
         return VDP_STATUS_INVALID_HANDLE;
-    }
-
-    /* Ensure the decode is complete before exporting the surface
-     * This is critical - without sync, we may export a surface while the GPU
-     * is still writing to it, resulting in incomplete/corrupted frames.
-     */
-    va_status = vaSyncSurface(va_dpy, va_surf);
-    if (va_status != VA_STATUS_SUCCESS) {
-        traceError("hasvk DMA-buf export: vaSyncSurface failed with status %d\n", va_status);
-        handle_release(surface);
-        return VDP_STATUS_RESOURCES;
     }
 
     /* Try to export the VA-API surface as DMA-buf using VA_SURFACE_ATTRIB_MEM_TYPE_DRM_PRIME_2 */

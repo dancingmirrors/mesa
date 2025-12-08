@@ -74,6 +74,7 @@ anv_queue_finish(struct anv_queue *queue)
    vk_queue_finish(&queue->vk);
 }
 
+#if 0
 VkResult
 anv_QueueWaitIdle(VkQueue _queue)
 {
@@ -106,3 +107,4 @@ anv_QueueWaitIdle(VkQueue _queue)
 
    return VK_SUCCESS;
 }
+#endif
