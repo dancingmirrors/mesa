@@ -317,12 +317,22 @@ parse_slice_header(rbsp_state_t *st, const VAPictureParameterBufferH264 *vapp,
     sp.nal_ref_idc = rbsp_get_u(st, 2);
     sp.nal_unit_type = rbsp_get_u(st, 5);
 
+    if (st->error) {
+        // Buffer overflow during initial parsing, return early
+        return;
+    }
+
     if (sp.nal_unit_type == 14 || sp.nal_unit_type == 20) {
         NOT_IMPLEMENTED("nal unit types 14 and 20");
     }
 
     sp.first_mb_in_slice = rbsp_get_uev(st);
     sp.slice_type = rbsp_get_uev(st);
+
+    if (st->error) {
+        // Buffer overflow during slice parameter parsing, return early
+        return;
+    }
 
     if (sp.slice_type > 4)
         sp.slice_type -= 5;     // wrap 5-9 to 0-4
@@ -476,8 +486,16 @@ parse_ref_pic_list_modification(rbsp_state_t *st, const VAPictureParameterBuffer
             unsigned int picNumL0 = vapp->frame_num;
             do {
                 modification_of_pic_nums_idc = rbsp_get_uev(st);
+                if (st->error) {
+                    // Buffer overflow, stop processing
+                    return;
+                }
                 if (modification_of_pic_nums_idc < 2) {
                     int abs_diff_pic_num_minus1 = rbsp_get_uev(st);
+                    if (st->error) {
+                        // Buffer overflow, stop processing
+                        return;
+                    }
                     if (modification_of_pic_nums_idc == 0) {
                         picNumL0 -= (abs_diff_pic_num_minus1 + 1);
                     } else { // modification_of_pic_nums_idc == 1
@@ -498,7 +516,13 @@ parse_ref_pic_list_modification(rbsp_state_t *st, const VAPictureParameterBuffer
                             (vapp->ReferenceFrames[j].flags & VA_PICTURE_H264_SHORT_TERM_REFERENCE))
                                 break;
                     }
-                    assert (j < vapp->num_ref_frames);
+                    // Check if we found a matching reference frame
+                    if (j >= vapp->num_ref_frames) {
+                        // No matching reference frame found - bitstream is malformed
+                        // Set error and return to avoid crash
+                        st->error = 1;
+                        return;
+                    }
                     VAPictureH264 swp = vapp->ReferenceFrames[j];
                     for (int k = sp->num_ref_idx_l0_active_minus1; k > refIdxL0; k --)
                         sp->RefPicList0[k] = sp->RefPicList0[k-1];

@@ -18,8 +18,9 @@ typedef struct _rbsp_state_struct {
     size_t          byte_count;     ///< size of buffer
     const uint8_t  *cur_ptr;        ///< pointer to currently processed byte
     int             bit_ptr;        ///< pointer to currently processed bit
-    int             zeros_in_row;   ///< number of consequetive zero bytes so far
+    int             zeros_in_row;   ///< number of consecutive zero bytes so far
     int             bits_eaten;     ///< bit offset of current position not including EPB
+    int             error;          ///< error flag: set when buffer overflow occurs
 } rbsp_state_t;
 
 

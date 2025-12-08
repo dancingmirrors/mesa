@@ -20,6 +20,7 @@ rbsp_attach_buffer(rbsp_state_t *state, const uint8_t *buf, size_t byte_count)
     state->bit_ptr      = 7;
     state->zeros_in_row = 0;
     state->bits_eaten   = 0;
+    state->error        = 0;
 }
 
 rbsp_state_t
@@ -62,8 +63,10 @@ inline
 int
 rbsp_consume_byte(rbsp_state_t *state)
 {
-    if (state->cur_ptr >= state->buf_ptr + state->byte_count)
+    if (state->cur_ptr >= state->buf_ptr + state->byte_count) {
+        state->error = 1;
         return -1;
+    }
 
     uint8_t c = *state->cur_ptr++;
     if (0 == c) state->zeros_in_row ++;
@@ -74,6 +77,7 @@ rbsp_consume_byte(rbsp_state_t *state)
         if (state->cur_ptr >= state->buf_ptr + state->byte_count) {
             // Can't read EPB, rewind and signal error
             state->cur_ptr--;
+            state->error = 1;
             return -1;
         }
 
@@ -91,8 +95,10 @@ int
 rbsp_consume_bit(rbsp_state_t *state)
 {
     // Check buffer bounds before reading
-    if (state->cur_ptr >= state->buf_ptr + state->byte_count)
+    if (state->cur_ptr >= state->buf_ptr + state->byte_count) {
+        state->error = 1;
         return -1;
+    }
 
     int value = !!(*state->cur_ptr & (1 << state->bit_ptr));
     if (state->bit_ptr > 0) {
@@ -101,6 +107,7 @@ rbsp_consume_bit(rbsp_state_t *state)
         int byte_result = rbsp_consume_byte(state);
         if (byte_result < 0) {
             // Failed to consume next byte - we've read the last bit of the buffer
+            // error flag already set by rbsp_consume_byte
             return -1;
         }
         state->bit_ptr = 7;
