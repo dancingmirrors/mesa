@@ -22,6 +22,7 @@ struct global_data {
                                       ///< queue introduces
         int log_timestamp;            ///< display timestamps
         int log_stride;               ///< log detailed stride/pitch information for debugging
+        int log_slice_order;          ///< log H.264 slice ordering for debugging
         int disable_compositor_check; ///< disable automatic compositor detection (for testing)
     } quirks;
 };

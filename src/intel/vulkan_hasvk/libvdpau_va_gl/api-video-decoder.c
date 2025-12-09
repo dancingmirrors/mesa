@@ -12,6 +12,7 @@
 #include "h264-parse.h"
 #include "trace.h"
 #include "api.h"
+#include "globals.h"
 
 
 VdpStatus
@@ -495,6 +496,35 @@ h264_translate_iq_matrix(VAIQMatrixBufferH264 *iq_matrix, const VdpPictureInfoH2
             iq_matrix->ScalingList8x8[j][k] = vdppi->scaling_lists_8x8[j][k];
 }
 
+// Slice info structure for collecting and sorting slices
+struct h264_slice_info {
+    VASliceParameterBufferH264 params;
+    int nal_offset;
+    unsigned int slice_data_size;
+};
+
+// Comparison function for sorting slices by first_mb_in_slice
+// For malformed files with duplicate first_mb_in_slice values, use nal_offset as tiebreaker
+static int
+compare_h264_slices(const void *a, const void *b)
+{
+    const struct h264_slice_info *slice_a = (const struct h264_slice_info *)a;
+    const struct h264_slice_info *slice_b = (const struct h264_slice_info *)b;
+
+    // Primary sort: by macroblock position
+    if (slice_a->params.first_mb_in_slice < slice_b->params.first_mb_in_slice)
+        return -1;
+    if (slice_a->params.first_mb_in_slice > slice_b->params.first_mb_in_slice)
+        return 1;
+
+    if (slice_a->nal_offset < slice_b->nal_offset)
+        return -1;
+    if (slice_a->nal_offset > slice_b->nal_offset)
+        return 1;
+
+    return 0;
+}
+
 static
 VdpStatus
 vdpDecoderRender_h264(VdpDecoder decoder, VdpDecoderData *decoderData,
@@ -620,6 +650,11 @@ vdpDecoderRender_h264(VdpDecoder decoder, VdpDecoderData *decoderData,
     // requires bitstream buffers to include slice start code (0x00 0x00 0x01). Those
     // will be used to calculate offsets and sizes of slice data in code below.
 
+    // First pass: collect all slices into an array
+    struct h264_slice_info *slices = NULL;
+    int slice_count = 0;
+    int slice_capacity = 0;
+
     rbsp_state_t st_g;      // reference, global state
     rbsp_attach_buffer(&st_g, merged_bitstream, total_bitstream_bytes);
     int nal_offset = rbsp_navigate_to_nal_unit(&st_g);
@@ -628,6 +663,9 @@ vdpDecoderRender_h264(VdpDecoder decoder, VdpDecoderData *decoderData,
         err_code = VDP_STATUS_ERROR;
         goto quit;
     }
+
+    // TODO: this may not be entirely true for YUV444
+    int ChromaArrayType = pic_param.seq_fields.bits.chroma_format_idc;
 
     do {
         VASliceParameterBufferH264 sp_h264;
@@ -638,66 +676,163 @@ vdpDecoderRender_h264(VdpDecoder decoder, VdpDecoderData *decoderData,
         rbsp_reset_bit_counter(&st);
         int nal_offset_next = rbsp_navigate_to_nal_unit(&st_g);
 
-        // calculate end of current slice. Note (-3). It's slice start code length.
+        // calculate end of current NAL unit
         const unsigned int end_pos = (nal_offset_next > 0) ? (nal_offset_next - 3)
                                                            : total_bitstream_bytes;
         sp_h264.slice_data_size     = end_pos - nal_offset;
         sp_h264.slice_data_offset   = 0;
         sp_h264.slice_data_flag     = VA_SLICE_DATA_FLAG_ALL;
 
-        // TODO: this may be not entirely true for YUV444
-        // but if we limiting to YUV420, that's ok
-        int ChromaArrayType = pic_param.seq_fields.bits.chroma_format_idc;
+        // Peek at NAL unit type to filter out non-slices (SPS, PPS, SEI, etc.)
+        rbsp_state_t peek_st = rbsp_copy_state(&st);
+        rbsp_get_u(&peek_st, 1); // forbidden_zero_bit
+        rbsp_get_u(&peek_st, 2); // nal_ref_idc
+        int nal_unit_type = rbsp_get_u(&peek_st, 5);
 
-        // parse slice header and use its data to fill slice parameter buffer
-        parse_slice_header(&st, &pic_param, ChromaArrayType, vdppi->num_ref_idx_l0_active_minus1,
-                           vdppi->num_ref_idx_l1_active_minus1, &sp_h264);
+        // Only process actual slice NAL units (types 1-5)
+        // Valid slice NAL types: 1=non-IDR slice, 2-4=data partition slices, 5=IDR slice
+        // Non-slice types to skip: 6=SEI, 7=SPS, 8=PPS, 9=AU delimiter, etc.
+        const int NAL_SLICE_MIN = 1;      // First slice type (non-IDR)
+        const int NAL_SLICE_MAX = 5;      // Last slice type (IDR)
+        int is_slice = (nal_unit_type >= NAL_SLICE_MIN && nal_unit_type <= NAL_SLICE_MAX);
 
-        /* PERFORMANCE: Batch VA-API calls to reduce lock overhead.
-         * Lock is held only during VA-API calls, not during slice parsing.
-         * This balances single-threaded performance (fewer locks) with multi-threaded
-         * performance (shorter critical sections).
-         */
+        if (is_slice) {
+            // parse slice header and use its data to fill slice parameter buffer
+            parse_slice_header(&st, &pic_param, ChromaArrayType, vdppi->num_ref_idx_l0_active_minus1,
+                               vdppi->num_ref_idx_l1_active_minus1, &sp_h264);
+
+            // Grow slice array if needed
+            if (slice_count >= slice_capacity) {
+                slice_capacity = (slice_capacity == 0) ? 16 : slice_capacity * 2;
+                struct h264_slice_info *new_slices = realloc(slices, slice_capacity * sizeof(struct h264_slice_info));
+                if (!new_slices) {
+                    // realloc failed, but original slices pointer is still valid
+                    // It will be freed in cleanup code at quit_free_slices label
+                    err_code = VDP_STATUS_RESOURCES;
+                    goto quit_free_slices;
+                }
+                slices = new_slices;
+            }
+
+            // Store slice info
+            slices[slice_count].params = sp_h264;
+            slices[slice_count].nal_offset = nal_offset;
+            slices[slice_count].slice_data_size = sp_h264.slice_data_size;
+            slice_count++;
+        }
+
+        if (nal_offset_next < 0)        // nal_offset_next equals -1 when there is no NAL unit
+            break;                      // start code found. Thus that was the final NAL unit.
+        nal_offset = nal_offset_next;
+    } while (1);
+
+    // Debug logging: show collected slices before sorting
+    if (global.quirks.log_slice_order) {
+        traceInfo("hasvk: H.264 slice ordering debug (before sort):\n");
+        traceInfo("  Total slices collected: %d\n", slice_count);
+        for (int i = 0; i < slice_count && i < 10; i++) {
+            traceInfo("  Slice %d: first_mb_in_slice=%u, nal_offset=%d, size=%u\n",
+                     i, slices[i].params.first_mb_in_slice, slices[i].nal_offset,
+                     slices[i].slice_data_size);
+        }
+        if (slice_count > 10) {
+            traceInfo("  ... (%d more slices)\n", slice_count - 10);
+        }
+    }
+
+    // Second pass: sort slices by first_mb_in_slice (macroblock order)
+    // This is required for correct H.264 decoding with many slices
+    qsort(slices, slice_count, sizeof(struct h264_slice_info), compare_h264_slices);
+
+    // Third pass: deduplicate slices with same first_mb_in_slice
+    // This handles malformed/malicious files that have multiple slices at the same macroblock position
+    // The Intel VA-API driver rejects slices with duplicate first_mb_in_slice values
+    int dedup_count = 0;
+    for (int i = 0; i < slice_count; i++) {
+        // Keep first occurrence of each first_mb_in_slice value
+        if (i == 0 || slices[i].params.first_mb_in_slice != slices[dedup_count - 1].params.first_mb_in_slice) {
+            if (i != dedup_count) {
+                slices[dedup_count] = slices[i];
+            }
+            dedup_count++;
+        } else if (global.quirks.log_slice_order) {
+            traceInfo("hasvk: Skipping duplicate slice %d with first_mb_in_slice=%u (same as slice %d)\n",
+                     i, slices[i].params.first_mb_in_slice, dedup_count - 1);
+        }
+    }
+
+    if (dedup_count < slice_count && global.quirks.log_slice_order) {
+        traceInfo("hasvk: Deduplicated %d slices (from %d to %d)\n",
+                 slice_count - dedup_count, slice_count, dedup_count);
+    }
+    slice_count = dedup_count;
+
+    // Debug logging: show sorted and deduplicated slices
+    if (global.quirks.log_slice_order) {
+        traceInfo("hasvk: H.264 slice ordering debug (after sort and dedup):\n");
+        for (int i = 0; i < slice_count && i < 10; i++) {
+            traceInfo("  Slice %d: first_mb_in_slice=%u, nal_offset=%d, size=%u\n",
+                     i, slices[i].params.first_mb_in_slice, slices[i].nal_offset,
+                     slices[i].slice_data_size);
+        }
+        if (slice_count > 10) {
+            traceInfo("  ... (%d more slices)\n", slice_count - 10);
+        }
+        // Check for ordering issues
+        for (int i = 0; i < slice_count - 1; i++) {
+            if (slices[i+1].params.first_mb_in_slice <= slices[i].params.first_mb_in_slice) {
+                traceError("hasvk: ERROR! Slice %d (first_mb=%u) <= Slice %d (first_mb=%u)\n",
+                          i+1, slices[i+1].params.first_mb_in_slice,
+                          i, slices[i].params.first_mb_in_slice);
+            }
+        }
+    }
+
+    // Fourth pass: submit slices to VA-API in correct order
+    /* PERFORMANCE: Batch VA-API calls to reduce lock overhead.
+     * Lock is held only during VA-API calls, not during slice parsing.
+     * This balances single-threaded performance (fewer locks) with multi-threaded
+     * performance (shorter critical sections).
+     */
+    for (int i = 0; i < slice_count; i++) {
         VABufferID slice_parameters_buf;
         glx_ctx_lock();
         status = vaCreateBuffer(va_dpy, decoderData->context_id, VASliceParameterBufferType,
-            sizeof(VASliceParameterBufferH264), 1, &sp_h264, &slice_parameters_buf);
+            sizeof(VASliceParameterBufferH264), 1, &slices[i].params, &slice_parameters_buf);
         if (VA_STATUS_SUCCESS != status) {
             glx_ctx_unlock();
             err_code = VDP_STATUS_ERROR;
-            goto quit;
+            goto quit_free_slices;
         }
         status = vaRenderPicture(va_dpy, decoderData->context_id, &slice_parameters_buf, 1);
         if (VA_STATUS_SUCCESS != status) {
             glx_ctx_unlock();
             err_code = VDP_STATUS_ERROR;
-            goto quit;
+            goto quit_free_slices;
         }
 
         VABufferID slice_buf;
         status = vaCreateBuffer(va_dpy, decoderData->context_id, VASliceDataBufferType,
-            sp_h264.slice_data_size, 1, merged_bitstream + nal_offset, &slice_buf);
+            slices[i].slice_data_size, 1, merged_bitstream + slices[i].nal_offset, &slice_buf);
         if (VA_STATUS_SUCCESS != status) {
             glx_ctx_unlock();
             err_code = VDP_STATUS_ERROR;
-            goto quit;
+            goto quit_free_slices;
         }
 
         status = vaRenderPicture(va_dpy, decoderData->context_id, &slice_buf, 1);
         if (VA_STATUS_SUCCESS != status) {
             glx_ctx_unlock();
             err_code = VDP_STATUS_ERROR;
-            goto quit;
+            goto quit_free_slices;
         }
 
         vaDestroyBuffer(va_dpy, slice_parameters_buf);
         vaDestroyBuffer(va_dpy, slice_buf);
         glx_ctx_unlock();
+    }
 
-        if (nal_offset_next < 0)        // nal_offset_next equals -1 when there is no slice
-            break;                      // start code found. Thus that was the final slice.
-        nal_offset = nal_offset_next;
-    } while (1);
+    free(slices);
 
     glx_ctx_lock();
     status = vaEndPicture(va_dpy, decoderData->context_id);
@@ -711,6 +846,10 @@ vdpDecoderRender_h264(VdpDecoder decoder, VdpDecoderData *decoderData,
 
     dstSurfData->sync_va_to_glx = 1;
     err_code = VDP_STATUS_OK;
+    goto quit;
+
+quit_free_slices:
+    free(slices);
 quit:
     return err_code;
 }
