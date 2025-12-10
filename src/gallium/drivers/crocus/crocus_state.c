@@ -970,8 +970,13 @@ gen4_upload_curbe(struct crocus_batch *batch)
       goto emit;
 
    uint32_t *map;
-   u_upload_alloc_ref(ice->ctx.const_uploader, 0, buf_sz, 64,
-                  &ice->curbe.curbe_offset, (struct pipe_resource **)&ice->curbe.curbe_res, (void **) &map);
+   struct pipe_resource *pres = NULL;
+   struct pipe_resource *tmp = NULL;
+   u_upload_alloc(ice->ctx.const_uploader, 0, buf_sz, 64,
+                  &ice->curbe.curbe_offset, &pres,
+                  &tmp, (void **) &map);
+   pipe_resource_release(&ice->ctx, tmp);
+   pipe_resource_reference((struct pipe_resource **)&ice->curbe.curbe_res, pres);
 
    /* fragment shader constants */
    if (ice->curbe.wm_size) {
@@ -3520,8 +3525,12 @@ crocus_set_constant_buffer(struct pipe_context *ctx,
       if (input->user_buffer) {
          void *map = NULL;
          pipe_resource_reference(&cbuf->buffer, NULL);
-         u_upload_alloc_ref(ice->ctx.const_uploader, 0, input->buffer_size, 64,
-                        &cbuf->buffer_offset, &cbuf->buffer, (void **) &map);
+         struct pipe_resource *pres = NULL;
+         struct pipe_resource *tmp = NULL;
+         u_upload_alloc(ice->ctx.const_uploader, 0, input->buffer_size, 64,
+                        &cbuf->buffer_offset, &pres, &tmp, (void **) &map);
+         pipe_resource_release(&ice->ctx, tmp);
+         pipe_resource_reference(&cbuf->buffer, pres);
 
          if (!cbuf->buffer) {
             /* Allocation was unsuccessful - just unbind */
@@ -3565,8 +3574,12 @@ upload_sysvals(struct crocus_context *ice,
    uint32_t *map = NULL;
 
    assert(sysval_cbuf_index < PIPE_MAX_CONSTANT_BUFFERS);
-   u_upload_alloc_ref(ice->ctx.const_uploader, 0, upload_size, 64,
-                  &cbuf->buffer_offset, &cbuf->buffer, (void **) &map);
+   struct pipe_resource *pres = NULL;
+   struct pipe_resource *tmp = NULL;
+   u_upload_alloc(ice->ctx.const_uploader, 0, upload_size, 64,
+                  &cbuf->buffer_offset, &pres, &tmp, (void **) &map);
+   pipe_resource_release(&ice->ctx, tmp);
+   pipe_resource_reference(&cbuf->buffer, pres);
 
    for (int i = 0; i < shader->num_system_values; i++) {
       uint32_t sysval = shader->system_values[i];
@@ -4055,10 +4068,14 @@ crocus_create_stream_output_target(struct pipe_context *ctx,
 #if GFX_VER >= 7
    struct crocus_context *ice = (struct crocus_context *) ctx;
    void *temp;
-   u_upload_alloc_ref(ice->ctx.stream_uploader, 0, sizeof(uint32_t), 4,
+   struct pipe_resource *pres = NULL;
+   struct pipe_resource *tmp = NULL;
+   u_upload_alloc(ice->ctx.stream_uploader, 0, sizeof(uint32_t), 4,
                   &cso->offset_offset,
-                  (struct pipe_resource **)&cso->offset_res,
-                  &temp);
+                  &pres,
+                  &tmp, &temp);
+   pipe_resource_release(&ice->ctx, tmp);
+   pipe_resource_reference((struct pipe_resource **)&cso->offset_res, pres);
 #endif
 
    return &cso->base;
@@ -4104,10 +4121,14 @@ crocus_stream_store_prims_written(struct crocus_batch *batch,
                                   struct crocus_stream_output_target *tgt)
 {
    if (!tgt->offset_res) {
-      u_upload_alloc_ref(batch->ice->ctx.stream_uploader, 0, 4096, 4,
+      struct pipe_resource *pres = NULL;
+      struct pipe_resource *tmp = NULL;
+      u_upload_alloc(batch->ice->ctx.stream_uploader, 0, 4096, 4,
                      &tgt->offset_offset,
-                     (struct pipe_resource **)&tgt->offset_res,
-                     &tgt->prim_map);
+                     &pres,
+                     &tmp, &tgt->prim_map);
+      pipe_resource_release(&batch->ice->ctx, tmp);
+      pipe_resource_reference((struct pipe_resource **)&tgt->offset_res, pres);
       tgt->count.offset_start = tgt->count.offset_end = 0;
    }
 
@@ -7823,10 +7844,14 @@ crocus_upload_render_state(struct crocus_context *ice,
 
       if (draw->has_user_indices) {
          unsigned start_offset = draw->index_size * sc->start;
-         u_upload_data_ref(ice->ctx.stream_uploader, 0,
+         struct pipe_resource *pres = NULL;
+         struct pipe_resource *tmp = NULL;
+         u_upload_data(ice->ctx.stream_uploader, 0,
                        sc->count * draw->index_size, 4,
                        (char *)draw->index.user + start_offset,
-                       &offset, &ice->state.index_buffer.res);
+                       &offset, &pres, &tmp);
+         pipe_resource_release(&ice->ctx, tmp);
+         pipe_resource_reference(&ice->state.index_buffer.res, pres);
          offset -= start_offset;
          size = start_offset + sc->count * draw->index_size;
          emit_index = true;

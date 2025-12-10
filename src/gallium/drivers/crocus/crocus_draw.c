@@ -229,9 +229,13 @@ crocus_update_draw_parameters(struct crocus_context *ice,
             ice->draw.params.baseinstance = info->start_instance;
             ice->draw.params_valid = true;
 
-            u_upload_data_ref(ice->ctx.stream_uploader, 0,
+            struct pipe_resource *pres = NULL;
+            struct pipe_resource *tmp = NULL;
+            u_upload_data(ice->ctx.stream_uploader, 0,
                           sizeof(ice->draw.params), 4, &ice->draw.params,
-                          &draw_params->offset, &draw_params->res);
+                          &draw_params->offset, &pres, &tmp);
+            pipe_resource_release(&ice->ctx, tmp);
+            pipe_resource_reference(&draw_params->res, pres);
          }
       }
    }
@@ -247,10 +251,14 @@ crocus_update_draw_parameters(struct crocus_context *ice,
          ice->draw.derived_params.drawid = drawid_offset;
          ice->draw.derived_params.is_indexed_draw = is_indexed_draw;
 
-         u_upload_data_ref(ice->ctx.stream_uploader, 0,
+         struct pipe_resource *pres = NULL;
+         struct pipe_resource *tmp = NULL;
+         u_upload_data(ice->ctx.stream_uploader, 0,
                        sizeof(ice->draw.derived_params), 4,
                        &ice->draw.derived_params, &derived_params->offset,
-                       &derived_params->res);
+                       &pres, &tmp);
+         pipe_resource_release(&ice->ctx, tmp);
+         pipe_resource_reference(&derived_params->res, pres);
       }
    }
 
@@ -463,8 +471,12 @@ crocus_update_grid_size_resource(struct crocus_context *ice,
       memset(ice->state.last_grid, 0, sizeof(ice->state.last_grid));
    } else if (memcmp(ice->state.last_grid, grid->grid, sizeof(grid->grid)) != 0) {
       memcpy(ice->state.last_grid, grid->grid, sizeof(grid->grid));
-      u_upload_data_ref(ice->ctx.const_uploader, 0, sizeof(grid->grid), 4,
-                    grid->grid, &grid_ref->offset, &grid_ref->res);
+      struct pipe_resource *pres = NULL;
+      struct pipe_resource *tmp = NULL;
+      u_upload_data(ice->ctx.const_uploader, 0, sizeof(grid->grid), 4,
+                    grid->grid, &grid_ref->offset, &pres, &tmp);
+      pipe_resource_release(&ice->ctx, tmp);
+      pipe_resource_reference(&grid_ref->res, pres);
    }
 
    /* Skip surface upload if we don't need it or we already have one */
