@@ -209,7 +209,7 @@ setup_vdpau_driver_path(void)
                 */
                struct stat st;
                if (stat(vdpau_path, &st) == 0 && S_ISDIR(st.st_mode)) {
-                  setenv("VDPAU_DRIVER_PATH", vdpau_path, 0);
+                  os_set_option("VDPAU_DRIVER_PATH", vdpau_path, 0);
                }
 
                free(vdpau_path);
@@ -224,7 +224,7 @@ setup_vdpau_driver_path(void)
     */
    const char *existing_driver = os_get_option("VDPAU_DRIVER");
    if (!existing_driver || existing_driver[0] == '\0') {
-      setenv("VDPAU_DRIVER", "va_gl", 0);
+      os_set_option("VDPAU_DRIVER", "va_gl", 0);
    }
 }
 
