@@ -175,7 +175,7 @@ static void
 setup_vdpau_driver_path(void)
 {
    /* Only set the path if not already explicitly configured by user */
-   const char *existing_path = getenv("VDPAU_DRIVER_PATH");
+   const char *existing_path = os_get_option("VDPAU_DRIVER_PATH");
    if (existing_path && existing_path[0] != '\0') {
       return;
    }
@@ -222,7 +222,7 @@ setup_vdpau_driver_path(void)
    /* Also set VDPAU_DRIVER to va_gl if not already set, to ensure the
     * correct driver is loaded even if other drivers are present.
     */
-   const char *existing_driver = getenv("VDPAU_DRIVER");
+   const char *existing_driver = os_get_option("VDPAU_DRIVER");
    if (!existing_driver || existing_driver[0] == '\0') {
       setenv("VDPAU_DRIVER", "va_gl", 0);
    }
