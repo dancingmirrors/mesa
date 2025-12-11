@@ -255,7 +255,7 @@ get_vdpau_procs(struct anv_vdpau_session *session)
 
 #undef GET_PROC
 
-   /* Try to get hasvk DMA-buf export extension (optional)
+   /* Try to get hasvk DMA-buf export extension (required at build time)
     * This is loaded via dlsym since it's not a standard VDPAU function.
     * We look it up in the global namespace which will find it in libvdpau_va_gl.
     */
