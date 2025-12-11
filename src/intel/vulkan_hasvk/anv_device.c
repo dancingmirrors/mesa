@@ -2612,8 +2612,7 @@ anv_CreateDevice(VkPhysicalDevice physicalDevice,
 
    anv_device_set_physical(device, physical_device);
 
-   /* XXX(chadv): Can we dup() physicalDevice->fd here? */
-   device->fd = open(physical_device->path, O_RDWR | O_CLOEXEC);
+   device->fd = os_dupfd_cloexec(physical_device->local_fd);
    if (device->fd == -1) {
       result = vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
       goto fail_device;

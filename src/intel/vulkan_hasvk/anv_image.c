@@ -1974,26 +1974,20 @@ anv_get_image_subresource_layout(const struct anv_image *image,
     * VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT internally.  Vulkan doesn't allow
     * vkGetImageSubresourceLayout for images with VK_IMAGE_TILING_OPTIMAL,
     * therefore it's invalid for the application to call this on a swapchain
-    * image.  The WSI code, however, knows when it has internally created
-    * a swapchain image with VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT,
-    * so it _should_ correctly use VK_IMAGE_ASPECT_MEMORY_PLANE_* in that case.
-    * But it incorrectly uses VK_IMAGE_ASPECT_PLANE_*, so we have a temporary
-    * workaround.
+    * image.  The WSI code knows when it has internally created a swapchain
+    * image with VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT and correctly uses
+    * VK_IMAGE_ASPECT_MEMORY_PLANE_* in that case.
     */
    if (image->vk.tiling == VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT) {
-      /* TODO(chadv): Drop this workaround when WSI gets fixed. */
       uint32_t mem_plane;
       switch (subresource->imageSubresource.aspectMask) {
       case VK_IMAGE_ASPECT_MEMORY_PLANE_0_BIT_EXT:
-      case VK_IMAGE_ASPECT_PLANE_0_BIT:
          mem_plane = 0;
          break;
       case VK_IMAGE_ASPECT_MEMORY_PLANE_1_BIT_EXT:
-      case VK_IMAGE_ASPECT_PLANE_1_BIT:
          mem_plane = 1;
          break;
       case VK_IMAGE_ASPECT_MEMORY_PLANE_2_BIT_EXT:
-      case VK_IMAGE_ASPECT_PLANE_2_BIT:
          mem_plane = 2;
          break;
       default:
