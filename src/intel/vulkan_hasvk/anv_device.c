@@ -739,15 +739,9 @@ get_properties_1_1(const struct anv_physical_device *pdevice,
       VK_SUBGROUP_FEATURE_VOTE_BIT |
       VK_SUBGROUP_FEATURE_BALLOT_BIT |
       VK_SUBGROUP_FEATURE_SHUFFLE_BIT |
-      VK_SUBGROUP_FEATURE_SHUFFLE_RELATIVE_BIT | VK_SUBGROUP_FEATURE_QUAD_BIT;
-   if (pdevice->info.ver >= 8) {
-      /* TODO: There's no technical reason why these can't be made to
-       * work on gfx7 but they don't at the moment so it's best to leave
-       * the feature disabled than enabled and broken.
-       */
-      p->subgroupSupportedOperations |= VK_SUBGROUP_FEATURE_ARITHMETIC_BIT |
-         VK_SUBGROUP_FEATURE_CLUSTERED_BIT;
-   }
+      VK_SUBGROUP_FEATURE_SHUFFLE_RELATIVE_BIT | VK_SUBGROUP_FEATURE_QUAD_BIT |
+      VK_SUBGROUP_FEATURE_ARITHMETIC_BIT |
+      VK_SUBGROUP_FEATURE_CLUSTERED_BIT;
    p->subgroupQuadOperationsInAllStages = pdevice->info.ver >= 8;
 
    p->pointClippingBehavior =
