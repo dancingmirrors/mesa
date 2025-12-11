@@ -56,6 +56,13 @@ devenv.append('VK_DRIVER_FILES', _dev_icd.full_path())
 
 # Don't build bundled libraries on Android (very niche and might cause issues)
 if not with_platform_android
+  # Build bundled libva as part of Mesa
+  # This is a fork that prevents probing for intel-media-driver on systems
+  # where it wouldn't work (e.g., hasvk's hardware). It takes priority over
+  # system-installed libva and ensures i965_drv_video.so is searched in the
+  # correct location.
+  subdir('libva')
+
   # Build bundled intel-vaapi-driver as part of Mesa
   # This provides the VA-API driver that is preferred over system-installed versions
   # JPEG support has been removed to prevent GPU hangs

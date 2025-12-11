@@ -9,13 +9,27 @@
 
 # Check for required dependencies
 dep_glib = dependency('glib-2.0', required : false)
-dep_libva_x11 = dependency('libva-x11', required : false)
+
+# Use bundled libva if available, otherwise fall back to system libva
+if is_variable('libva_x11_hasvk_dep')
+  # Use bundled libva-x11 (preferred)
+  dep_libva_x11 = libva_x11_hasvk_dep
+else
+  # Fallback to system libva-x11
+  dep_libva_x11 = dependency('libva-x11', required : false)
+endif
+
+if is_variable('libva_drm_hasvk_dep')
+  # Use bundled libva-drm (preferred)
+  dep_libva_drm = libva_drm_hasvk_dep
+else
+  # Fallback to system libva-drm
+  dep_libva_drm = dependency('libva-drm', required : false, version : '>= 1.2.0')
+endif
+
 dep_gl = dependency('gl', required : false)
 dep_glu = dependency('glu', required : false)
 dep_x11 = dependency('x11', required : false)
-
-# Check for VA-API DRM PRIME support (optional, for DMA-buf export)
-dep_libva_drm = dependency('libva-drm', required : false, version : '>= 1.2.0')
 
 with_libvdpau_va_gl = (
   dep_glib.found() and

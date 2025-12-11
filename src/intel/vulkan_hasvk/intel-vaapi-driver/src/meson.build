@@ -5,19 +5,28 @@ intel_vaapi_driver_minor_version = '4'
 intel_vaapi_driver_micro_version = '0'
 intel_vaapi_driver_pre_version = '1'
 
-# Get VA-API version from system libva
-dep_libva = dependency('libva', version : '>= 1.1.0', required : true)
+# Use bundled libva if available, otherwise fall back to system libva
+# The bundled libva_hasvk_dep is provided by the libva subdirectory
+if meson.is_subproject() == false or not is_variable('libva_hasvk_dep')
+  # Fallback to system libva if bundled version is not available
+  dep_libva = dependency('libva', version : '>= 1.1.0', required : true)
+  va_api_major_version = '0'
+  va_api_minor_version = '33'
+  if dep_libva.type_name() == 'pkgconfig'
+    va_api_version_array = dep_libva.version().split('.')
+    va_api_major_version = va_api_version_array[0]
+    va_api_minor_version = va_api_version_array[1]
+  endif
+else
+  # Use bundled libva (preferred)
+  dep_libva = libva_hasvk_dep
+  # Use version from bundled libva
+  va_api_major_version = '1'
+  va_api_minor_version = '23'
+endif
+
 dep_libdrm = dependency('libdrm', version : '>= 2.4.52', required : true)
 dep_libdrm_intel = dependency('libdrm_intel', required : true)
-
-# Determine VA-API version for driver init function
-va_api_major_version = '0'
-va_api_minor_version = '33'
-if dep_libva.type_name() == 'pkgconfig'
-  va_api_version_array = dep_libva.version().split('.')
-  va_api_major_version = va_api_version_array[0]
-  va_api_minor_version = va_api_version_array[1]
-endif
 
 va_driver_init_func = '__vaDriverInit_@0@_@1@'.format(va_api_major_version,
                                                        va_api_minor_version)
