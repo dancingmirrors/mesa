@@ -287,7 +287,7 @@ do_presentation_queue_display(struct task_s *task)
     glx_ctx_unlock();
 
     struct timespec now;
-    clock_gettime(CLOCK_REALTIME, &now);
+    clock_gettime(CLOCK_MONOTONIC, &now);
 
     pthread_mutex_lock(&surfData->status_mutex);
     surfData->first_presentation_time = timespec2vdptime(now);
@@ -341,7 +341,7 @@ presentation_thread(void *param)
         if (task) {
             // internal queue have a task
             struct timespec now;
-            clock_gettime(CLOCK_REALTIME, &now);
+            clock_gettime(CLOCK_MONOTONIC, &now);
             timeout = (task->when.tv_sec - now.tv_sec) * 1000 * 1000 +
                       (task->when.tv_nsec - now.tv_nsec) / 1000;
             if (timeout <= 0) {
@@ -583,7 +583,7 @@ vdpPresentationQueueGetTime(VdpPresentationQueue presentation_queue, VdpTime *cu
     if (NULL == pqData) {
         /* No valid queue, just return current time */
         struct timespec now;
-        clock_gettime(CLOCK_REALTIME, &now);
+        clock_gettime(CLOCK_MONOTONIC, &now);
         *current_time = timespec2vdptime(now);
         return VDP_STATUS_OK;
     }
@@ -597,7 +597,12 @@ vdpPresentationQueueGetTime(VdpPresentationQueue presentation_queue, VdpTime *cu
 
     handle_release(presentation_queue);
 
-    /* Always return current wall clock time.
+    /* Always return current monotonic time.
+     *
+     * We use CLOCK_MONOTONIC instead of CLOCK_REALTIME to avoid timing issues
+     * caused by system time adjustments (NTP, manual changes, etc.). This ensures
+     * that presentation times are always monotonically increasing, which is critical
+     * for proper A/V sync especially during initial video load under high system load.
      *
      * Note: Even without a compositor, VDPAU timing is not accurate enough
      * for proper frame pacing because:
@@ -610,7 +615,7 @@ vdpPresentationQueueGetTime(VdpPresentationQueue presentation_queue, VdpTime *cu
      * frame dropping logic in the presentation thread.
      */
     struct timespec now;
-    clock_gettime(CLOCK_REALTIME, &now);
+    clock_gettime(CLOCK_MONOTONIC, &now);
     *current_time = timespec2vdptime(now);
     return VDP_STATUS_OK;
 }
@@ -658,9 +663,14 @@ vdpPresentationQueueDisplay(VdpPresentationQueue presentation_queue, VdpOutputSu
      */
     if (compositor_detected) {
         struct timespec now;
-        clock_gettime(CLOCK_REALTIME, &now);
+        clock_gettime(CLOCK_MONOTONIC, &now);
         task->when = now;
     } else {
+        /* earliest_presentation_time is based on CLOCK_MONOTONIC time since
+         * vdpPresentationQueueGetTime returns CLOCK_MONOTONIC time.
+         * Applications (like mpv) query current time, add a delta, and pass
+         * it back here, ensuring timestamp consistency.
+         */
         task->when = vdptime2timespec(earliest_presentation_time);
     }
 
@@ -676,7 +686,7 @@ vdpPresentationQueueDisplay(VdpPresentationQueue presentation_queue, VdpOutputSu
 
     if (global.quirks.log_pq_delay) {
         struct timespec now;
-        clock_gettime(CLOCK_REALTIME, &now);
+        clock_gettime(CLOCK_MONOTONIC, &now);
         surfData->queued_at = timespec2vdptime(now);
     }
 
