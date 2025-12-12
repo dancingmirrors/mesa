@@ -1,6 +1,6 @@
 # libva bundled for Mesa hasvk
 # This is a fork of libva that prevents probing for intel-media-driver
-# on systems where it wouldn't work (e.g., hasvk's hardware).
+# first on systems where it wouldn't work (e.g., hasvk's hardware).
 #
 # This bundled version takes priority over system-installed libva.
 
