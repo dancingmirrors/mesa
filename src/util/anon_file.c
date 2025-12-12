@@ -210,12 +210,13 @@ os_create_anonymous_file(int64_t size, const char *debug_name)
             return -1;
         }
 
-        if (debug_name)
-            asprintf(&name, "%s/mesa-shared-%s-XXXXXX", path, debug_name);
-        else
-            asprintf(&name, "%s/mesa-shared-XXXXXX", path);
-        if (!name)
-            return -1;
+        if (debug_name) {
+            if (asprintf(&name, "%s/mesa-shared-%s-XXXXXX", path, debug_name) < 0)
+                return -1;
+        } else {
+            if (asprintf(&name, "%s/mesa-shared-XXXXXX", path) < 0)
+                return -1;
+        }
 
         fd = create_tmpfile_cloexec(name);
 

@@ -252,6 +252,7 @@ struct wsi_wl_swapchain {
       VkColorSpaceKHR colorspace;
       VkHdrMetadataEXT hdr_metadata;
       bool has_hdr_metadata;
+      bool owns_color_surface_refcount; /* Initialized to false by vk_zalloc */
    } color;
 
    struct wsi_wl_image images[0];
@@ -1159,8 +1160,13 @@ needs_color_surface(struct wsi_wl_display *display, VkColorSpaceKHR colorspace)
 static void
 wsi_wl_surface_add_color_refcount(struct wsi_wl_surface *wsi_surface)
 {
+   /* Sanity check: prevent excessive refcounts that indicate a logic error.
+    * A reasonable upper limit is 256 swapchains per surface. */
+   if (wsi_surface->color.color_surface_refcount >= 256)
+      return;
+
    wsi_surface->color.color_surface_refcount++;
-   if (wsi_surface->color.color_surface_refcount == 1) {
+   if (wsi_surface->color.color_surface_refcount == 1 && !wsi_surface->color.color_surface) {
       wsi_surface->color.color_surface =
          wp_color_manager_v1_get_surface(wsi_surface->display->color_manager,
 					 wsi_surface->wayland_surface.wrapper);
@@ -1170,8 +1176,19 @@ wsi_wl_surface_add_color_refcount(struct wsi_wl_surface *wsi_surface)
 static void
 wsi_wl_surface_remove_color_refcount(struct wsi_wl_surface *wsi_surface)
 {
+   /* Sanity check: refcount should never be negative or zero when removing.
+    * This catches double-free bugs and other logic errors. */
+   if (wsi_surface->color.color_surface_refcount == 0)
+      return;
+
+   /* Detect and handle corrupted negative refcount */
+   if (wsi_surface->color.color_surface_refcount < 0) {
+      wsi_surface->color.color_surface_refcount = 0;
+      return;
+   }
+
    wsi_surface->color.color_surface_refcount--;
-   if (wsi_surface->color.color_surface_refcount == 0) {
+   if (wsi_surface->color.color_surface_refcount == 0 && wsi_surface->color.color_surface) {
       wp_color_management_surface_v1_destroy(wsi_surface->color.color_surface);
       wsi_surface->color.color_surface = NULL;
    }
@@ -1251,12 +1268,15 @@ wsi_wl_swapchain_update_colorspace(struct wsi_wl_swapchain *chain)
 
    bool new_color_surface = !surface->color.color_surface;
    bool needs_color_surface_new = needs_color_surface(display, chain->color.colorspace);
-   bool needs_color_surface_old = surface->color.color_surface &&
-      needs_color_surface(display, surface->color.colorspace);
-   if (!needs_color_surface_old && needs_color_surface_new) {
+
+   /* Manage refcount based on whether this chain needs the color surface.
+    * Each swapchain that needs the color surface must hold a refcount. */
+   if (needs_color_surface_new && !chain->color.owns_color_surface_refcount) {
       wsi_wl_surface_add_color_refcount(surface);
-   } else if (needs_color_surface_old && !needs_color_surface_new) {
+      chain->color.owns_color_surface_refcount = true;
+   } else if (!needs_color_surface_new && chain->color.owns_color_surface_refcount) {
       wsi_wl_surface_remove_color_refcount(surface);
+      chain->color.owns_color_surface_refcount = false;
    }
 
    struct wayland_hdr_metadata wayland_hdr_metadata = {
@@ -1366,6 +1386,12 @@ wsi_wl_swapchain_update_colorspace(struct wsi_wl_swapchain *chain)
       } else {
          return VK_ERROR_SURFACE_LOST_KHR;
       }
+   }
+
+   /* Sanity check: ensure color surface exists before using it */
+   if (!chain->wsi_wl_surface->color.color_surface) {
+      wp_image_description_v1_destroy(image_desc);
+      return VK_ERROR_SURFACE_LOST_KHR;
    }
 
    wp_color_management_surface_v1_set_image_description(chain->wsi_wl_surface->color.color_surface,
@@ -3369,8 +3395,7 @@ wsi_wl_swapchain_chain_free(struct wsi_wl_swapchain *chain,
       wl_callback_destroy(chain->frame);
    if (chain->tearing_control)
       wp_tearing_control_v1_destroy(chain->tearing_control);
-   if (needs_color_surface(wsi_wl_surface->display, chain->color.colorspace) &&
-       wsi_wl_surface->color.color_surface) {
+   if (chain->color.owns_color_surface_refcount) {
       wsi_wl_surface_remove_color_refcount(wsi_wl_surface);
    }
 

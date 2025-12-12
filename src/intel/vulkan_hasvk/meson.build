@@ -54,6 +54,11 @@ _dev_icd = custom_target(
 
 devenv.append('VK_DRIVER_FILES', _dev_icd.full_path())
 
+# Check for VA-API early since we need it to determine which files to compile
+# VA-API is required for video decode bridge in hasvk
+_hasvk_va_name = host_machine.system() == 'windows' ? 'libva-win32' : 'libva'
+dep_hasvk_va = dependency(_hasvk_va_name, version : '>= 1.8.0', required : false)
+
 libanv_per_hw_ver_libs = []
 anv_per_hw_ver_files = files(
   'genX_blorp_exec.c',
@@ -63,6 +68,20 @@ anv_per_hw_ver_files = files(
   'genX_query.c',
   'genX_state.c',
 )
+
+# Add video decode files only when libva is available
+if dep_hasvk_va.found()
+  anv_per_hw_ver_files += files('genX_video.c')
+endif
+
+# Build c_args for per-hw-ver libs, including HAVE_LIBVA when available
+_per_hw_ver_c_args = [
+  no_override_init_args, sse2_args,
+]
+if dep_hasvk_va.found()
+  _per_hw_ver_c_args += '-DHAVE_LIBVA'
+endif
+
 foreach g : [['70', ['gfx7_cmd_buffer.c']],
              ['75', ['gfx7_cmd_buffer.c']],
              ['80', ['gfx8_cmd_buffer.c']]]
@@ -73,8 +92,7 @@ foreach g : [['70', ['gfx7_cmd_buffer.c']],
     include_directories : [
       inc_include, inc_src, inc_intel,
     ],
-    c_args : [
-      no_override_init_args, sse2_args,
+    c_args : _per_hw_ver_c_args + [
       '-DGFX_VERx10=@0@'.format(_gfx_ver),
     ],
     gnu_symbol_visibility : 'hidden',
@@ -117,6 +135,16 @@ libanv_files = files(
   'anv_wsi.c',
 )
 
+# Add video decode files only when libva is available
+if dep_hasvk_va.found()
+  libanv_files += files(
+    'anv_video.c',
+    'anv_video_vaapi_bridge.c',
+    'anv_video_vaapi_h264.c',
+    'anv_video_cross_device.c',
+  )
+endif
+
 anv_deps = [
   dep_libdrm,
   dep_valgrind,
@@ -127,10 +155,27 @@ anv_deps = [
   idep_vulkan_runtime_headers,
   idep_vulkan_wsi_headers,
 ]
+
+# Add VA-API dependencies to anv_deps when found
+if dep_hasvk_va.found()
+  anv_deps += dep_hasvk_va
+  # Also need libva-drm for vaGetDisplayDRM and DRM-specific functions
+  if host_machine.system() != 'windows'
+    dep_hasvk_va_drm = dependency('libva-drm', version : '>= 1.8.0', required : false)
+    if dep_hasvk_va_drm.found()
+      anv_deps += dep_hasvk_va_drm
+    endif
+  endif
+endif
 anv_flags = [
   no_override_init_args,
   sse2_args,
 ]
+
+# Define HAVE_LIBVA when libva is available for video decode support
+if dep_hasvk_va.found()
+  anv_flags += '-DHAVE_LIBVA'
+endif
 
 anv_cpp_flags = []
 

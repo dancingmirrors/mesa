@@ -30,8 +30,9 @@
 #include "anv_private.h"
 
 #include "genxml/gen_macros.h"
-#include "genxml/genX_pack.h"
+#include "genxml/hasvk_genX_pack.h"
 
+/* *INDENT-OFF* */
 void
 genX(cmd_buffer_enable_pma_fix)(struct anv_cmd_buffer *cmd_buffer, bool enable)
 {
@@ -346,10 +347,13 @@ genX(cmd_buffer_flush_dynamic_state)(struct anv_cmd_buffer *cmd_buffer)
       anv_batch_emit(&cmd_buffer->batch, GENX(3DSTATE_INDEX_BUFFER), ib) {
          ib.IndexFormat           = cmd_buffer->state.gfx.index_type;
          ib.MOCS                  = anv_mocs(cmd_buffer->device,
-                                             buffer->address.bo,
+                                             buffer ? buffer->address.bo : NULL,
                                              ISL_SURF_USAGE_INDEX_BUFFER_BIT);
-         ib.BufferStartingAddress = anv_address_add(buffer->address, offset);
-         ib.BufferSize            = cmd_buffer->state.gfx.index_size;
+
+         if (buffer) {
+            ib.BufferStartingAddress = anv_address_add(buffer->address, offset);
+            ib.BufferSize            = cmd_buffer->state.gfx.index_size;
+         }
       }
    }
 
@@ -444,3 +448,4 @@ genX(cmd_buffer_flush_dynamic_state)(struct anv_cmd_buffer *cmd_buffer)
    vk_dynamic_graphics_state_clear_dirty(&cmd_buffer->vk.dynamic_graphics_state);
    cmd_buffer->state.gfx.dirty = 0;
 }
+/* *INDENT-ON* */

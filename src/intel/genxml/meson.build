@@ -17,6 +17,15 @@ gen_xml_files = [
   'gen300.xml',
 ]
 
+# Old-style genxml files for hasvk driver
+# These use the old XML format (start/end instead of dword/bits)
+# and are prefixed with hasvk_ to avoid conflicts
+gen_xml_hasvk_files = [
+  'hasvk_gen7.xml',
+  'hasvk_gen75.xml',
+  'hasvk_gen8.xml',
+]
+
 gen_xml_rt_files = [
   'gen125_rt.xml',
   'gen200_rt.xml',
@@ -24,7 +33,7 @@ gen_xml_rt_files = [
 ]
 
 gen_pack_header_deps = files('intel_genxml.py', 'util.py')
-foreach f : gen_xml_files + gen_xml_rt_files
+foreach f : gen_xml_files + gen_xml_rt_files + gen_xml_hasvk_files
   gen_pack_header_deps += files(f)
 endforeach
 
@@ -107,9 +116,40 @@ foreach f : gen_xml_files + gen_xml_rt_files
   )
 endforeach
 
+# Generate hasvk-specific pack headers
+# Output names match the input file names (hasvk_gen7_pack.h, etc.)
+# Include all engines (render,blitter,compute,video) since hasvk needs video decode
+foreach f : gen_xml_hasvk_files
+  _base = f.split('.')[0]
+  _name = '@0@_pack.h'.format(_base)
+  gen_xml_pack += custom_target(
+    _name,
+    input : ['gen_pack_header.py', f],
+    output : _name,
+    command : [prog_python, '@INPUT@', '--engines=render,blitter,compute,video'],
+    capture : true,
+    depend_files: gen_pack_header_deps
+  )
+endforeach
+
 gen_xml_video_pack = []
 foreach f : gen_xml_files
   _name = '@0@_video_pack.h'.format(f.split('.')[0])
+  gen_xml_pack += custom_target(
+    _name,
+    input : ['gen_pack_header.py', f],
+    output : _name,
+    command : [prog_python, '@INPUT@', '--engines=video'],
+    capture : true,
+    depend_files: gen_pack_header_deps
+  )
+endforeach
+
+# Generate hasvk-specific video pack headers
+# Output names match the input file names (hasvk_gen7_video_pack.h, etc.)
+foreach f : gen_xml_hasvk_files
+  _base = f.split('.')[0]
+  _name = '@0@_video_pack.h'.format(_base)
   gen_xml_pack += custom_target(
     _name,
     input : ['gen_pack_header.py', f],
@@ -159,7 +199,7 @@ idep_genxml = declare_dependency(
 
 gen_xml_test_files = ['../decoder/tests/gentest.xml']
 
-foreach f : gen_xml_files + gen_xml_rt_files + gen_xml_test_files
+foreach f : gen_xml_files + gen_xml_rt_files + gen_xml_hasvk_files + gen_xml_test_files
   test(
     'genxml sort @0@'.format(f),
     prog_python,

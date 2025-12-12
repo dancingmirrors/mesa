@@ -50,8 +50,7 @@ anv_descriptor_data_for_type(const struct anv_physical_device *device,
       break;
 
    case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
-      data = ANV_DESCRIPTOR_SURFACE_STATE |
-             ANV_DESCRIPTOR_SAMPLER_STATE;
+      data = ANV_DESCRIPTOR_SURFACE_STATE | ANV_DESCRIPTOR_SAMPLER_STATE;
       if (device->has_bindless_samplers)
          data |= ANV_DESCRIPTOR_SAMPLED_IMAGE;
       break;
@@ -73,8 +72,7 @@ anv_descriptor_data_for_type(const struct anv_physical_device *device,
 
    case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
    case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
-      data = ANV_DESCRIPTOR_SURFACE_STATE |
-             ANV_DESCRIPTOR_BUFFER_VIEW;
+      data = ANV_DESCRIPTOR_SURFACE_STATE | ANV_DESCRIPTOR_BUFFER_VIEW;
       break;
 
    case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC:
@@ -118,16 +116,19 @@ anv_descriptor_data_for_type(const struct anv_physical_device *device,
 
 static enum anv_descriptor_data
 anv_descriptor_data_for_mutable_type(const struct anv_physical_device *device,
-                                     const VkMutableDescriptorTypeCreateInfoEXT *mutable_info,
-                                     int binding)
+                                     const
+                                     VkMutableDescriptorTypeCreateInfoEXT
+                                     *mutable_info, int binding)
 {
    enum anv_descriptor_data desc_data = 0;
 
-   if (!mutable_info || mutable_info->mutableDescriptorTypeListCount <= binding) {
-      for(VkDescriptorType i = 0; i <= VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT; i++) {
-         if (i == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC ||
-             i == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC ||
-             i == VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK)
+   if (!mutable_info
+       || mutable_info->mutableDescriptorTypeListCount <= binding) {
+      for (VkDescriptorType i = 0; i <= VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+           i++) {
+         if (i == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC
+             || i == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC
+             || i == VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK)
             continue;
 
          desc_data |= anv_descriptor_data_for_type(device, i);
@@ -204,13 +205,16 @@ anv_descriptor_size(const struct anv_descriptor_set_binding_layout *layout)
 /** Returns size in bytes of the biggest descriptor in the given layout */
 static unsigned
 anv_descriptor_size_for_mutable_type(const struct anv_physical_device *device,
-                                     const VkMutableDescriptorTypeCreateInfoEXT *mutable_info,
-                                     int binding)
+                                     const
+                                     VkMutableDescriptorTypeCreateInfoEXT
+                                     *mutable_info, int binding)
 {
    unsigned size = 0;
 
-   if (!mutable_info || mutable_info->mutableDescriptorTypeListCount <= binding) {
-      for(VkDescriptorType i = 0; i <= VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT; i++) {
+   if (!mutable_info
+       || mutable_info->mutableDescriptorTypeListCount <= binding) {
+      for (VkDescriptorType i = 0; i <= VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+           i++) {
 
          if (i == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC ||
              i == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC ||
@@ -237,8 +241,8 @@ anv_descriptor_size_for_mutable_type(const struct anv_physical_device *device,
 }
 
 static bool
-anv_descriptor_data_supports_bindless(const struct anv_physical_device *pdevice,
-                                      enum anv_descriptor_data data,
+anv_descriptor_data_supports_bindless(const struct anv_physical_device
+                                      *pdevice, enum anv_descriptor_data data,
                                       bool sampler)
 {
    if (data & ANV_DESCRIPTOR_ADDRESS_RANGE) {
@@ -256,7 +260,8 @@ anv_descriptor_data_supports_bindless(const struct anv_physical_device *pdevice,
 
 bool
 anv_descriptor_supports_bindless(const struct anv_physical_device *pdevice,
-                                 const struct anv_descriptor_set_binding_layout *binding,
+                                 const struct
+                                 anv_descriptor_set_binding_layout *binding,
                                  bool sampler)
 {
    return anv_descriptor_data_supports_bindless(pdevice, binding->data,
@@ -265,7 +270,8 @@ anv_descriptor_supports_bindless(const struct anv_physical_device *pdevice,
 
 bool
 anv_descriptor_requires_bindless(const struct anv_physical_device *pdevice,
-                                 const struct anv_descriptor_set_binding_layout *binding,
+                                 const struct
+                                 anv_descriptor_set_binding_layout *binding,
                                  bool sampler)
 {
    if (pdevice->always_use_bindless)
@@ -279,10 +285,11 @@ anv_descriptor_requires_bindless(const struct anv_physical_device *pdevice,
    return (binding->flags & flags_requiring_bindless) != 0;
 }
 
-void anv_GetDescriptorSetLayoutSupport(
-    VkDevice                                    _device,
-    const VkDescriptorSetLayoutCreateInfo*      pCreateInfo,
-    VkDescriptorSetLayoutSupport*               pSupport)
+void
+anv_GetDescriptorSetLayoutSupport(VkDevice _device,
+                                  const VkDescriptorSetLayoutCreateInfo
+                                  *pCreateInfo,
+                                  VkDescriptorSetLayoutSupport *pSupport)
 {
    ANV_FROM_HANDLE(anv_device, device, _device);
    const struct anv_physical_device *pdevice = device->physical;
@@ -299,11 +306,13 @@ void anv_GetDescriptorSetLayoutSupport(
                            MUTABLE_DESCRIPTOR_TYPE_CREATE_INFO_EXT);
 
    for (uint32_t b = 0; b < pCreateInfo->bindingCount; b++) {
-      const VkDescriptorSetLayoutBinding *binding = &pCreateInfo->pBindings[b];
+      const VkDescriptorSetLayoutBinding *binding =
+         &pCreateInfo->pBindings[b];
 
       VkDescriptorBindingFlags flags = 0;
       if (binding_flags_info && binding_flags_info->bindingCount > 0) {
-         assert(binding_flags_info->bindingCount == pCreateInfo->bindingCount);
+         assert(binding_flags_info->bindingCount ==
+                pCreateInfo->bindingCount);
          flags = binding_flags_info->pBindingFlags[b];
       }
 
@@ -338,7 +347,8 @@ void anv_GetDescriptorSetLayoutSupport(
                anv_foreach_stage(s, binding->stageFlags)
                   surface_count[s] += sampler->n_planes;
             }
-         } else {
+         }
+         else {
             anv_foreach_stage(s, binding->stageFlags)
                surface_count[s] += binding->descriptorCount;
          }
@@ -365,9 +375,11 @@ void anv_GetDescriptorSetLayoutSupport(
    if (vdcls != NULL) {
       if (varying_desc_type == VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK) {
          vdcls->maxVariableDescriptorCount = MAX_INLINE_UNIFORM_BLOCK_SIZE;
-      } else if (varying_desc_type != VK_DESCRIPTOR_TYPE_MAX_ENUM) {
+      }
+      else if (varying_desc_type != VK_DESCRIPTOR_TYPE_MAX_ENUM) {
          vdcls->maxVariableDescriptorCount = UINT16_MAX;
-      } else {
+      }
+      else {
          vdcls->maxVariableDescriptorCount = 0;
       }
    }
@@ -384,20 +396,23 @@ void anv_GetDescriptorSetLayoutSupport(
    pSupport->supported = supported;
 }
 
-VkResult anv_CreateDescriptorSetLayout(
-    VkDevice                                    _device,
-    const VkDescriptorSetLayoutCreateInfo*      pCreateInfo,
-    const VkAllocationCallbacks*                pAllocator,
-    VkDescriptorSetLayout*                      pSetLayout)
+VkResult
+anv_CreateDescriptorSetLayout(VkDevice _device,
+                              const VkDescriptorSetLayoutCreateInfo
+                              *pCreateInfo,
+                              const VkAllocationCallbacks *pAllocator,
+                              VkDescriptorSetLayout *pSetLayout)
 {
    ANV_FROM_HANDLE(anv_device, device, _device);
 
-   assert(pCreateInfo->sType == VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO);
+   assert(pCreateInfo->sType ==
+          VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO);
 
    uint32_t num_bindings = 0;
    uint32_t immutable_sampler_count = 0;
    for (uint32_t j = 0; j < pCreateInfo->bindingCount; j++) {
-      num_bindings = MAX2(num_bindings, pCreateInfo->pBindings[j].binding + 1);
+      num_bindings =
+         MAX2(num_bindings, pCreateInfo->pBindings[j].binding + 1);
 
       /* From the Vulkan 1.1.97 spec for VkDescriptorSetLayoutBinding:
        *
@@ -424,9 +439,9 @@ VkResult anv_CreateDescriptorSetLayout(
    VK_MULTIALLOC(ma);
    VK_MULTIALLOC_DECL(&ma, struct anv_descriptor_set_layout, set_layout, 1);
    VK_MULTIALLOC_DECL(&ma, struct anv_descriptor_set_binding_layout,
-                           bindings, num_bindings);
+                      bindings, num_bindings);
    VK_MULTIALLOC_DECL(&ma, struct anv_sampler *, samplers,
-                           immutable_sampler_count);
+                      immutable_sampler_count);
 
    if (!vk_object_multizalloc(&device->vk, &ma, NULL,
                               VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT))
@@ -454,13 +469,15 @@ VkResult anv_CreateDescriptorSetLayout(
    uint32_t descriptor_buffer_size = 0;
 
    for (uint32_t j = 0; j < pCreateInfo->bindingCount; j++) {
-      const VkDescriptorSetLayoutBinding *binding = &pCreateInfo->pBindings[j];
+      const VkDescriptorSetLayoutBinding *binding =
+         &pCreateInfo->pBindings[j];
       uint32_t b = binding->binding;
       /* We temporarily store pCreateInfo->pBindings[] index (plus one) in the
        * immutable_samplers pointer.  This provides us with a quick-and-dirty
        * way to sort the bindings by binding number.
        */
-      set_layout->binding[b].immutable_samplers = (void *)(uintptr_t)(j + 1);
+      set_layout->binding[b].immutable_samplers =
+         (void *) (uintptr_t) (j + 1);
    }
 
    const VkDescriptorSetLayoutBindingFlagsCreateInfo *binding_flags_info =
@@ -479,7 +496,7 @@ VkResult anv_CreateDescriptorSetLayout(
       if (set_layout->binding[b].immutable_samplers == NULL)
          continue;
       const uint32_t info_idx =
-         (uintptr_t)(void *)set_layout->binding[b].immutable_samplers - 1;
+         (uintptr_t) (void *) set_layout->binding[b].immutable_samplers - 1;
       set_layout->binding[b].immutable_samplers = NULL;
 
       const VkDescriptorSetLayoutBinding *binding =
@@ -491,7 +508,8 @@ VkResult anv_CreateDescriptorSetLayout(
       set_layout->binding[b].type = binding->descriptorType;
 
       if (binding_flags_info && binding_flags_info->bindingCount > 0) {
-         assert(binding_flags_info->bindingCount == pCreateInfo->bindingCount);
+         assert(binding_flags_info->bindingCount ==
+                pCreateInfo->bindingCount);
          set_layout->binding[b].flags =
             binding_flags_info->pBindingFlags[info_idx];
 
@@ -507,16 +525,18 @@ VkResult anv_CreateDescriptorSetLayout(
          if (pCreateInfo->flags &
              VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR) {
             assert(!(set_layout->binding[b].flags &
-               (VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT |
-                VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT |
-                VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT)));
+                     (VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT |
+                      VK_DESCRIPTOR_BINDING_UPDATE_UNUSED_WHILE_PENDING_BIT |
+                      VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT)));
          }
       }
 
       set_layout->binding[b].data =
          binding->descriptorType == VK_DESCRIPTOR_TYPE_MUTABLE_EXT ?
-         anv_descriptor_data_for_mutable_type(device->physical, mutable_info, b) :
-         anv_descriptor_data_for_type(device->physical, binding->descriptorType);
+         anv_descriptor_data_for_mutable_type(device->physical, mutable_info,
+                                              b) :
+         anv_descriptor_data_for_type(device->physical,
+                                      binding->descriptorType);
 
       set_layout->binding[b].array_size = binding->descriptorCount;
       set_layout->binding[b].descriptor_index = set_layout->descriptor_count;
@@ -559,7 +579,8 @@ VkResult anv_CreateDescriptorSetLayout(
       case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC:
       case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC:
          set_layout->binding[b].dynamic_offset_index = dynamic_offset_count;
-         set_layout->dynamic_offset_stages[dynamic_offset_count] = binding->stageFlags;
+         set_layout->dynamic_offset_stages[dynamic_offset_count] =
+            binding->stageFlags;
          dynamic_offset_count += binding->descriptorCount;
          assert(dynamic_offset_count < MAX_DYNAMIC_BUFFERS);
          break;
@@ -570,11 +591,11 @@ VkResult anv_CreateDescriptorSetLayout(
 
       set_layout->binding[b].descriptor_stride =
          binding->descriptorType == VK_DESCRIPTOR_TYPE_MUTABLE_EXT ?
-         anv_descriptor_size_for_mutable_type(device->physical, mutable_info, b) :
+         anv_descriptor_size_for_mutable_type(device->physical, mutable_info,
+                                              b) :
          anv_descriptor_size(&set_layout->binding[b]);
 
-      if (binding->descriptorType ==
-          VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK) {
+      if (binding->descriptorType == VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK) {
          /* Inline uniform blocks are specified to use the descriptor array
           * size as the size in bytes of the block.
           */
@@ -582,10 +603,12 @@ VkResult anv_CreateDescriptorSetLayout(
                                         ANV_UBO_ALIGNMENT);
          set_layout->binding[b].descriptor_offset = descriptor_buffer_size;
          descriptor_buffer_size += binding->descriptorCount;
-      } else {
+      }
+      else {
          set_layout->binding[b].descriptor_offset = descriptor_buffer_size;
          descriptor_buffer_size +=
-            set_layout->binding[b].descriptor_stride * binding->descriptorCount;
+            set_layout->binding[b].descriptor_stride *
+            binding->descriptorCount;
       }
 
       set_layout->shader_stages |= binding->stageFlags;
@@ -616,15 +639,17 @@ set_layout_dynamic_binding(const struct anv_descriptor_set_layout *set_layout)
 
    const struct anv_descriptor_set_binding_layout *last_binding =
       &set_layout->binding[set_layout->binding_count - 1];
-   if (!(last_binding->flags & VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT))
+   if (!
+       (last_binding->flags &
+        VK_DESCRIPTOR_BINDING_VARIABLE_DESCRIPTOR_COUNT_BIT))
       return NULL;
 
    return last_binding;
 }
 
 static uint32_t
-set_layout_descriptor_count(const struct anv_descriptor_set_layout *set_layout,
-                            uint32_t var_desc_count)
+set_layout_descriptor_count(const struct anv_descriptor_set_layout
+                            *set_layout, uint32_t var_desc_count)
 {
    const struct anv_descriptor_set_binding_layout *dynamic_binding =
       set_layout_dynamic_binding(set_layout);
@@ -641,8 +666,8 @@ set_layout_descriptor_count(const struct anv_descriptor_set_layout *set_layout,
 }
 
 static uint32_t
-set_layout_buffer_view_count(const struct anv_descriptor_set_layout *set_layout,
-                             uint32_t var_desc_count)
+set_layout_buffer_view_count(const struct anv_descriptor_set_layout
+                             *set_layout, uint32_t var_desc_count)
 {
    const struct anv_descriptor_set_binding_layout *dynamic_binding =
       set_layout_dynamic_binding(set_layout);
@@ -659,7 +684,9 @@ set_layout_buffer_view_count(const struct anv_descriptor_set_layout *set_layout,
 }
 
 uint32_t
-anv_descriptor_set_layout_descriptor_buffer_size(const struct anv_descriptor_set_layout *set_layout,
+anv_descriptor_set_layout_descriptor_buffer_size(const struct
+                                                 anv_descriptor_set_layout
+                                                 *set_layout,
                                                  uint32_t var_desc_count)
 {
    const struct anv_descriptor_set_binding_layout *dynamic_binding =
@@ -676,18 +703,19 @@ anv_descriptor_set_layout_descriptor_buffer_size(const struct anv_descriptor_set
        * size as the size in bytes of the block.
        */
       set_size = set_layout->descriptor_buffer_size - shrink;
-   } else {
+   }
+   else {
       set_size = set_layout->descriptor_buffer_size -
-                 shrink * dynamic_binding->descriptor_stride;
+         shrink * dynamic_binding->descriptor_stride;
    }
 
    return align(set_size, ANV_UBO_ALIGNMENT);
 }
 
-void anv_DestroyDescriptorSetLayout(
-    VkDevice                                    _device,
-    VkDescriptorSetLayout                       _set_layout,
-    const VkAllocationCallbacks*                pAllocator)
+void
+anv_DestroyDescriptorSetLayout(VkDevice _device,
+                               VkDescriptorSetLayout _set_layout,
+                               const VkAllocationCallbacks *pAllocator)
 {
    ANV_FROM_HANDLE(anv_device, device, _device);
    ANV_FROM_HANDLE(anv_descriptor_set_layout, set_layout, _set_layout);
@@ -708,13 +736,14 @@ sha1_update_immutable_sampler(struct mesa_sha1 *ctx,
       return;
 
    /* The only thing that affects the shader is ycbcr conversion */
-   _mesa_sha1_update(ctx, sampler->conversion,
-                     sizeof(*sampler->conversion));
+   _mesa_sha1_update(ctx, sampler->conversion, sizeof(*sampler->conversion));
 }
 
 static void
 sha1_update_descriptor_set_binding_layout(struct mesa_sha1 *ctx,
-   const struct anv_descriptor_set_binding_layout *layout)
+                                          const struct
+                                          anv_descriptor_set_binding_layout
+                                          *layout)
 {
    SHA1_UPDATE_VALUE(ctx, layout->flags);
    SHA1_UPDATE_VALUE(ctx, layout->data);
@@ -733,7 +762,8 @@ sha1_update_descriptor_set_binding_layout(struct mesa_sha1 *ctx,
 
 static void
 sha1_update_descriptor_set_layout(struct mesa_sha1 *ctx,
-                                  const struct anv_descriptor_set_layout *layout)
+                                  const struct anv_descriptor_set_layout
+                                  *layout)
 {
    SHA1_UPDATE_VALUE(ctx, layout->binding_count);
    SHA1_UPDATE_VALUE(ctx, layout->descriptor_count);
@@ -751,16 +781,17 @@ sha1_update_descriptor_set_layout(struct mesa_sha1 *ctx,
  * just multiple descriptor set layouts pasted together
  */
 
-VkResult anv_CreatePipelineLayout(
-    VkDevice                                    _device,
-    const VkPipelineLayoutCreateInfo*           pCreateInfo,
-    const VkAllocationCallbacks*                pAllocator,
-    VkPipelineLayout*                           pPipelineLayout)
+VkResult
+anv_CreatePipelineLayout(VkDevice _device,
+                         const VkPipelineLayoutCreateInfo *pCreateInfo,
+                         const VkAllocationCallbacks *pAllocator,
+                         VkPipelineLayout *pPipelineLayout)
 {
    ANV_FROM_HANDLE(anv_device, device, _device);
    struct anv_pipeline_layout *layout;
 
-   assert(pCreateInfo->sType == VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO);
+   assert(pCreateInfo->sType ==
+          VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO);
 
    layout = vk_object_alloc(&device->vk, pAllocator, sizeof(*layout),
                             VK_OBJECT_TYPE_PIPELINE_LAYOUT);
@@ -797,10 +828,10 @@ VkResult anv_CreatePipelineLayout(
    return VK_SUCCESS;
 }
 
-void anv_DestroyPipelineLayout(
-    VkDevice                                    _device,
-    VkPipelineLayout                            _pipelineLayout,
-    const VkAllocationCallbacks*                pAllocator)
+void
+anv_DestroyPipelineLayout(VkDevice _device,
+                          VkPipelineLayout _pipelineLayout,
+                          const VkAllocationCallbacks *pAllocator)
 {
    ANV_FROM_HANDLE(anv_device, device, _device);
    ANV_FROM_HANDLE(anv_pipeline_layout, pipeline_layout, _pipelineLayout);
@@ -834,11 +865,11 @@ void anv_DestroyPipelineLayout(
 
 #define EMPTY 1
 
-VkResult anv_CreateDescriptorPool(
-    VkDevice                                    _device,
-    const VkDescriptorPoolCreateInfo*           pCreateInfo,
-    const VkAllocationCallbacks*                pAllocator,
-    VkDescriptorPool*                           pDescriptorPool)
+VkResult
+anv_CreateDescriptorPool(VkDevice _device,
+                         const VkDescriptorPoolCreateInfo *pCreateInfo,
+                         const VkAllocationCallbacks *pAllocator,
+                         VkDescriptorPool *pDescriptorPool)
 {
    ANV_FROM_HANDLE(anv_device, device, _device);
    struct anv_descriptor_pool *pool;
@@ -857,15 +888,18 @@ VkResult anv_CreateDescriptorPool(
    for (uint32_t i = 0; i < pCreateInfo->poolSizeCount; i++) {
       enum anv_descriptor_data desc_data =
          pCreateInfo->pPoolSizes[i].type == VK_DESCRIPTOR_TYPE_MUTABLE_EXT ?
-         anv_descriptor_data_for_mutable_type(device->physical, mutable_info, i) :
-         anv_descriptor_data_for_type(device->physical, pCreateInfo->pPoolSizes[i].type);
+         anv_descriptor_data_for_mutable_type(device->physical, mutable_info,
+                                              i) :
+         anv_descriptor_data_for_type(device->physical,
+                                      pCreateInfo->pPoolSizes[i].type);
 
       if (desc_data & ANV_DESCRIPTOR_BUFFER_VIEW)
          buffer_view_count += pCreateInfo->pPoolSizes[i].descriptorCount;
 
       unsigned desc_data_size =
          pCreateInfo->pPoolSizes[i].type == VK_DESCRIPTOR_TYPE_MUTABLE_EXT ?
-         anv_descriptor_size_for_mutable_type(device->physical, mutable_info, i) :
+         anv_descriptor_size_for_mutable_type(device->physical, mutable_info,
+                                              i) :
          anv_descriptor_data_size(desc_data);
 
       desc_data_size *= pCreateInfo->pPoolSizes[i].descriptorCount;
@@ -920,7 +954,8 @@ VkResult anv_CreateDescriptorPool(
    pool->size = pool_size;
    pool->next = 0;
    pool->free_list = EMPTY;
-   pool->host_only = pCreateInfo->flags & VK_DESCRIPTOR_POOL_CREATE_HOST_ONLY_BIT_EXT;
+   pool->host_only =
+      pCreateInfo->flags & VK_DESCRIPTOR_POOL_CREATE_HOST_ONLY_BIT_EXT;
 
    if (descriptor_bo_size > 0) {
       VkResult result = anv_device_alloc_bo(device,
@@ -928,15 +963,18 @@ VkResult anv_CreateDescriptorPool(
                                             descriptor_bo_size,
                                             ANV_BO_ALLOC_MAPPED |
                                             ANV_BO_ALLOC_SNOOPED,
-                                            0 /* explicit_address */,
+                                            0 /* explicit_address */ ,
+                                            4096,
                                             &pool->bo);
       if (result != VK_SUCCESS) {
          vk_object_free(&device->vk, pAllocator, pool);
          return vk_error(device, VK_ERROR_OUT_OF_DEVICE_MEMORY);
       }
 
-      util_vma_heap_init(&pool->bo_heap, POOL_HEAP_OFFSET, descriptor_bo_size);
-   } else {
+      util_vma_heap_init(&pool->bo_heap, POOL_HEAP_OFFSET,
+                         descriptor_bo_size);
+   }
+   else {
       pool->bo = NULL;
    }
 
@@ -951,10 +989,10 @@ VkResult anv_CreateDescriptorPool(
    return VK_SUCCESS;
 }
 
-void anv_DestroyDescriptorPool(
-    VkDevice                                    _device,
-    VkDescriptorPool                            _pool,
-    const VkAllocationCallbacks*                pAllocator)
+void
+anv_DestroyDescriptorPool(VkDevice _device,
+                          VkDescriptorPool _pool,
+                          const VkAllocationCallbacks *pAllocator)
 {
    ANV_FROM_HANDLE(anv_device, device, _device);
    ANV_FROM_HANDLE(anv_descriptor_pool, pool, _pool);
@@ -963,7 +1001,8 @@ void anv_DestroyDescriptorPool(
       return;
 
    list_for_each_entry_safe(struct anv_descriptor_set, set,
-                            &pool->desc_sets, pool_link) {
+                            &pool->desc_sets, pool_link)
+   {
       anv_descriptor_set_layout_unref(device, set->layout);
    }
 
@@ -976,16 +1015,17 @@ void anv_DestroyDescriptorPool(
    vk_object_free(&device->vk, pAllocator, pool);
 }
 
-VkResult anv_ResetDescriptorPool(
-    VkDevice                                    _device,
-    VkDescriptorPool                            descriptorPool,
-    VkDescriptorPoolResetFlags                  flags)
+VkResult
+anv_ResetDescriptorPool(VkDevice _device,
+                        VkDescriptorPool descriptorPool,
+                        VkDescriptorPoolResetFlags flags)
 {
    ANV_FROM_HANDLE(anv_device, device, _device);
    ANV_FROM_HANDLE(anv_descriptor_pool, pool, descriptorPool);
 
    list_for_each_entry_safe(struct anv_descriptor_set, set,
-                            &pool->desc_sets, pool_link) {
+                            &pool->desc_sets, pool_link)
+   {
       anv_descriptor_set_layout_unref(device, set->layout);
    }
    list_inithead(&pool->desc_sets);
@@ -1006,22 +1046,23 @@ VkResult anv_ResetDescriptorPool(
    return VK_SUCCESS;
 }
 
-struct pool_free_list_entry {
+struct pool_free_list_entry
+{
    uint32_t next;
    uint32_t size;
 };
 
 static VkResult
 anv_descriptor_pool_alloc_set(struct anv_descriptor_pool *pool,
-                              uint32_t size,
-                              struct anv_descriptor_set **set)
+                              uint32_t size, struct anv_descriptor_set **set)
 {
    if (size <= pool->size - pool->next) {
       *set = (struct anv_descriptor_set *) (pool->data + pool->next);
       (*set)->size = size;
       pool->next += size;
       return VK_SUCCESS;
-   } else {
+   }
+   else {
       struct pool_free_list_entry *entry;
       uint32_t *link = &pool->free_list;
       for (uint32_t f = pool->free_list; f != EMPTY; f = entry->next) {
@@ -1037,7 +1078,8 @@ anv_descriptor_pool_alloc_set(struct anv_descriptor_pool *pool,
 
       if (pool->free_list != EMPTY) {
          return VK_ERROR_FRAGMENTED_POOL;
-      } else {
+      }
+      else {
          return VK_ERROR_OUT_OF_POOL_MEMORY;
       }
    }
@@ -1051,15 +1093,18 @@ anv_descriptor_pool_free_set(struct anv_descriptor_pool *pool,
    const uint32_t index = (char *) set - pool->data;
    if (index + set->size == pool->next) {
       pool->next = index;
-   } else {
-      struct pool_free_list_entry *entry = (struct pool_free_list_entry *) set;
+   }
+   else {
+      struct pool_free_list_entry *entry =
+         (struct pool_free_list_entry *) set;
       entry->next = pool->free_list;
       entry->size = set->size;
       pool->free_list = (char *) entry - pool->data;
    }
 }
 
-struct surface_state_free_list_entry {
+struct surface_state_free_list_entry
+{
    void *next;
    struct anv_state state;
 };
@@ -1077,7 +1122,8 @@ anv_descriptor_pool_alloc_state(struct anv_descriptor_pool *pool)
       pool->surface_state_free_list = entry->next;
       assert(state.alloc_size == 64);
       return state;
-   } else {
+   }
+   else {
       return anv_state_stream_alloc(&pool->surface_state_stream, 64, 64);
    }
 }
@@ -1104,8 +1150,8 @@ anv_descriptor_set_layout_size(const struct anv_descriptor_set_layout *layout,
       set_layout_buffer_view_count(layout, var_desc_count);
 
    return sizeof(struct anv_descriptor_set) +
-          descriptor_count * sizeof(struct anv_descriptor) +
-          buffer_view_count * sizeof(struct anv_buffer_view);
+      descriptor_count * sizeof(struct anv_descriptor) +
+      buffer_view_count * sizeof(struct anv_buffer_view);
 }
 
 static VkResult
@@ -1123,7 +1169,8 @@ anv_descriptor_set_create(struct anv_device *device,
       return result;
 
    uint32_t descriptor_buffer_size =
-      anv_descriptor_set_layout_descriptor_buffer_size(layout, var_desc_count);
+      anv_descriptor_set_layout_descriptor_buffer_size(layout,
+                                                       var_desc_count);
 
    set->desc_surface_state = ANV_STATE_NULL;
 
@@ -1146,9 +1193,8 @@ anv_descriptor_set_create(struct anv_device *device,
          .offset = set->desc_mem.offset,
       };
 
-      enum isl_format format =
-         anv_isl_format_for_descriptor_type(device,
-                                            VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
+      enum isl_format format = anv_isl_format_for_descriptor_type(device,
+                                                                  VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER);
 
       if (!pool->host_only) {
          set->desc_surface_state = anv_descriptor_pool_alloc_state(pool);
@@ -1158,9 +1204,10 @@ anv_descriptor_set_create(struct anv_device *device,
                                        set->desc_addr,
                                        descriptor_buffer_size, 1);
       }
-   } else {
+   }
+   else {
       set->desc_mem = ANV_STATE_NULL;
-      set->desc_addr = (struct anv_address) { .bo = NULL, .offset = 0 };
+      set->desc_addr = (struct anv_address) {.bo = NULL,.offset = 0 };
    }
 
    vk_object_base_init(&device->vk, &set->base,
@@ -1230,7 +1277,7 @@ anv_descriptor_set_destroy(struct anv_device *device,
 
    if (set->desc_mem.alloc_size) {
       util_vma_heap_free(&pool->bo_heap,
-                         (uint64_t)set->desc_mem.offset + POOL_HEAP_OFFSET,
+                         (uint64_t) set->desc_mem.offset + POOL_HEAP_OFFSET,
                          set->desc_mem.alloc_size);
       if (set->desc_surface_state.alloc_size)
          anv_descriptor_pool_free_state(pool, set->desc_surface_state);
@@ -1239,7 +1286,9 @@ anv_descriptor_set_destroy(struct anv_device *device,
    if (!pool->host_only) {
       for (uint32_t b = 0; b < set->buffer_view_count; b++) {
          if (set->buffer_views[b].surface_state.alloc_size)
-            anv_descriptor_pool_free_state(pool, set->buffer_views[b].surface_state);
+            anv_descriptor_pool_free_state(pool,
+                                           set->
+                                           buffer_views[b].surface_state);
       }
    }
 
@@ -1249,10 +1298,10 @@ anv_descriptor_set_destroy(struct anv_device *device,
    anv_descriptor_pool_free_set(pool, set);
 }
 
-VkResult anv_AllocateDescriptorSets(
-    VkDevice                                    _device,
-    const VkDescriptorSetAllocateInfo*          pAllocateInfo,
-    VkDescriptorSet*                            pDescriptorSets)
+VkResult
+anv_AllocateDescriptorSets(VkDevice _device,
+                           const VkDescriptorSetAllocateInfo *pAllocateInfo,
+                           VkDescriptorSet *pDescriptorSets)
 {
    ANV_FROM_HANDLE(anv_device, device, _device);
    ANV_FROM_HANDLE(anv_descriptor_pool, pool, pAllocateInfo->descriptorPool);
@@ -1271,7 +1320,8 @@ VkResult anv_AllocateDescriptorSets(
 
       uint32_t var_desc_count = 0;
       if (vdcai != NULL && vdcai->descriptorSetCount > 0) {
-         assert(vdcai->descriptorSetCount == pAllocateInfo->descriptorSetCount);
+         assert(vdcai->descriptorSetCount ==
+                pAllocateInfo->descriptorSetCount);
          var_desc_count = vdcai->pDescriptorCounts[i];
       }
 
@@ -1290,11 +1340,10 @@ VkResult anv_AllocateDescriptorSets(
    return result;
 }
 
-VkResult anv_FreeDescriptorSets(
-    VkDevice                                    _device,
-    VkDescriptorPool                            descriptorPool,
-    uint32_t                                    count,
-    const VkDescriptorSet*                      pDescriptorSets)
+VkResult
+anv_FreeDescriptorSets(VkDevice _device,
+                       VkDescriptorPool descriptorPool,
+                       uint32_t count, const VkDescriptorSet *pDescriptorSets)
 {
    ANV_FROM_HANDLE(anv_device, device, _device);
    ANV_FROM_HANDLE(anv_descriptor_pool, pool, descriptorPool);
@@ -1344,10 +1393,9 @@ anv_surface_state_to_handle(struct anv_state state)
 void
 anv_descriptor_set_write_image_view(struct anv_device *device,
                                     struct anv_descriptor_set *set,
-                                    const VkDescriptorImageInfo * const info,
+                                    const VkDescriptorImageInfo *const info,
                                     VkDescriptorType type,
-                                    uint32_t binding,
-                                    uint32_t element)
+                                    uint32_t binding, uint32_t element)
 {
    const struct anv_descriptor_set_binding_layout *bind_layout =
       &set->layout->binding[binding];
@@ -1366,15 +1414,15 @@ anv_descriptor_set_write_image_view(struct anv_device *device,
    switch (type) {
    case VK_DESCRIPTOR_TYPE_SAMPLER:
       sampler = bind_layout->immutable_samplers ?
-                bind_layout->immutable_samplers[element] :
-                anv_sampler_from_handle(info->sampler);
+         bind_layout->immutable_samplers[element] :
+         anv_sampler_from_handle(info->sampler);
       break;
 
    case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
       image_view = anv_image_view_from_handle(info->imageView);
       sampler = bind_layout->immutable_samplers ?
-                bind_layout->immutable_samplers[element] :
-                anv_sampler_from_handle(info->sampler);
+         bind_layout->immutable_samplers[element] :
+         anv_sampler_from_handle(info->sampler);
       break;
 
    case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
@@ -1398,7 +1446,7 @@ anv_descriptor_set_write_image_view(struct anv_device *device,
       return;
 
    void *desc_map = set->desc_mem.map + bind_layout->descriptor_offset +
-                    element * bind_layout->descriptor_stride;
+      element * bind_layout->descriptor_stride;
    memset(desc_map, 0, bind_layout->descriptor_stride);
 
    if (image_view == NULL && sampler == NULL)
@@ -1444,10 +1492,15 @@ anv_descriptor_set_write_image_view(struct anv_device *device,
       assert(!(data & ANV_DESCRIPTOR_IMAGE_PARAM));
       assert(image_view->n_planes == 1);
       struct anv_storage_image_descriptor desc_data = {
-         .vanilla = anv_surface_state_to_handle(
-                           image_view->planes[0].storage_surface_state.state),
-         .lowered = anv_surface_state_to_handle(
-                           image_view->planes[0].lowered_storage_surface_state.state),
+         .vanilla =
+            anv_surface_state_to_handle(image_view->
+                                        planes[0].storage_surface_state.
+                                        state),
+         .lowered =
+            anv_surface_state_to_handle(image_view->
+                                        planes
+                                        [0].lowered_storage_surface_state.
+                                        state),
       };
       memcpy(desc_map, &desc_data, sizeof(desc_data));
    }
@@ -1470,11 +1523,11 @@ anv_descriptor_set_write_image_view(struct anv_device *device,
       for (unsigned p = 0; p < image_view->n_planes; p++) {
          desc_data[p] = (struct anv_texture_swizzle_descriptor) {
             .swizzle = {
-               (uint8_t)image_view->planes[p].isl.swizzle.r,
-               (uint8_t)image_view->planes[p].isl.swizzle.g,
-               (uint8_t)image_view->planes[p].isl.swizzle.b,
-               (uint8_t)image_view->planes[p].isl.swizzle.a,
-            },
+                        (uint8_t) image_view->planes[p].isl.swizzle.r,
+                        (uint8_t) image_view->planes[p].isl.swizzle.g,
+                        (uint8_t) image_view->planes[p].isl.swizzle.b,
+                        (uint8_t) image_view->planes[p].isl.swizzle.a,
+                        },
          };
       }
       memcpy(desc_map, desc_data,
@@ -1487,8 +1540,7 @@ anv_descriptor_set_write_buffer_view(struct anv_device *device,
                                      struct anv_descriptor_set *set,
                                      VkDescriptorType type,
                                      struct anv_buffer_view *buffer_view,
-                                     uint32_t binding,
-                                     uint32_t element)
+                                     uint32_t binding, uint32_t element)
 {
    const struct anv_descriptor_set_binding_layout *bind_layout =
       &set->layout->binding[binding];
@@ -1512,7 +1564,7 @@ anv_descriptor_set_write_buffer_view(struct anv_device *device,
       bind_layout->data;
 
    void *desc_map = set->desc_mem.map + bind_layout->descriptor_offset +
-                    element * bind_layout->descriptor_stride;
+      element * bind_layout->descriptor_stride;
 
    if (buffer_view == NULL) {
       memset(desc_map, 0, bind_layout->descriptor_stride);
@@ -1529,17 +1581,18 @@ anv_descriptor_set_write_buffer_view(struct anv_device *device,
    if (data & ANV_DESCRIPTOR_STORAGE_IMAGE) {
       assert(!(data & ANV_DESCRIPTOR_IMAGE_PARAM));
       struct anv_storage_image_descriptor desc_data = {
-         .vanilla = anv_surface_state_to_handle(
-                           buffer_view->storage_surface_state),
-         .lowered = anv_surface_state_to_handle(
-                           buffer_view->lowered_storage_surface_state),
+         .vanilla =
+            anv_surface_state_to_handle(buffer_view->storage_surface_state),
+         .lowered =
+            anv_surface_state_to_handle
+            (buffer_view->lowered_storage_surface_state),
       };
       memcpy(desc_map, &desc_data, sizeof(desc_data));
    }
 
    if (data & ANV_DESCRIPTOR_IMAGE_PARAM) {
       anv_descriptor_set_write_image_param(desc_map,
-         &buffer_view->lowered_storage_image_param);
+                                           &buffer_view->lowered_storage_image_param);
    }
 }
 
@@ -1551,8 +1604,7 @@ anv_descriptor_set_write_buffer(struct anv_device *device,
                                 struct anv_buffer *buffer,
                                 uint32_t binding,
                                 uint32_t element,
-                                VkDeviceSize offset,
-                                VkDeviceSize range)
+                                VkDeviceSize offset, VkDeviceSize range)
 {
    assert(alloc_stream || set->pool);
 
@@ -1575,7 +1627,7 @@ anv_descriptor_set_write_buffer(struct anv_device *device,
       return;
 
    void *desc_map = set->desc_mem.map + bind_layout->descriptor_offset +
-                    element * bind_layout->descriptor_stride;
+      element * bind_layout->descriptor_stride;
 
    if (buffer == NULL) {
       memset(desc_map, 0, bind_layout->descriptor_stride);
@@ -1615,9 +1667,9 @@ anv_descriptor_set_write_buffer(struct anv_device *device,
    bview->address = bind_addr;
 
    /* If we're writing descriptors through a push command, we need to
-      * allocate the surface state from the command buffer. Otherwise it will
-      * be allocated by the descriptor pool when calling
-      * vkAllocateDescriptorSets. */
+    * allocate the surface state from the command buffer. Otherwise it will
+    * be allocated by the descriptor pool when calling
+    * vkAllocateDescriptorSets. */
    if (alloc_stream) {
       bview->surface_state = anv_state_stream_alloc(alloc_stream, 64, 64);
    }
@@ -1627,8 +1679,7 @@ anv_descriptor_set_write_buffer(struct anv_device *device,
    isl_surf_usage_flags_t usage =
       (type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER ||
        type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC) ?
-      ISL_SURF_USAGE_CONSTANT_BUFFER_BIT :
-      ISL_SURF_USAGE_STORAGE_BIT;
+      ISL_SURF_USAGE_CONSTANT_BUFFER_BIT : ISL_SURF_USAGE_STORAGE_BIT;
 
    enum isl_format format = anv_isl_format_for_descriptor_type(device, type);
    anv_fill_buffer_surface_state(device, bview->surface_state,
@@ -1642,8 +1693,7 @@ anv_descriptor_set_write_inline_uniform_data(struct anv_device *device,
                                              struct anv_descriptor_set *set,
                                              uint32_t binding,
                                              const void *data,
-                                             size_t offset,
-                                             size_t size)
+                                             size_t offset, size_t size)
 {
    const struct anv_descriptor_set_binding_layout *bind_layout =
       &set->layout->binding[binding];
@@ -1655,12 +1705,12 @@ anv_descriptor_set_write_inline_uniform_data(struct anv_device *device,
    memcpy(desc_map + offset, data, size);
 }
 
-void anv_UpdateDescriptorSets(
-    VkDevice                                    _device,
-    uint32_t                                    descriptorWriteCount,
-    const VkWriteDescriptorSet*                 pDescriptorWrites,
-    uint32_t                                    descriptorCopyCount,
-    const VkCopyDescriptorSet*                  pDescriptorCopies)
+void
+anv_UpdateDescriptorSets(VkDevice _device,
+                         uint32_t descriptorWriteCount,
+                         const VkWriteDescriptorSet *pDescriptorWrites,
+                         uint32_t descriptorCopyCount,
+                         const VkCopyDescriptorSet *pDescriptorCopies)
 {
    ANV_FROM_HANDLE(anv_device, device, _device);
 
@@ -1715,18 +1765,18 @@ void anv_UpdateDescriptorSets(
          }
          break;
 
-      case VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK: {
-         const VkWriteDescriptorSetInlineUniformBlock *inline_write =
-            vk_find_struct_const(write->pNext,
-                                 WRITE_DESCRIPTOR_SET_INLINE_UNIFORM_BLOCK);
-         assert(inline_write->dataSize == write->descriptorCount);
-         anv_descriptor_set_write_inline_uniform_data(device, set,
-                                                      write->dstBinding,
-                                                      inline_write->pData,
-                                                      write->dstArrayElement,
-                                                      inline_write->dataSize);
-         break;
-      }
+      case VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK:{
+            const VkWriteDescriptorSetInlineUniformBlock *inline_write =
+               vk_find_struct_const(write->pNext,
+                                    WRITE_DESCRIPTOR_SET_INLINE_UNIFORM_BLOCK);
+            assert(inline_write->dataSize == write->descriptorCount);
+            anv_descriptor_set_write_inline_uniform_data(device, set,
+                                                         write->dstBinding,
+                                                         inline_write->pData,
+                                                         write->dstArrayElement,
+                                                         inline_write->dataSize);
+            break;
+         }
 
       default:
          break;
@@ -1747,7 +1797,9 @@ void anv_UpdateDescriptorSets(
       if (src_layout->type == VK_DESCRIPTOR_TYPE_INLINE_UNIFORM_BLOCK) {
          anv_descriptor_set_write_inline_uniform_data(device, dst,
                                                       copy->dstBinding,
-                                                      src->desc_mem.map + src_layout->descriptor_offset + copy->srcArrayElement,
+                                                      src->desc_mem.map +
+                                                      src_layout->descriptor_offset
+                                                      + copy->srcArrayElement,
                                                       copy->dstArrayElement,
                                                       copy->descriptorCount);
          continue;
@@ -1756,49 +1808,51 @@ void anv_UpdateDescriptorSets(
 
       /* Copy CPU side data */
       for (uint32_t j = 0; j < copy->descriptorCount; j++) {
-         switch(src_desc[j].type) {
+         switch (src_desc[j].type) {
          case VK_DESCRIPTOR_TYPE_SAMPLER:
          case VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER:
          case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE:
          case VK_DESCRIPTOR_TYPE_STORAGE_IMAGE:
-         case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT: {
-            VkDescriptorImageInfo info = {
-               .sampler = anv_sampler_to_handle(src_desc[j].sampler),
-               .imageView = anv_image_view_to_handle(src_desc[j].image_view),
-               .imageLayout = src_desc[j].layout
-            };
-            anv_descriptor_set_write_image_view(device, dst,
-                                                &info,
-                                                src_desc[j].type,
-                                                copy->dstBinding,
-                                                copy->dstArrayElement + j);
-            break;
-         }
+         case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT:{
+               VkDescriptorImageInfo info = {
+                  .sampler = anv_sampler_to_handle(src_desc[j].sampler),
+                  .imageView =
+                     anv_image_view_to_handle(src_desc[j].image_view),
+                  .imageLayout = src_desc[j].layout
+               };
+               anv_descriptor_set_write_image_view(device, dst,
+                                                   &info,
+                                                   src_desc[j].type,
+                                                   copy->dstBinding,
+                                                   copy->dstArrayElement + j);
+               break;
+            }
 
          case VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER:
-         case VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER: {
-            anv_descriptor_set_write_buffer_view(device, dst,
-                                                 src_desc[j].type,
-                                                 src_desc[j].buffer_view,
-                                                 copy->dstBinding,
-                                                 copy->dstArrayElement + j);
-            break;
-         }
+         case VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER:{
+               anv_descriptor_set_write_buffer_view(device, dst,
+                                                    src_desc[j].type,
+                                                    src_desc[j].buffer_view,
+                                                    copy->dstBinding,
+                                                    copy->dstArrayElement +
+                                                    j);
+               break;
+            }
 
          case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER:
          case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER:
          case VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC:
-         case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC: {
-            anv_descriptor_set_write_buffer(device, dst,
-                                            NULL,
-                                            src_desc[j].type,
-                                            src_desc[j].buffer,
-                                            copy->dstBinding,
-                                            copy->dstArrayElement + j,
-                                            src_desc[j].offset,
-                                            src_desc[j].range);
-            break;
-         }
+         case VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC:{
+               anv_descriptor_set_write_buffer(device, dst,
+                                               NULL,
+                                               src_desc[j].type,
+                                               src_desc[j].buffer,
+                                               copy->dstBinding,
+                                               copy->dstArrayElement + j,
+                                               src_desc[j].offset,
+                                               src_desc[j].range);
+               break;
+            }
 
          default:
             break;
@@ -1815,8 +1869,8 @@ void
 anv_descriptor_set_write_template(struct anv_device *device,
                                   struct anv_descriptor_set *set,
                                   struct anv_state_stream *alloc_stream,
-                                  const struct vk_descriptor_update_template *template,
-                                  const void *data)
+                                  const struct vk_descriptor_update_template
+                                  *template, const void *data)
 {
    for (uint32_t i = 0; i < template->entry_count; i++) {
       const struct vk_descriptor_template_entry *entry =
@@ -1886,11 +1940,12 @@ anv_descriptor_set_write_template(struct anv_device *device,
    }
 }
 
-void anv_UpdateDescriptorSetWithTemplate(
-    VkDevice                                    _device,
-    VkDescriptorSet                             descriptorSet,
-    VkDescriptorUpdateTemplate                  descriptorUpdateTemplate,
-    const void*                                 pData)
+void
+anv_UpdateDescriptorSetWithTemplate(VkDevice _device,
+                                    VkDescriptorSet descriptorSet,
+                                    VkDescriptorUpdateTemplate
+                                    descriptorUpdateTemplate,
+                                    const void *pData)
 {
    ANV_FROM_HANDLE(anv_device, device, _device);
    ANV_FROM_HANDLE(anv_descriptor_set, set, descriptorSet);

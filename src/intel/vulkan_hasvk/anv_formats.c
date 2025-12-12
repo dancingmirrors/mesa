@@ -147,178 +147,182 @@
 static const struct anv_format main_formats[] = {
    fmt_unsupported(VK_FORMAT_UNDEFINED),
    fmt_unsupported(VK_FORMAT_R4G4_UNORM_PACK8),
-   fmt1(VK_FORMAT_R4G4B4A4_UNORM_PACK16,             ISL_FORMAT_A4B4G4R4_UNORM),
-   swiz_fmt1(VK_FORMAT_B4G4R4A4_UNORM_PACK16,        ISL_FORMAT_A4B4G4R4_UNORM,  BGRA),
-   fmt1(VK_FORMAT_R5G6B5_UNORM_PACK16,               ISL_FORMAT_B5G6R5_UNORM),
-   swiz_fmt1(VK_FORMAT_B5G6R5_UNORM_PACK16,          ISL_FORMAT_B5G6R5_UNORM, BGRA),
-   fmt1(VK_FORMAT_R5G5B5A1_UNORM_PACK16,             ISL_FORMAT_A1B5G5R5_UNORM),
-   swiz_fmt1(VK_FORMAT_B5G5R5A1_UNORM_PACK16,        ISL_FORMAT_A1B5G5R5_UNORM, BGRA),
-   fmt1(VK_FORMAT_A1R5G5B5_UNORM_PACK16,             ISL_FORMAT_B5G5R5A1_UNORM),
-   fmt1(VK_FORMAT_R8_UNORM,                          ISL_FORMAT_R8_UNORM),
-   fmt1(VK_FORMAT_R8_SNORM,                          ISL_FORMAT_R8_SNORM),
-   fmt1(VK_FORMAT_R8_USCALED,                        ISL_FORMAT_R8_USCALED),
-   fmt1(VK_FORMAT_R8_SSCALED,                        ISL_FORMAT_R8_SSCALED),
-   fmt1(VK_FORMAT_R8_UINT,                           ISL_FORMAT_R8_UINT),
-   fmt1(VK_FORMAT_R8_SINT,                           ISL_FORMAT_R8_SINT),
-   swiz_fmt1(VK_FORMAT_R8_SRGB,                      ISL_FORMAT_L8_UNORM_SRGB,
-                                                     _ISL_SWIZZLE(RED, ZERO, ZERO, ONE)),
-   fmt1(VK_FORMAT_R8G8_UNORM,                        ISL_FORMAT_R8G8_UNORM),
-   fmt1(VK_FORMAT_R8G8_SNORM,                        ISL_FORMAT_R8G8_SNORM),
-   fmt1(VK_FORMAT_R8G8_USCALED,                      ISL_FORMAT_R8G8_USCALED),
-   fmt1(VK_FORMAT_R8G8_SSCALED,                      ISL_FORMAT_R8G8_SSCALED),
-   fmt1(VK_FORMAT_R8G8_UINT,                         ISL_FORMAT_R8G8_UINT),
-   fmt1(VK_FORMAT_R8G8_SINT,                         ISL_FORMAT_R8G8_SINT),
-   fmt_unsupported(VK_FORMAT_R8G8_SRGB),             /* L8A8_UNORM_SRGB */
-   fmt1(VK_FORMAT_R8G8B8_UNORM,                      ISL_FORMAT_R8G8B8_UNORM),
-   fmt1(VK_FORMAT_R8G8B8_SNORM,                      ISL_FORMAT_R8G8B8_SNORM),
-   fmt1(VK_FORMAT_R8G8B8_USCALED,                    ISL_FORMAT_R8G8B8_USCALED),
-   fmt1(VK_FORMAT_R8G8B8_SSCALED,                    ISL_FORMAT_R8G8B8_SSCALED),
-   fmt1(VK_FORMAT_R8G8B8_UINT,                       ISL_FORMAT_R8G8B8_UINT),
-   fmt1(VK_FORMAT_R8G8B8_SINT,                       ISL_FORMAT_R8G8B8_SINT),
-   fmt1(VK_FORMAT_R8G8B8_SRGB,                       ISL_FORMAT_R8G8B8_UNORM_SRGB),
-   fmt1(VK_FORMAT_R8G8B8A8_UNORM,                    ISL_FORMAT_R8G8B8A8_UNORM),
-   fmt1(VK_FORMAT_R8G8B8A8_SNORM,                    ISL_FORMAT_R8G8B8A8_SNORM),
-   fmt1(VK_FORMAT_R8G8B8A8_USCALED,                  ISL_FORMAT_R8G8B8A8_USCALED),
-   fmt1(VK_FORMAT_R8G8B8A8_SSCALED,                  ISL_FORMAT_R8G8B8A8_SSCALED),
-   fmt1(VK_FORMAT_R8G8B8A8_UINT,                     ISL_FORMAT_R8G8B8A8_UINT),
-   fmt1(VK_FORMAT_R8G8B8A8_SINT,                     ISL_FORMAT_R8G8B8A8_SINT),
-   fmt1(VK_FORMAT_R8G8B8A8_SRGB,                     ISL_FORMAT_R8G8B8A8_UNORM_SRGB),
-   fmt1(VK_FORMAT_A8B8G8R8_UNORM_PACK32,             ISL_FORMAT_R8G8B8A8_UNORM),
-   fmt1(VK_FORMAT_A8B8G8R8_SNORM_PACK32,             ISL_FORMAT_R8G8B8A8_SNORM),
-   fmt1(VK_FORMAT_A8B8G8R8_USCALED_PACK32,           ISL_FORMAT_R8G8B8A8_USCALED),
-   fmt1(VK_FORMAT_A8B8G8R8_SSCALED_PACK32,           ISL_FORMAT_R8G8B8A8_SSCALED),
-   fmt1(VK_FORMAT_A8B8G8R8_UINT_PACK32,              ISL_FORMAT_R8G8B8A8_UINT),
-   fmt1(VK_FORMAT_A8B8G8R8_SINT_PACK32,              ISL_FORMAT_R8G8B8A8_SINT),
-   fmt1(VK_FORMAT_A8B8G8R8_SRGB_PACK32,              ISL_FORMAT_R8G8B8A8_UNORM_SRGB),
-   fmt1(VK_FORMAT_A2R10G10B10_UNORM_PACK32,          ISL_FORMAT_B10G10R10A2_UNORM),
-   fmt1(VK_FORMAT_A2R10G10B10_SNORM_PACK32,          ISL_FORMAT_B10G10R10A2_SNORM),
-   fmt1(VK_FORMAT_A2R10G10B10_USCALED_PACK32,        ISL_FORMAT_B10G10R10A2_USCALED),
-   fmt1(VK_FORMAT_A2R10G10B10_SSCALED_PACK32,        ISL_FORMAT_B10G10R10A2_SSCALED),
-   fmt1(VK_FORMAT_A2R10G10B10_UINT_PACK32,           ISL_FORMAT_B10G10R10A2_UINT),
-   fmt1(VK_FORMAT_A2R10G10B10_SINT_PACK32,           ISL_FORMAT_B10G10R10A2_SINT),
-   fmt1(VK_FORMAT_A2B10G10R10_UNORM_PACK32,          ISL_FORMAT_R10G10B10A2_UNORM),
-   fmt1(VK_FORMAT_A2B10G10R10_SNORM_PACK32,          ISL_FORMAT_R10G10B10A2_SNORM),
-   fmt1(VK_FORMAT_A2B10G10R10_USCALED_PACK32,        ISL_FORMAT_R10G10B10A2_USCALED),
-   fmt1(VK_FORMAT_A2B10G10R10_SSCALED_PACK32,        ISL_FORMAT_R10G10B10A2_SSCALED),
-   fmt1(VK_FORMAT_A2B10G10R10_UINT_PACK32,           ISL_FORMAT_R10G10B10A2_UINT),
-   fmt1(VK_FORMAT_A2B10G10R10_SINT_PACK32,           ISL_FORMAT_R10G10B10A2_SINT),
-   fmt1(VK_FORMAT_R16_UNORM,                         ISL_FORMAT_R16_UNORM),
-   fmt1(VK_FORMAT_R16_SNORM,                         ISL_FORMAT_R16_SNORM),
-   fmt1(VK_FORMAT_R16_USCALED,                       ISL_FORMAT_R16_USCALED),
-   fmt1(VK_FORMAT_R16_SSCALED,                       ISL_FORMAT_R16_SSCALED),
-   fmt1(VK_FORMAT_R16_UINT,                          ISL_FORMAT_R16_UINT),
-   fmt1(VK_FORMAT_R16_SINT,                          ISL_FORMAT_R16_SINT),
-   fmt1(VK_FORMAT_R16_SFLOAT,                        ISL_FORMAT_R16_FLOAT),
-   fmt1(VK_FORMAT_R16G16_UNORM,                      ISL_FORMAT_R16G16_UNORM),
-   fmt1(VK_FORMAT_R16G16_SNORM,                      ISL_FORMAT_R16G16_SNORM),
-   fmt1(VK_FORMAT_R16G16_USCALED,                    ISL_FORMAT_R16G16_USCALED),
-   fmt1(VK_FORMAT_R16G16_SSCALED,                    ISL_FORMAT_R16G16_SSCALED),
-   fmt1(VK_FORMAT_R16G16_UINT,                       ISL_FORMAT_R16G16_UINT),
-   fmt1(VK_FORMAT_R16G16_SINT,                       ISL_FORMAT_R16G16_SINT),
-   fmt1(VK_FORMAT_R16G16_SFLOAT,                     ISL_FORMAT_R16G16_FLOAT),
-   fmt1(VK_FORMAT_R16G16B16_UNORM,                   ISL_FORMAT_R16G16B16_UNORM),
-   fmt1(VK_FORMAT_R16G16B16_SNORM,                   ISL_FORMAT_R16G16B16_SNORM),
-   fmt1(VK_FORMAT_R16G16B16_USCALED,                 ISL_FORMAT_R16G16B16_USCALED),
-   fmt1(VK_FORMAT_R16G16B16_SSCALED,                 ISL_FORMAT_R16G16B16_SSCALED),
-   fmt1(VK_FORMAT_R16G16B16_UINT,                    ISL_FORMAT_R16G16B16_UINT),
-   fmt1(VK_FORMAT_R16G16B16_SINT,                    ISL_FORMAT_R16G16B16_SINT),
-   fmt1(VK_FORMAT_R16G16B16_SFLOAT,                  ISL_FORMAT_R16G16B16_FLOAT),
-   fmt1(VK_FORMAT_R16G16B16A16_UNORM,                ISL_FORMAT_R16G16B16A16_UNORM),
-   fmt1(VK_FORMAT_R16G16B16A16_SNORM,                ISL_FORMAT_R16G16B16A16_SNORM),
-   fmt1(VK_FORMAT_R16G16B16A16_USCALED,              ISL_FORMAT_R16G16B16A16_USCALED),
-   fmt1(VK_FORMAT_R16G16B16A16_SSCALED,              ISL_FORMAT_R16G16B16A16_SSCALED),
-   fmt1(VK_FORMAT_R16G16B16A16_UINT,                 ISL_FORMAT_R16G16B16A16_UINT),
-   fmt1(VK_FORMAT_R16G16B16A16_SINT,                 ISL_FORMAT_R16G16B16A16_SINT),
-   fmt1(VK_FORMAT_R16G16B16A16_SFLOAT,               ISL_FORMAT_R16G16B16A16_FLOAT),
-   fmt1(VK_FORMAT_R32_UINT,                          ISL_FORMAT_R32_UINT),
-   fmt1(VK_FORMAT_R32_SINT,                          ISL_FORMAT_R32_SINT),
-   fmt1(VK_FORMAT_R32_SFLOAT,                        ISL_FORMAT_R32_FLOAT),
-   fmt1(VK_FORMAT_R32G32_UINT,                       ISL_FORMAT_R32G32_UINT),
-   fmt1(VK_FORMAT_R32G32_SINT,                       ISL_FORMAT_R32G32_SINT),
-   fmt1(VK_FORMAT_R32G32_SFLOAT,                     ISL_FORMAT_R32G32_FLOAT),
-   fmt1(VK_FORMAT_R32G32B32_UINT,                    ISL_FORMAT_R32G32B32_UINT),
-   fmt1(VK_FORMAT_R32G32B32_SINT,                    ISL_FORMAT_R32G32B32_SINT),
-   fmt1(VK_FORMAT_R32G32B32_SFLOAT,                  ISL_FORMAT_R32G32B32_FLOAT),
-   fmt1(VK_FORMAT_R32G32B32A32_UINT,                 ISL_FORMAT_R32G32B32A32_UINT),
-   fmt1(VK_FORMAT_R32G32B32A32_SINT,                 ISL_FORMAT_R32G32B32A32_SINT),
-   fmt1(VK_FORMAT_R32G32B32A32_SFLOAT,               ISL_FORMAT_R32G32B32A32_FLOAT),
-   fmt1(VK_FORMAT_R64_UINT,                          ISL_FORMAT_R64_PASSTHRU),
-   fmt1(VK_FORMAT_R64_SINT,                          ISL_FORMAT_R64_PASSTHRU),
-   fmt1(VK_FORMAT_R64_SFLOAT,                        ISL_FORMAT_R64_PASSTHRU),
-   fmt1(VK_FORMAT_R64G64_UINT,                       ISL_FORMAT_R64G64_PASSTHRU),
-   fmt1(VK_FORMAT_R64G64_SINT,                       ISL_FORMAT_R64G64_PASSTHRU),
-   fmt1(VK_FORMAT_R64G64_SFLOAT,                     ISL_FORMAT_R64G64_PASSTHRU),
-   fmt1(VK_FORMAT_R64G64B64_UINT,                    ISL_FORMAT_R64G64B64_PASSTHRU),
-   fmt1(VK_FORMAT_R64G64B64_SINT,                    ISL_FORMAT_R64G64B64_PASSTHRU),
-   fmt1(VK_FORMAT_R64G64B64_SFLOAT,                  ISL_FORMAT_R64G64B64_PASSTHRU),
-   fmt1(VK_FORMAT_R64G64B64A64_UINT,                 ISL_FORMAT_R64G64B64A64_PASSTHRU),
-   fmt1(VK_FORMAT_R64G64B64A64_SINT,                 ISL_FORMAT_R64G64B64A64_PASSTHRU),
-   fmt1(VK_FORMAT_R64G64B64A64_SFLOAT,               ISL_FORMAT_R64G64B64A64_PASSTHRU),
-   fmt1(VK_FORMAT_B10G11R11_UFLOAT_PACK32,           ISL_FORMAT_R11G11B10_FLOAT),
-   fmt1(VK_FORMAT_E5B9G9R9_UFLOAT_PACK32,            ISL_FORMAT_R9G9B9E5_SHAREDEXP),
+   fmt1(VK_FORMAT_R4G4B4A4_UNORM_PACK16, ISL_FORMAT_A4B4G4R4_UNORM),
+   swiz_fmt1(VK_FORMAT_B4G4R4A4_UNORM_PACK16, ISL_FORMAT_A4B4G4R4_UNORM,
+             BGRA),
+   fmt1(VK_FORMAT_R5G6B5_UNORM_PACK16, ISL_FORMAT_B5G6R5_UNORM),
+   swiz_fmt1(VK_FORMAT_B5G6R5_UNORM_PACK16, ISL_FORMAT_B5G6R5_UNORM, BGRA),
+   fmt1(VK_FORMAT_R5G5B5A1_UNORM_PACK16, ISL_FORMAT_A1B5G5R5_UNORM),
+   swiz_fmt1(VK_FORMAT_B5G5R5A1_UNORM_PACK16, ISL_FORMAT_A1B5G5R5_UNORM,
+             BGRA),
+   fmt1(VK_FORMAT_A1R5G5B5_UNORM_PACK16, ISL_FORMAT_B5G5R5A1_UNORM),
+   fmt1(VK_FORMAT_R8_UNORM, ISL_FORMAT_R8_UNORM),
+   fmt1(VK_FORMAT_R8_SNORM, ISL_FORMAT_R8_SNORM),
+   fmt1(VK_FORMAT_R8_USCALED, ISL_FORMAT_R8_USCALED),
+   fmt1(VK_FORMAT_R8_SSCALED, ISL_FORMAT_R8_SSCALED),
+   fmt1(VK_FORMAT_R8_UINT, ISL_FORMAT_R8_UINT),
+   fmt1(VK_FORMAT_R8_SINT, ISL_FORMAT_R8_SINT),
+   swiz_fmt1(VK_FORMAT_R8_SRGB, ISL_FORMAT_L8_UNORM_SRGB,
+             _ISL_SWIZZLE(RED, ZERO, ZERO, ONE)),
+   fmt1(VK_FORMAT_R8G8_UNORM, ISL_FORMAT_R8G8_UNORM),
+   fmt1(VK_FORMAT_R8G8_SNORM, ISL_FORMAT_R8G8_SNORM),
+   fmt1(VK_FORMAT_R8G8_USCALED, ISL_FORMAT_R8G8_USCALED),
+   fmt1(VK_FORMAT_R8G8_SSCALED, ISL_FORMAT_R8G8_SSCALED),
+   fmt1(VK_FORMAT_R8G8_UINT, ISL_FORMAT_R8G8_UINT),
+   fmt1(VK_FORMAT_R8G8_SINT, ISL_FORMAT_R8G8_SINT),
+   fmt_unsupported(VK_FORMAT_R8G8_SRGB),        /* L8A8_UNORM_SRGB */
+   fmt1(VK_FORMAT_R8G8B8_UNORM, ISL_FORMAT_R8G8B8_UNORM),
+   fmt1(VK_FORMAT_R8G8B8_SNORM, ISL_FORMAT_R8G8B8_SNORM),
+   fmt1(VK_FORMAT_R8G8B8_USCALED, ISL_FORMAT_R8G8B8_USCALED),
+   fmt1(VK_FORMAT_R8G8B8_SSCALED, ISL_FORMAT_R8G8B8_SSCALED),
+   fmt1(VK_FORMAT_R8G8B8_UINT, ISL_FORMAT_R8G8B8_UINT),
+   fmt1(VK_FORMAT_R8G8B8_SINT, ISL_FORMAT_R8G8B8_SINT),
+   fmt1(VK_FORMAT_R8G8B8_SRGB, ISL_FORMAT_R8G8B8_UNORM_SRGB),
+   fmt1(VK_FORMAT_R8G8B8A8_UNORM, ISL_FORMAT_R8G8B8A8_UNORM),
+   fmt1(VK_FORMAT_R8G8B8A8_SNORM, ISL_FORMAT_R8G8B8A8_SNORM),
+   fmt1(VK_FORMAT_R8G8B8A8_USCALED, ISL_FORMAT_R8G8B8A8_USCALED),
+   fmt1(VK_FORMAT_R8G8B8A8_SSCALED, ISL_FORMAT_R8G8B8A8_SSCALED),
+   fmt1(VK_FORMAT_R8G8B8A8_UINT, ISL_FORMAT_R8G8B8A8_UINT),
+   fmt1(VK_FORMAT_R8G8B8A8_SINT, ISL_FORMAT_R8G8B8A8_SINT),
+   fmt1(VK_FORMAT_R8G8B8A8_SRGB, ISL_FORMAT_R8G8B8A8_UNORM_SRGB),
+   fmt1(VK_FORMAT_A8B8G8R8_UNORM_PACK32, ISL_FORMAT_R8G8B8A8_UNORM),
+   fmt1(VK_FORMAT_A8B8G8R8_SNORM_PACK32, ISL_FORMAT_R8G8B8A8_SNORM),
+   fmt1(VK_FORMAT_A8B8G8R8_USCALED_PACK32, ISL_FORMAT_R8G8B8A8_USCALED),
+   fmt1(VK_FORMAT_A8B8G8R8_SSCALED_PACK32, ISL_FORMAT_R8G8B8A8_SSCALED),
+   fmt1(VK_FORMAT_A8B8G8R8_UINT_PACK32, ISL_FORMAT_R8G8B8A8_UINT),
+   fmt1(VK_FORMAT_A8B8G8R8_SINT_PACK32, ISL_FORMAT_R8G8B8A8_SINT),
+   fmt1(VK_FORMAT_A8B8G8R8_SRGB_PACK32, ISL_FORMAT_R8G8B8A8_UNORM_SRGB),
+   fmt1(VK_FORMAT_A2R10G10B10_UNORM_PACK32, ISL_FORMAT_B10G10R10A2_UNORM),
+   fmt1(VK_FORMAT_A2R10G10B10_SNORM_PACK32, ISL_FORMAT_B10G10R10A2_SNORM),
+   fmt1(VK_FORMAT_A2R10G10B10_USCALED_PACK32, ISL_FORMAT_B10G10R10A2_USCALED),
+   fmt1(VK_FORMAT_A2R10G10B10_SSCALED_PACK32, ISL_FORMAT_B10G10R10A2_SSCALED),
+   fmt1(VK_FORMAT_A2R10G10B10_UINT_PACK32, ISL_FORMAT_B10G10R10A2_UINT),
+   fmt1(VK_FORMAT_A2R10G10B10_SINT_PACK32, ISL_FORMAT_B10G10R10A2_SINT),
+   fmt1(VK_FORMAT_A2B10G10R10_UNORM_PACK32, ISL_FORMAT_R10G10B10A2_UNORM),
+   fmt1(VK_FORMAT_A2B10G10R10_SNORM_PACK32, ISL_FORMAT_R10G10B10A2_SNORM),
+   fmt1(VK_FORMAT_A2B10G10R10_USCALED_PACK32, ISL_FORMAT_R10G10B10A2_USCALED),
+   fmt1(VK_FORMAT_A2B10G10R10_SSCALED_PACK32, ISL_FORMAT_R10G10B10A2_SSCALED),
+   fmt1(VK_FORMAT_A2B10G10R10_UINT_PACK32, ISL_FORMAT_R10G10B10A2_UINT),
+   fmt1(VK_FORMAT_A2B10G10R10_SINT_PACK32, ISL_FORMAT_R10G10B10A2_SINT),
+   fmt1(VK_FORMAT_R16_UNORM, ISL_FORMAT_R16_UNORM),
+   fmt1(VK_FORMAT_R16_SNORM, ISL_FORMAT_R16_SNORM),
+   fmt1(VK_FORMAT_R16_USCALED, ISL_FORMAT_R16_USCALED),
+   fmt1(VK_FORMAT_R16_SSCALED, ISL_FORMAT_R16_SSCALED),
+   fmt1(VK_FORMAT_R16_UINT, ISL_FORMAT_R16_UINT),
+   fmt1(VK_FORMAT_R16_SINT, ISL_FORMAT_R16_SINT),
+   fmt1(VK_FORMAT_R16_SFLOAT, ISL_FORMAT_R16_FLOAT),
+   fmt1(VK_FORMAT_R16G16_UNORM, ISL_FORMAT_R16G16_UNORM),
+   fmt1(VK_FORMAT_R16G16_SNORM, ISL_FORMAT_R16G16_SNORM),
+   fmt1(VK_FORMAT_R16G16_USCALED, ISL_FORMAT_R16G16_USCALED),
+   fmt1(VK_FORMAT_R16G16_SSCALED, ISL_FORMAT_R16G16_SSCALED),
+   fmt1(VK_FORMAT_R16G16_UINT, ISL_FORMAT_R16G16_UINT),
+   fmt1(VK_FORMAT_R16G16_SINT, ISL_FORMAT_R16G16_SINT),
+   fmt1(VK_FORMAT_R16G16_SFLOAT, ISL_FORMAT_R16G16_FLOAT),
+   fmt1(VK_FORMAT_R16G16B16_UNORM, ISL_FORMAT_R16G16B16_UNORM),
+   fmt1(VK_FORMAT_R16G16B16_SNORM, ISL_FORMAT_R16G16B16_SNORM),
+   fmt1(VK_FORMAT_R16G16B16_USCALED, ISL_FORMAT_R16G16B16_USCALED),
+   fmt1(VK_FORMAT_R16G16B16_SSCALED, ISL_FORMAT_R16G16B16_SSCALED),
+   fmt1(VK_FORMAT_R16G16B16_UINT, ISL_FORMAT_R16G16B16_UINT),
+   fmt1(VK_FORMAT_R16G16B16_SINT, ISL_FORMAT_R16G16B16_SINT),
+   fmt1(VK_FORMAT_R16G16B16_SFLOAT, ISL_FORMAT_R16G16B16_FLOAT),
+   fmt1(VK_FORMAT_R16G16B16A16_UNORM, ISL_FORMAT_R16G16B16A16_UNORM),
+   fmt1(VK_FORMAT_R16G16B16A16_SNORM, ISL_FORMAT_R16G16B16A16_SNORM),
+   fmt1(VK_FORMAT_R16G16B16A16_USCALED, ISL_FORMAT_R16G16B16A16_USCALED),
+   fmt1(VK_FORMAT_R16G16B16A16_SSCALED, ISL_FORMAT_R16G16B16A16_SSCALED),
+   fmt1(VK_FORMAT_R16G16B16A16_UINT, ISL_FORMAT_R16G16B16A16_UINT),
+   fmt1(VK_FORMAT_R16G16B16A16_SINT, ISL_FORMAT_R16G16B16A16_SINT),
+   fmt1(VK_FORMAT_R16G16B16A16_SFLOAT, ISL_FORMAT_R16G16B16A16_FLOAT),
+   fmt1(VK_FORMAT_R32_UINT, ISL_FORMAT_R32_UINT),
+   fmt1(VK_FORMAT_R32_SINT, ISL_FORMAT_R32_SINT),
+   fmt1(VK_FORMAT_R32_SFLOAT, ISL_FORMAT_R32_FLOAT),
+   fmt1(VK_FORMAT_R32G32_UINT, ISL_FORMAT_R32G32_UINT),
+   fmt1(VK_FORMAT_R32G32_SINT, ISL_FORMAT_R32G32_SINT),
+   fmt1(VK_FORMAT_R32G32_SFLOAT, ISL_FORMAT_R32G32_FLOAT),
+   fmt1(VK_FORMAT_R32G32B32_UINT, ISL_FORMAT_R32G32B32_UINT),
+   fmt1(VK_FORMAT_R32G32B32_SINT, ISL_FORMAT_R32G32B32_SINT),
+   fmt1(VK_FORMAT_R32G32B32_SFLOAT, ISL_FORMAT_R32G32B32_FLOAT),
+   fmt1(VK_FORMAT_R32G32B32A32_UINT, ISL_FORMAT_R32G32B32A32_UINT),
+   fmt1(VK_FORMAT_R32G32B32A32_SINT, ISL_FORMAT_R32G32B32A32_SINT),
+   fmt1(VK_FORMAT_R32G32B32A32_SFLOAT, ISL_FORMAT_R32G32B32A32_FLOAT),
+   fmt1(VK_FORMAT_R64_UINT, ISL_FORMAT_R64_PASSTHRU),
+   fmt1(VK_FORMAT_R64_SINT, ISL_FORMAT_R64_PASSTHRU),
+   fmt1(VK_FORMAT_R64_SFLOAT, ISL_FORMAT_R64_PASSTHRU),
+   fmt1(VK_FORMAT_R64G64_UINT, ISL_FORMAT_R64G64_PASSTHRU),
+   fmt1(VK_FORMAT_R64G64_SINT, ISL_FORMAT_R64G64_PASSTHRU),
+   fmt1(VK_FORMAT_R64G64_SFLOAT, ISL_FORMAT_R64G64_PASSTHRU),
+   fmt1(VK_FORMAT_R64G64B64_UINT, ISL_FORMAT_R64G64B64_PASSTHRU),
+   fmt1(VK_FORMAT_R64G64B64_SINT, ISL_FORMAT_R64G64B64_PASSTHRU),
+   fmt1(VK_FORMAT_R64G64B64_SFLOAT, ISL_FORMAT_R64G64B64_PASSTHRU),
+   fmt1(VK_FORMAT_R64G64B64A64_UINT, ISL_FORMAT_R64G64B64A64_PASSTHRU),
+   fmt1(VK_FORMAT_R64G64B64A64_SINT, ISL_FORMAT_R64G64B64A64_PASSTHRU),
+   fmt1(VK_FORMAT_R64G64B64A64_SFLOAT, ISL_FORMAT_R64G64B64A64_PASSTHRU),
+   fmt1(VK_FORMAT_B10G11R11_UFLOAT_PACK32, ISL_FORMAT_R11G11B10_FLOAT),
+   fmt1(VK_FORMAT_E5B9G9R9_UFLOAT_PACK32, ISL_FORMAT_R9G9B9E5_SHAREDEXP),
 
-   d_fmt(VK_FORMAT_D16_UNORM,                        ISL_FORMAT_R16_UNORM),
-   d_fmt(VK_FORMAT_X8_D24_UNORM_PACK32,              ISL_FORMAT_R24_UNORM_X8_TYPELESS),
-   d_fmt(VK_FORMAT_D32_SFLOAT,                       ISL_FORMAT_R32_FLOAT),
-   s_fmt(VK_FORMAT_S8_UINT,                          ISL_FORMAT_R8_UINT),
+   d_fmt(VK_FORMAT_D16_UNORM, ISL_FORMAT_R16_UNORM),
+   d_fmt(VK_FORMAT_X8_D24_UNORM_PACK32, ISL_FORMAT_R24_UNORM_X8_TYPELESS),
+   d_fmt(VK_FORMAT_D32_SFLOAT, ISL_FORMAT_R32_FLOAT),
+   s_fmt(VK_FORMAT_S8_UINT, ISL_FORMAT_R8_UINT),
    fmt_unsupported(VK_FORMAT_D16_UNORM_S8_UINT),
-   ds_fmt2(VK_FORMAT_D24_UNORM_S8_UINT,              ISL_FORMAT_R24_UNORM_X8_TYPELESS, ISL_FORMAT_R8_UINT),
-   ds_fmt2(VK_FORMAT_D32_SFLOAT_S8_UINT,             ISL_FORMAT_R32_FLOAT, ISL_FORMAT_R8_UINT),
+   ds_fmt2(VK_FORMAT_D24_UNORM_S8_UINT, ISL_FORMAT_R24_UNORM_X8_TYPELESS,
+           ISL_FORMAT_R8_UINT),
+   ds_fmt2(VK_FORMAT_D32_SFLOAT_S8_UINT, ISL_FORMAT_R32_FLOAT,
+           ISL_FORMAT_R8_UINT),
 
-   swiz_fmt1(VK_FORMAT_BC1_RGB_UNORM_BLOCK,          ISL_FORMAT_BC1_UNORM, RGB1),
-   swiz_fmt1(VK_FORMAT_BC1_RGB_SRGB_BLOCK,           ISL_FORMAT_BC1_UNORM_SRGB, RGB1),
-   fmt1(VK_FORMAT_BC1_RGBA_UNORM_BLOCK,              ISL_FORMAT_BC1_UNORM),
-   fmt1(VK_FORMAT_BC1_RGBA_SRGB_BLOCK,               ISL_FORMAT_BC1_UNORM_SRGB),
-   fmt1(VK_FORMAT_BC2_UNORM_BLOCK,                   ISL_FORMAT_BC2_UNORM),
-   fmt1(VK_FORMAT_BC2_SRGB_BLOCK,                    ISL_FORMAT_BC2_UNORM_SRGB),
-   fmt1(VK_FORMAT_BC3_UNORM_BLOCK,                   ISL_FORMAT_BC3_UNORM),
-   fmt1(VK_FORMAT_BC3_SRGB_BLOCK,                    ISL_FORMAT_BC3_UNORM_SRGB),
-   fmt1(VK_FORMAT_BC4_UNORM_BLOCK,                   ISL_FORMAT_BC4_UNORM),
-   fmt1(VK_FORMAT_BC4_SNORM_BLOCK,                   ISL_FORMAT_BC4_SNORM),
-   fmt1(VK_FORMAT_BC5_UNORM_BLOCK,                   ISL_FORMAT_BC5_UNORM),
-   fmt1(VK_FORMAT_BC5_SNORM_BLOCK,                   ISL_FORMAT_BC5_SNORM),
-   fmt1(VK_FORMAT_BC6H_UFLOAT_BLOCK,                 ISL_FORMAT_BC6H_UF16),
-   fmt1(VK_FORMAT_BC6H_SFLOAT_BLOCK,                 ISL_FORMAT_BC6H_SF16),
-   fmt1(VK_FORMAT_BC7_UNORM_BLOCK,                   ISL_FORMAT_BC7_UNORM),
-   fmt1(VK_FORMAT_BC7_SRGB_BLOCK,                    ISL_FORMAT_BC7_UNORM_SRGB),
-   fmt1(VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK,           ISL_FORMAT_ETC2_RGB8),
-   fmt1(VK_FORMAT_ETC2_R8G8B8_SRGB_BLOCK,            ISL_FORMAT_ETC2_SRGB8),
-   fmt1(VK_FORMAT_ETC2_R8G8B8A1_UNORM_BLOCK,         ISL_FORMAT_ETC2_RGB8_PTA),
-   fmt1(VK_FORMAT_ETC2_R8G8B8A1_SRGB_BLOCK,          ISL_FORMAT_ETC2_SRGB8_PTA),
-   fmt1(VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK,         ISL_FORMAT_ETC2_EAC_RGBA8),
-   fmt1(VK_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK,          ISL_FORMAT_ETC2_EAC_SRGB8_A8),
-   fmt1(VK_FORMAT_EAC_R11_UNORM_BLOCK,               ISL_FORMAT_EAC_R11),
-   fmt1(VK_FORMAT_EAC_R11_SNORM_BLOCK,               ISL_FORMAT_EAC_SIGNED_R11),
-   fmt1(VK_FORMAT_EAC_R11G11_UNORM_BLOCK,            ISL_FORMAT_EAC_RG11),
-   fmt1(VK_FORMAT_EAC_R11G11_SNORM_BLOCK,            ISL_FORMAT_EAC_SIGNED_RG11),
-   fmt1(VK_FORMAT_ASTC_4x4_SRGB_BLOCK,               ISL_FORMAT_ASTC_LDR_2D_4X4_U8SRGB),
-   fmt1(VK_FORMAT_ASTC_5x4_SRGB_BLOCK,               ISL_FORMAT_ASTC_LDR_2D_5X4_U8SRGB),
-   fmt1(VK_FORMAT_ASTC_5x5_SRGB_BLOCK,               ISL_FORMAT_ASTC_LDR_2D_5X5_U8SRGB),
-   fmt1(VK_FORMAT_ASTC_6x5_SRGB_BLOCK,               ISL_FORMAT_ASTC_LDR_2D_6X5_U8SRGB),
-   fmt1(VK_FORMAT_ASTC_6x6_SRGB_BLOCK,               ISL_FORMAT_ASTC_LDR_2D_6X6_U8SRGB),
-   fmt1(VK_FORMAT_ASTC_8x5_SRGB_BLOCK,               ISL_FORMAT_ASTC_LDR_2D_8X5_U8SRGB),
-   fmt1(VK_FORMAT_ASTC_8x6_SRGB_BLOCK,               ISL_FORMAT_ASTC_LDR_2D_8X6_U8SRGB),
-   fmt1(VK_FORMAT_ASTC_8x8_SRGB_BLOCK,               ISL_FORMAT_ASTC_LDR_2D_8X8_U8SRGB),
-   fmt1(VK_FORMAT_ASTC_10x5_SRGB_BLOCK,              ISL_FORMAT_ASTC_LDR_2D_10X5_U8SRGB),
-   fmt1(VK_FORMAT_ASTC_10x6_SRGB_BLOCK,              ISL_FORMAT_ASTC_LDR_2D_10X6_U8SRGB),
-   fmt1(VK_FORMAT_ASTC_10x8_SRGB_BLOCK,              ISL_FORMAT_ASTC_LDR_2D_10X8_U8SRGB),
-   fmt1(VK_FORMAT_ASTC_10x10_SRGB_BLOCK,             ISL_FORMAT_ASTC_LDR_2D_10X10_U8SRGB),
-   fmt1(VK_FORMAT_ASTC_12x10_SRGB_BLOCK,             ISL_FORMAT_ASTC_LDR_2D_12X10_U8SRGB),
-   fmt1(VK_FORMAT_ASTC_12x12_SRGB_BLOCK,             ISL_FORMAT_ASTC_LDR_2D_12X12_U8SRGB),
-   fmt1(VK_FORMAT_ASTC_4x4_UNORM_BLOCK,              ISL_FORMAT_ASTC_LDR_2D_4X4_FLT16),
-   fmt1(VK_FORMAT_ASTC_5x4_UNORM_BLOCK,              ISL_FORMAT_ASTC_LDR_2D_5X4_FLT16),
-   fmt1(VK_FORMAT_ASTC_5x5_UNORM_BLOCK,              ISL_FORMAT_ASTC_LDR_2D_5X5_FLT16),
-   fmt1(VK_FORMAT_ASTC_6x5_UNORM_BLOCK,              ISL_FORMAT_ASTC_LDR_2D_6X5_FLT16),
-   fmt1(VK_FORMAT_ASTC_6x6_UNORM_BLOCK,              ISL_FORMAT_ASTC_LDR_2D_6X6_FLT16),
-   fmt1(VK_FORMAT_ASTC_8x5_UNORM_BLOCK,              ISL_FORMAT_ASTC_LDR_2D_8X5_FLT16),
-   fmt1(VK_FORMAT_ASTC_8x6_UNORM_BLOCK,              ISL_FORMAT_ASTC_LDR_2D_8X6_FLT16),
-   fmt1(VK_FORMAT_ASTC_8x8_UNORM_BLOCK,              ISL_FORMAT_ASTC_LDR_2D_8X8_FLT16),
-   fmt1(VK_FORMAT_ASTC_10x5_UNORM_BLOCK,             ISL_FORMAT_ASTC_LDR_2D_10X5_FLT16),
-   fmt1(VK_FORMAT_ASTC_10x6_UNORM_BLOCK,             ISL_FORMAT_ASTC_LDR_2D_10X6_FLT16),
-   fmt1(VK_FORMAT_ASTC_10x8_UNORM_BLOCK,             ISL_FORMAT_ASTC_LDR_2D_10X8_FLT16),
-   fmt1(VK_FORMAT_ASTC_10x10_UNORM_BLOCK,            ISL_FORMAT_ASTC_LDR_2D_10X10_FLT16),
-   fmt1(VK_FORMAT_ASTC_12x10_UNORM_BLOCK,            ISL_FORMAT_ASTC_LDR_2D_12X10_FLT16),
-   fmt1(VK_FORMAT_ASTC_12x12_UNORM_BLOCK,            ISL_FORMAT_ASTC_LDR_2D_12X12_FLT16),
+   swiz_fmt1(VK_FORMAT_BC1_RGB_UNORM_BLOCK, ISL_FORMAT_BC1_UNORM, RGB1),
+   swiz_fmt1(VK_FORMAT_BC1_RGB_SRGB_BLOCK, ISL_FORMAT_BC1_UNORM_SRGB, RGB1),
+   fmt1(VK_FORMAT_BC1_RGBA_UNORM_BLOCK, ISL_FORMAT_BC1_UNORM),
+   fmt1(VK_FORMAT_BC1_RGBA_SRGB_BLOCK, ISL_FORMAT_BC1_UNORM_SRGB),
+   fmt1(VK_FORMAT_BC2_UNORM_BLOCK, ISL_FORMAT_BC2_UNORM),
+   fmt1(VK_FORMAT_BC2_SRGB_BLOCK, ISL_FORMAT_BC2_UNORM_SRGB),
+   fmt1(VK_FORMAT_BC3_UNORM_BLOCK, ISL_FORMAT_BC3_UNORM),
+   fmt1(VK_FORMAT_BC3_SRGB_BLOCK, ISL_FORMAT_BC3_UNORM_SRGB),
+   fmt1(VK_FORMAT_BC4_UNORM_BLOCK, ISL_FORMAT_BC4_UNORM),
+   fmt1(VK_FORMAT_BC4_SNORM_BLOCK, ISL_FORMAT_BC4_SNORM),
+   fmt1(VK_FORMAT_BC5_UNORM_BLOCK, ISL_FORMAT_BC5_UNORM),
+   fmt1(VK_FORMAT_BC5_SNORM_BLOCK, ISL_FORMAT_BC5_SNORM),
+   fmt1(VK_FORMAT_BC6H_UFLOAT_BLOCK, ISL_FORMAT_BC6H_UF16),
+   fmt1(VK_FORMAT_BC6H_SFLOAT_BLOCK, ISL_FORMAT_BC6H_SF16),
+   fmt1(VK_FORMAT_BC7_UNORM_BLOCK, ISL_FORMAT_BC7_UNORM),
+   fmt1(VK_FORMAT_BC7_SRGB_BLOCK, ISL_FORMAT_BC7_UNORM_SRGB),
+   fmt1(VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK, ISL_FORMAT_ETC2_RGB8),
+   fmt1(VK_FORMAT_ETC2_R8G8B8_SRGB_BLOCK, ISL_FORMAT_ETC2_SRGB8),
+   fmt1(VK_FORMAT_ETC2_R8G8B8A1_UNORM_BLOCK, ISL_FORMAT_ETC2_RGB8_PTA),
+   fmt1(VK_FORMAT_ETC2_R8G8B8A1_SRGB_BLOCK, ISL_FORMAT_ETC2_SRGB8_PTA),
+   fmt1(VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK, ISL_FORMAT_ETC2_EAC_RGBA8),
+   fmt1(VK_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK, ISL_FORMAT_ETC2_EAC_SRGB8_A8),
+   fmt1(VK_FORMAT_EAC_R11_UNORM_BLOCK, ISL_FORMAT_EAC_R11),
+   fmt1(VK_FORMAT_EAC_R11_SNORM_BLOCK, ISL_FORMAT_EAC_SIGNED_R11),
+   fmt1(VK_FORMAT_EAC_R11G11_UNORM_BLOCK, ISL_FORMAT_EAC_RG11),
+   fmt1(VK_FORMAT_EAC_R11G11_SNORM_BLOCK, ISL_FORMAT_EAC_SIGNED_RG11),
+   fmt1(VK_FORMAT_ASTC_4x4_SRGB_BLOCK, ISL_FORMAT_ASTC_LDR_2D_4X4_U8SRGB),
+   fmt1(VK_FORMAT_ASTC_5x4_SRGB_BLOCK, ISL_FORMAT_ASTC_LDR_2D_5X4_U8SRGB),
+   fmt1(VK_FORMAT_ASTC_5x5_SRGB_BLOCK, ISL_FORMAT_ASTC_LDR_2D_5X5_U8SRGB),
+   fmt1(VK_FORMAT_ASTC_6x5_SRGB_BLOCK, ISL_FORMAT_ASTC_LDR_2D_6X5_U8SRGB),
+   fmt1(VK_FORMAT_ASTC_6x6_SRGB_BLOCK, ISL_FORMAT_ASTC_LDR_2D_6X6_U8SRGB),
+   fmt1(VK_FORMAT_ASTC_8x5_SRGB_BLOCK, ISL_FORMAT_ASTC_LDR_2D_8X5_U8SRGB),
+   fmt1(VK_FORMAT_ASTC_8x6_SRGB_BLOCK, ISL_FORMAT_ASTC_LDR_2D_8X6_U8SRGB),
+   fmt1(VK_FORMAT_ASTC_8x8_SRGB_BLOCK, ISL_FORMAT_ASTC_LDR_2D_8X8_U8SRGB),
+   fmt1(VK_FORMAT_ASTC_10x5_SRGB_BLOCK, ISL_FORMAT_ASTC_LDR_2D_10X5_U8SRGB),
+   fmt1(VK_FORMAT_ASTC_10x6_SRGB_BLOCK, ISL_FORMAT_ASTC_LDR_2D_10X6_U8SRGB),
+   fmt1(VK_FORMAT_ASTC_10x8_SRGB_BLOCK, ISL_FORMAT_ASTC_LDR_2D_10X8_U8SRGB),
+   fmt1(VK_FORMAT_ASTC_10x10_SRGB_BLOCK, ISL_FORMAT_ASTC_LDR_2D_10X10_U8SRGB),
+   fmt1(VK_FORMAT_ASTC_12x10_SRGB_BLOCK, ISL_FORMAT_ASTC_LDR_2D_12X10_U8SRGB),
+   fmt1(VK_FORMAT_ASTC_12x12_SRGB_BLOCK, ISL_FORMAT_ASTC_LDR_2D_12X12_U8SRGB),
+   fmt1(VK_FORMAT_ASTC_4x4_UNORM_BLOCK, ISL_FORMAT_ASTC_LDR_2D_4X4_FLT16),
+   fmt1(VK_FORMAT_ASTC_5x4_UNORM_BLOCK, ISL_FORMAT_ASTC_LDR_2D_5X4_FLT16),
+   fmt1(VK_FORMAT_ASTC_5x5_UNORM_BLOCK, ISL_FORMAT_ASTC_LDR_2D_5X5_FLT16),
+   fmt1(VK_FORMAT_ASTC_6x5_UNORM_BLOCK, ISL_FORMAT_ASTC_LDR_2D_6X5_FLT16),
+   fmt1(VK_FORMAT_ASTC_6x6_UNORM_BLOCK, ISL_FORMAT_ASTC_LDR_2D_6X6_FLT16),
+   fmt1(VK_FORMAT_ASTC_8x5_UNORM_BLOCK, ISL_FORMAT_ASTC_LDR_2D_8X5_FLT16),
+   fmt1(VK_FORMAT_ASTC_8x6_UNORM_BLOCK, ISL_FORMAT_ASTC_LDR_2D_8X6_FLT16),
+   fmt1(VK_FORMAT_ASTC_8x8_UNORM_BLOCK, ISL_FORMAT_ASTC_LDR_2D_8X8_FLT16),
+   fmt1(VK_FORMAT_ASTC_10x5_UNORM_BLOCK, ISL_FORMAT_ASTC_LDR_2D_10X5_FLT16),
+   fmt1(VK_FORMAT_ASTC_10x6_UNORM_BLOCK, ISL_FORMAT_ASTC_LDR_2D_10X6_FLT16),
+   fmt1(VK_FORMAT_ASTC_10x8_UNORM_BLOCK, ISL_FORMAT_ASTC_LDR_2D_10X8_FLT16),
+   fmt1(VK_FORMAT_ASTC_10x10_UNORM_BLOCK, ISL_FORMAT_ASTC_LDR_2D_10X10_FLT16),
+   fmt1(VK_FORMAT_ASTC_12x10_UNORM_BLOCK, ISL_FORMAT_ASTC_LDR_2D_12X10_FLT16),
+   fmt1(VK_FORMAT_ASTC_12x12_UNORM_BLOCK, ISL_FORMAT_ASTC_LDR_2D_12X12_FLT16),
    fmt_unsupported(VK_FORMAT_B8G8R8_UNORM),
    fmt_unsupported(VK_FORMAT_B8G8R8_SNORM),
    fmt_unsupported(VK_FORMAT_B8G8R8_USCALED),
@@ -326,13 +330,13 @@ static const struct anv_format main_formats[] = {
    fmt_unsupported(VK_FORMAT_B8G8R8_UINT),
    fmt_unsupported(VK_FORMAT_B8G8R8_SINT),
    fmt_unsupported(VK_FORMAT_B8G8R8_SRGB),
-   fmt1(VK_FORMAT_B8G8R8A8_UNORM,                    ISL_FORMAT_B8G8R8A8_UNORM),
+   fmt1(VK_FORMAT_B8G8R8A8_UNORM, ISL_FORMAT_B8G8R8A8_UNORM),
    fmt_unsupported(VK_FORMAT_B8G8R8A8_SNORM),
    fmt_unsupported(VK_FORMAT_B8G8R8A8_USCALED),
    fmt_unsupported(VK_FORMAT_B8G8R8A8_SSCALED),
    fmt_unsupported(VK_FORMAT_B8G8R8A8_UINT),
    fmt_unsupported(VK_FORMAT_B8G8R8A8_SINT),
-   fmt1(VK_FORMAT_B8G8R8A8_SRGB,                     ISL_FORMAT_B8G8R8A8_UNORM_SRGB),
+   fmt1(VK_FORMAT_B8G8R8A8_SRGB, ISL_FORMAT_B8G8R8A8_UNORM_SRGB),
 };
 
 static const struct anv_format _4444_formats[] = {
@@ -342,27 +346,42 @@ static const struct anv_format _4444_formats[] = {
 
 static const struct anv_format ycbcr_formats[] = {
    ycbcr_fmt(VK_FORMAT_G8B8G8R8_422_UNORM, 1,
-             y_plane(0, ISL_FORMAT_YCRCB_NORMAL, RGBA, _ISL_SWIZZLE(RED, GREEN, BLUE, ZERO), 1, 1)),
+             y_plane(0, ISL_FORMAT_YCRCB_NORMAL, RGBA,
+                     _ISL_SWIZZLE(RED, GREEN, BLUE, ZERO), 1, 1)),
    ycbcr_fmt(VK_FORMAT_B8G8R8G8_422_UNORM, 1,
-             y_plane(0, ISL_FORMAT_YCRCB_SWAPY, RGBA, _ISL_SWIZZLE(RED, GREEN, BLUE, ZERO), 1, 1)),
+             y_plane(0, ISL_FORMAT_YCRCB_SWAPY, RGBA,
+                     _ISL_SWIZZLE(RED, GREEN, BLUE, ZERO), 1, 1)),
    ycbcr_fmt(VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM, 3,
-             y_plane(0, ISL_FORMAT_R8_UNORM, RGBA, _ISL_SWIZZLE(GREEN, ZERO, ZERO, ZERO), 1, 1),
-             chroma_plane(1, ISL_FORMAT_R8_UNORM, RGBA, _ISL_SWIZZLE(BLUE, ZERO, ZERO, ZERO), 2, 2),
-             chroma_plane(2, ISL_FORMAT_R8_UNORM, RGBA, _ISL_SWIZZLE(RED, ZERO, ZERO, ZERO), 2, 2)),
+             y_plane(0, ISL_FORMAT_R8_UNORM, RGBA,
+                     _ISL_SWIZZLE(GREEN, ZERO, ZERO, ZERO), 1, 1),
+             chroma_plane(1, ISL_FORMAT_R8_UNORM, RGBA,
+                          _ISL_SWIZZLE(BLUE, ZERO, ZERO, ZERO), 2, 2),
+             chroma_plane(2, ISL_FORMAT_R8_UNORM, RGBA,
+                          _ISL_SWIZZLE(RED, ZERO, ZERO, ZERO), 2, 2)),
    ycbcr_fmt(VK_FORMAT_G8_B8R8_2PLANE_420_UNORM, 2,
-             y_plane(0, ISL_FORMAT_R8_UNORM, RGBA, _ISL_SWIZZLE(GREEN, ZERO, ZERO, ZERO), 1, 1),
-             chroma_plane(1, ISL_FORMAT_R8G8_UNORM, RGBA, _ISL_SWIZZLE(BLUE, RED, ZERO, ZERO), 2, 2)),
+             y_plane(0, ISL_FORMAT_R8_UNORM, RGBA,
+                     _ISL_SWIZZLE(GREEN, ZERO, ZERO, ZERO), 1, 1),
+             chroma_plane(1, ISL_FORMAT_R8G8_UNORM, RGBA,
+                          _ISL_SWIZZLE(BLUE, RED, ZERO, ZERO), 2, 2)),
    ycbcr_fmt(VK_FORMAT_G8_B8_R8_3PLANE_422_UNORM, 3,
-             y_plane(0, ISL_FORMAT_R8_UNORM, RGBA, _ISL_SWIZZLE(GREEN, ZERO, ZERO, ZERO), 1, 1),
-             chroma_plane(1, ISL_FORMAT_R8_UNORM, RGBA, _ISL_SWIZZLE(BLUE, ZERO, ZERO, ZERO), 2, 1),
-             chroma_plane(2, ISL_FORMAT_R8_UNORM, RGBA, _ISL_SWIZZLE(RED, ZERO, ZERO, ZERO), 2, 1)),
+             y_plane(0, ISL_FORMAT_R8_UNORM, RGBA,
+                     _ISL_SWIZZLE(GREEN, ZERO, ZERO, ZERO), 1, 1),
+             chroma_plane(1, ISL_FORMAT_R8_UNORM, RGBA,
+                          _ISL_SWIZZLE(BLUE, ZERO, ZERO, ZERO), 2, 1),
+             chroma_plane(2, ISL_FORMAT_R8_UNORM, RGBA,
+                          _ISL_SWIZZLE(RED, ZERO, ZERO, ZERO), 2, 1)),
    ycbcr_fmt(VK_FORMAT_G8_B8R8_2PLANE_422_UNORM, 2,
-             y_plane(0, ISL_FORMAT_R8_UNORM, RGBA, _ISL_SWIZZLE(GREEN, ZERO, ZERO, ZERO), 1, 1),
-             chroma_plane(1, ISL_FORMAT_R8G8_UNORM, RGBA, _ISL_SWIZZLE(BLUE, RED, ZERO, ZERO), 2, 1)),
+             y_plane(0, ISL_FORMAT_R8_UNORM, RGBA,
+                     _ISL_SWIZZLE(GREEN, ZERO, ZERO, ZERO), 1, 1),
+             chroma_plane(1, ISL_FORMAT_R8G8_UNORM, RGBA,
+                          _ISL_SWIZZLE(BLUE, RED, ZERO, ZERO), 2, 1)),
    ycbcr_fmt(VK_FORMAT_G8_B8_R8_3PLANE_444_UNORM, 3,
-             y_plane(0, ISL_FORMAT_R8_UNORM, RGBA, _ISL_SWIZZLE(GREEN, ZERO, ZERO, ZERO), 1, 1),
-             chroma_plane(1, ISL_FORMAT_R8_UNORM, RGBA, _ISL_SWIZZLE(BLUE, ZERO, ZERO, ZERO), 1, 1),
-             chroma_plane(2, ISL_FORMAT_R8_UNORM, RGBA, _ISL_SWIZZLE(RED, ZERO, ZERO, ZERO), 1, 1)),
+             y_plane(0, ISL_FORMAT_R8_UNORM, RGBA,
+                     _ISL_SWIZZLE(GREEN, ZERO, ZERO, ZERO), 1, 1),
+             chroma_plane(1, ISL_FORMAT_R8_UNORM, RGBA,
+                          _ISL_SWIZZLE(BLUE, ZERO, ZERO, ZERO), 1, 1),
+             chroma_plane(2, ISL_FORMAT_R8_UNORM, RGBA,
+                          _ISL_SWIZZLE(RED, ZERO, ZERO, ZERO), 1, 1)),
 
    fmt_unsupported(VK_FORMAT_R10X6_UNORM_PACK16),
    fmt_unsupported(VK_FORMAT_R10X6G10X6_UNORM_2PACK16),
@@ -391,28 +410,42 @@ static const struct anv_format ycbcr_formats[] = {
    fmt_unsupported(VK_FORMAT_B16G16R16G16_422_UNORM),
 
    ycbcr_fmt(VK_FORMAT_G16_B16_R16_3PLANE_420_UNORM, 3,
-             y_plane(0, ISL_FORMAT_R16_UNORM, RGBA, _ISL_SWIZZLE(GREEN, ZERO, ZERO, ZERO), 1, 1),
-             chroma_plane(1, ISL_FORMAT_R16_UNORM, RGBA, _ISL_SWIZZLE(BLUE, ZERO, ZERO, ZERO), 2, 2),
-             chroma_plane(2, ISL_FORMAT_R16_UNORM, RGBA, _ISL_SWIZZLE(RED, ZERO, ZERO, ZERO), 2, 2)),
+             y_plane(0, ISL_FORMAT_R16_UNORM, RGBA,
+                     _ISL_SWIZZLE(GREEN, ZERO, ZERO, ZERO), 1, 1),
+             chroma_plane(1, ISL_FORMAT_R16_UNORM, RGBA,
+                          _ISL_SWIZZLE(BLUE, ZERO, ZERO, ZERO), 2, 2),
+             chroma_plane(2, ISL_FORMAT_R16_UNORM, RGBA,
+                          _ISL_SWIZZLE(RED, ZERO, ZERO, ZERO), 2, 2)),
    ycbcr_fmt(VK_FORMAT_G16_B16R16_2PLANE_420_UNORM, 2,
-             y_plane(0, ISL_FORMAT_R16_UNORM, RGBA, _ISL_SWIZZLE(GREEN, ZERO, ZERO, ZERO), 1, 1),
-             chroma_plane(1, ISL_FORMAT_R16G16_UNORM, RGBA, _ISL_SWIZZLE(BLUE, RED, ZERO, ZERO), 2, 2)),
+             y_plane(0, ISL_FORMAT_R16_UNORM, RGBA,
+                     _ISL_SWIZZLE(GREEN, ZERO, ZERO, ZERO), 1, 1),
+             chroma_plane(1, ISL_FORMAT_R16G16_UNORM, RGBA,
+                          _ISL_SWIZZLE(BLUE, RED, ZERO, ZERO), 2, 2)),
    ycbcr_fmt(VK_FORMAT_G16_B16_R16_3PLANE_422_UNORM, 3,
-             y_plane(0, ISL_FORMAT_R16_UNORM, RGBA, _ISL_SWIZZLE(GREEN, ZERO, ZERO, ZERO), 1, 1),
-             chroma_plane(1, ISL_FORMAT_R16_UNORM, RGBA, _ISL_SWIZZLE(BLUE, ZERO, ZERO, ZERO), 2, 1),
-             chroma_plane(2, ISL_FORMAT_R16_UNORM, RGBA, _ISL_SWIZZLE(RED, ZERO, ZERO, ZERO), 2, 1)),
+             y_plane(0, ISL_FORMAT_R16_UNORM, RGBA,
+                     _ISL_SWIZZLE(GREEN, ZERO, ZERO, ZERO), 1, 1),
+             chroma_plane(1, ISL_FORMAT_R16_UNORM, RGBA,
+                          _ISL_SWIZZLE(BLUE, ZERO, ZERO, ZERO), 2, 1),
+             chroma_plane(2, ISL_FORMAT_R16_UNORM, RGBA,
+                          _ISL_SWIZZLE(RED, ZERO, ZERO, ZERO), 2, 1)),
    ycbcr_fmt(VK_FORMAT_G16_B16R16_2PLANE_422_UNORM, 2,
-             y_plane(0, ISL_FORMAT_R16_UNORM, RGBA, _ISL_SWIZZLE(GREEN, ZERO, ZERO, ZERO), 1, 1),
-             chroma_plane(1, ISL_FORMAT_R16G16_UNORM, RGBA, _ISL_SWIZZLE(BLUE, RED, ZERO, ZERO), 2, 1)),
+             y_plane(0, ISL_FORMAT_R16_UNORM, RGBA,
+                     _ISL_SWIZZLE(GREEN, ZERO, ZERO, ZERO), 1, 1),
+             chroma_plane(1, ISL_FORMAT_R16G16_UNORM, RGBA,
+                          _ISL_SWIZZLE(BLUE, RED, ZERO, ZERO), 2, 1)),
    ycbcr_fmt(VK_FORMAT_G16_B16_R16_3PLANE_444_UNORM, 3,
-             y_plane(0, ISL_FORMAT_R16_UNORM, RGBA, _ISL_SWIZZLE(GREEN, ZERO, ZERO, ZERO), 1, 1),
-             chroma_plane(1, ISL_FORMAT_R16_UNORM, RGBA, _ISL_SWIZZLE(BLUE, ZERO, ZERO, ZERO), 1, 1),
-             chroma_plane(2, ISL_FORMAT_R16_UNORM, RGBA, _ISL_SWIZZLE(RED, ZERO, ZERO, ZERO), 1, 1)),
+             y_plane(0, ISL_FORMAT_R16_UNORM, RGBA,
+                     _ISL_SWIZZLE(GREEN, ZERO, ZERO, ZERO), 1, 1),
+             chroma_plane(1, ISL_FORMAT_R16_UNORM, RGBA,
+                          _ISL_SWIZZLE(BLUE, ZERO, ZERO, ZERO), 1, 1),
+             chroma_plane(2, ISL_FORMAT_R16_UNORM, RGBA,
+                          _ISL_SWIZZLE(RED, ZERO, ZERO, ZERO), 1, 1)),
 };
 
 static const struct anv_format maintenance5_formats[] = {
-   fmt1(VK_FORMAT_A8_UNORM_KHR,                   ISL_FORMAT_A8_UNORM),
-   swiz_fmt1(VK_FORMAT_A1B5G5R5_UNORM_PACK16_KHR, ISL_FORMAT_B5G5R5A1_UNORM, BGRA)
+   fmt1(VK_FORMAT_A8_UNORM_KHR, ISL_FORMAT_A8_UNORM),
+   swiz_fmt1(VK_FORMAT_A1B5G5R5_UNORM_PACK16_KHR, ISL_FORMAT_B5G5R5A1_UNORM,
+             BGRA)
 };
 
 #undef _fmt
@@ -420,18 +453,21 @@ static const struct anv_format maintenance5_formats[] = {
 #undef fmt1
 #undef fmt
 
-static const struct {
+static const struct
+{
    const struct anv_format *formats;
    uint32_t n_formats;
 } anv_formats[] = {
-   [0]                                       = { .formats = main_formats,
-                                                 .n_formats = ARRAY_SIZE(main_formats), },
-   [_VK_EXT_4444_formats_number]             = { .formats = _4444_formats,
-                                                 .n_formats = ARRAY_SIZE(_4444_formats), },
-   [_VK_KHR_sampler_ycbcr_conversion_number] = { .formats = ycbcr_formats,
-                                                 .n_formats = ARRAY_SIZE(ycbcr_formats), },
-   [_VK_KHR_maintenance5_number]             = { .formats = maintenance5_formats,
-                                                 .n_formats = ARRAY_SIZE(maintenance5_formats), },
+   [0] = {.formats = main_formats,
+          .n_formats = ARRAY_SIZE(main_formats),},
+   [_VK_EXT_4444_formats_number] = {.formats = _4444_formats,
+                                    .n_formats = ARRAY_SIZE(_4444_formats),},
+   [_VK_KHR_sampler_ycbcr_conversion_number] = {.formats = ycbcr_formats,
+                                                .n_formats =
+                                                ARRAY_SIZE(ycbcr_formats),},
+   [_VK_KHR_maintenance5_number] = {.formats = maintenance5_formats,
+                                    .n_formats =
+                                    ARRAY_SIZE(maintenance5_formats),},
 };
 
 const struct anv_format *
@@ -454,7 +490,8 @@ anv_get_format(VkFormat vk_format)
 
 /** Return true if any format plane has non-power-of-two bits-per-block. */
 static bool
-anv_format_has_npot_plane(const struct anv_format *anv_format) {
+anv_format_has_npot_plane(const struct anv_format *anv_format)
+{
    for (uint32_t i = 0; i < anv_format->n_planes; ++i) {
       const struct isl_format_layout *isl_layout =
          isl_format_get_layout(anv_format->planes[i].isl_format);
@@ -478,8 +515,7 @@ anv_format_has_npot_plane(const struct anv_format *anv_format) {
  */
 struct anv_format_plane
 anv_get_format_plane(const struct intel_device_info *devinfo,
-                     VkFormat vk_format, uint32_t plane,
-                     VkImageTiling tiling)
+                     VkFormat vk_format, uint32_t plane, VkImageTiling tiling)
 {
    const struct anv_format *format = anv_get_format(vk_format);
    const struct anv_format_plane unsupported = {
@@ -500,16 +536,41 @@ anv_get_format_plane(const struct intel_device_info *devinfo,
    if (vk_format_is_depth_or_stencil(vk_format))
       return plane_format;
 
+   /* On Ivy Bridge, RGB24 formats (24-bit, 48-bit, and 96-bit per pixel) are not
+    * supported by the hardware for non-LINEAR tilings and cause asserts in ISL functions.
+    * For LINEAR tiling (vertex buffers), we allow them and handle conversion below.
+    * We must filter them out before calling isl_format_get_layout() for other tilings.
+    */
+   if (tiling != VK_IMAGE_TILING_LINEAR &&
+       anv_is_rgb24_format_unsupported_on_ivb(devinfo, plane_format.isl_format))
+      return unsupported;
+
    const struct isl_format_layout *isl_layout =
       isl_format_get_layout(plane_format.isl_format);
 
-   /* On Ivy Bridge we don't even have enough 24 and 48-bit formats that we
-    * can reliably do texture upload with BLORP so just don't claim support
-    * for any of them.
+   /* On Ivy Bridge, RGB8 formats (R8G8B8_UNORM, R8G8B8_SNORM, etc.) are not
+    * supported by the hardware (they require Gen 7.5+). However, we can
+    * support them by using the corresponding RGBA8 formats with appropriate
+    * swizzling. Check if we need this fallback before rejecting the format.
     */
-   if (devinfo->verx10 == 70 &&
-       (isl_layout->bpb == 24 || isl_layout->bpb == 48))
-      return unsupported;
+   if (devinfo->verx10 == 70 && (isl_layout->bpb == 24 || isl_layout->bpb == 48)) {
+      /* Try to convert RGB to RGBA for Gen 7 */
+      if (isl_format_is_rgb(plane_format.isl_format)) {
+         enum isl_format rgba = isl_format_rgb_to_rgba(plane_format.isl_format);
+         if (rgba != ISL_FORMAT_UNSUPPORTED &&
+             isl_format_supports_sampling(devinfo, rgba)) {
+            plane_format.isl_format = rgba;
+            plane_format.swizzle = ISL_SWIZZLE(RED, GREEN, BLUE, ONE);
+            isl_layout = isl_format_get_layout(plane_format.isl_format);
+         } else {
+            /* If we can't convert to RGBA, then the format is truly unsupported */
+            return unsupported;
+         }
+      } else {
+         /* Non-RGB 24/48-bit formats are not supported on Gen 7 */
+         return unsupported;
+      }
+   }
 
    if (tiling == VK_IMAGE_TILING_OPTIMAL &&
        !util_is_power_of_two_or_zero(isl_layout->bpb)) {
@@ -522,7 +583,8 @@ anv_get_format_plane(const struct intel_device_info *devinfo,
       if (rgbx != ISL_FORMAT_UNSUPPORTED &&
           isl_format_supports_rendering(devinfo, rgbx)) {
          plane_format.isl_format = rgbx;
-      } else {
+      }
+      else {
          plane_format.isl_format =
             isl_format_rgb_to_rgba(plane_format.isl_format);
          plane_format.swizzle = ISL_SWIZZLE(RED, GREEN, BLUE, ONE);
@@ -557,7 +619,8 @@ anv_get_image_format_features2(const struct intel_device_info *devinfo,
                                VkFormat vk_format,
                                const struct anv_format *anv_format,
                                VkImageTiling vk_tiling,
-                               const struct isl_drm_modifier_info *isl_mod_info)
+                               const struct isl_drm_modifier_info
+                               *isl_mod_info)
 {
    VkFormatFeatureFlags2 flags = 0;
 
@@ -575,11 +638,11 @@ anv_get_image_format_features2(const struct intel_device_info *devinfo,
          return 0;
 
       flags |= VK_FORMAT_FEATURE_2_DEPTH_STENCIL_ATTACHMENT_BIT |
-               VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_BIT |
-               VK_FORMAT_FEATURE_2_BLIT_SRC_BIT |
-               VK_FORMAT_FEATURE_2_BLIT_DST_BIT |
-               VK_FORMAT_FEATURE_2_TRANSFER_SRC_BIT |
-               VK_FORMAT_FEATURE_2_TRANSFER_DST_BIT;
+         VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_BIT |
+         VK_FORMAT_FEATURE_2_BLIT_SRC_BIT |
+         VK_FORMAT_FEATURE_2_BLIT_DST_BIT |
+         VK_FORMAT_FEATURE_2_TRANSFER_SRC_BIT |
+         VK_FORMAT_FEATURE_2_TRANSFER_DST_BIT;
 
       if (aspects & VK_IMAGE_ASPECT_DEPTH_BIT)
          flags |= VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
@@ -590,12 +653,17 @@ anv_get_image_format_features2(const struct intel_device_info *devinfo,
       return flags;
    }
 
+   if (vk_format == VK_FORMAT_G8_B8R8_2PLANE_420_UNORM) {
+      flags |= VK_FORMAT_FEATURE_2_VIDEO_DECODE_OUTPUT_BIT_KHR |
+         VK_FORMAT_FEATURE_2_VIDEO_DECODE_DPB_BIT_KHR;
+   }
+
    assert(aspects & VK_IMAGE_ASPECT_ANY_COLOR_BIT_ANV);
    const struct anv_format_plane plane_format =
       anv_get_format_plane(devinfo, vk_format, 0, vk_tiling);
 
    if (plane_format.isl_format == ISL_FORMAT_UNSUPPORTED)
-      return 0;
+      return flags;
 
    struct anv_format_plane base_plane_format = plane_format;
    if (vk_tiling != VK_IMAGE_TILING_LINEAR) {
@@ -613,7 +681,7 @@ anv_get_image_format_features2(const struct intel_device_info *devinfo,
       if (vk_tiling != VK_IMAGE_TILING_OPTIMAL &&
           isl_format_get_layout(plane_format.isl_format)->txc == ISL_TXC_ASTC)
          return VK_FORMAT_FEATURE_2_TRANSFER_SRC_BIT |
-                VK_FORMAT_FEATURE_2_TRANSFER_DST_BIT;
+            VK_FORMAT_FEATURE_2_TRANSFER_DST_BIT;
 
       flags |= VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_BIT;
 
@@ -635,15 +703,20 @@ anv_get_image_format_features2(const struct intel_device_info *devinfo,
        * doesn't change the interpretation of the constant blend factors in
        * COLOR_CALC_STATE.
        */
-      if (isl_format_supports_alpha_blending(devinfo, plane_format.isl_format) &&
-          isl_swizzle_is_identity(plane_format.swizzle))
+      if (isl_format_supports_alpha_blending(devinfo, plane_format.isl_format)
+          && isl_swizzle_is_identity(plane_format.swizzle))
          flags |= VK_FORMAT_FEATURE_2_COLOR_ATTACHMENT_BLEND_BIT;
    }
 
    /* Load/store is determined based on base format.  This prevents RGB
     * formats from showing up as load/store capable.
+    *
+    * For hasvk (Gen7-8), we always enable storage read without format via
+    * software emulation in the compiler, so we advertise the capability for
+    * all storage image formats.
     */
-   if (isl_format_supports_typed_reads(devinfo, base_isl_format))
+   if (isl_format_supports_typed_reads(devinfo, base_isl_format) ||
+       isl_is_storage_image_format(devinfo, plane_format.isl_format))
       flags |= VK_FORMAT_FEATURE_2_STORAGE_READ_WITHOUT_FORMAT_BIT;
    if (isl_format_supports_typed_writes(devinfo, base_isl_format))
       flags |= VK_FORMAT_FEATURE_2_STORAGE_WRITE_WITHOUT_FORMAT_BIT;
@@ -665,8 +738,8 @@ anv_get_image_format_features2(const struct intel_device_info *devinfo,
 
    if (flags) {
       flags |= VK_FORMAT_FEATURE_2_BLIT_SRC_BIT |
-               VK_FORMAT_FEATURE_2_TRANSFER_SRC_BIT |
-               VK_FORMAT_FEATURE_2_TRANSFER_DST_BIT;
+         VK_FORMAT_FEATURE_2_TRANSFER_SRC_BIT |
+         VK_FORMAT_FEATURE_2_TRANSFER_DST_BIT;
 
       /* Blit destination requires rendering support. */
       if (isl_format_supports_rendering(devinfo, plane_format.isl_format))
@@ -682,11 +755,20 @@ anv_get_image_format_features2(const struct intel_device_info *devinfo,
     */
    if (vk_tiling == VK_IMAGE_TILING_OPTIMAL &&
        base_isl_format != ISL_FORMAT_UNSUPPORTED &&
-       !util_is_power_of_two_or_zero(isl_format_layouts[base_isl_format].bpb) &&
-       isl_format_rgb_to_rgbx(base_isl_format) == ISL_FORMAT_UNSUPPORTED) {
+       !util_is_power_of_two_or_zero(isl_format_layouts[base_isl_format].bpb)
+       && isl_format_rgb_to_rgbx(base_isl_format) == ISL_FORMAT_UNSUPPORTED) {
       flags &= ~VK_FORMAT_FEATURE_2_COLOR_ATTACHMENT_BIT;
       flags &= ~VK_FORMAT_FEATURE_2_BLIT_DST_BIT;
    }
+
+   /* On Ivy Bridge, RGB24 formats (24-bit, 48-bit, and 96-bit per pixel) cause
+    * asserts in blorp operations because isl_surf_init fails for these
+    * formats with LINEAR tiling. Filter them out completely for Ivy Bridge.
+    * This matches the behavior of the crocus driver which filters out
+    * 24/48/96-bit formats for non-buffer textures.
+    */
+   if (anv_is_rgb24_format_unsupported_on_ivb(devinfo, base_isl_format))
+      return 0;
 
    if (anv_format->can_ycbcr) {
       /* The sampler doesn't have support for mid point when it handles YUV on
@@ -698,10 +780,12 @@ anv_get_image_format_features2(const struct intel_device_info *devinfo,
           * bottom left of the sampled image.
           */
          flags |= VK_FORMAT_FEATURE_2_MIDPOINT_CHROMA_SAMPLES_BIT;
-      } else {
-         flags |= VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_YCBCR_CONVERSION_LINEAR_FILTER_BIT |
-                  VK_FORMAT_FEATURE_2_MIDPOINT_CHROMA_SAMPLES_BIT |
-                  VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_YCBCR_CONVERSION_SEPARATE_RECONSTRUCTION_FILTER_BIT;
+      }
+      else {
+         flags |=
+            VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_YCBCR_CONVERSION_LINEAR_FILTER_BIT
+            | VK_FORMAT_FEATURE_2_MIDPOINT_CHROMA_SAMPLES_BIT |
+            VK_FORMAT_FEATURE_2_SAMPLED_IMAGE_YCBCR_CONVERSION_SEPARATE_RECONSTRUCTION_FILTER_BIT;
       }
 
       /* We can support cosited chroma locations when handle planes with our
@@ -718,12 +802,18 @@ anv_get_image_format_features2(const struct intel_device_info *devinfo,
       if (anv_format->n_planes > 1)
          flags |= VK_FORMAT_FEATURE_2_DISJOINT_BIT;
 
-      const VkFormatFeatureFlags2 disallowed_ycbcr_image_features =
-         VK_FORMAT_FEATURE_2_BLIT_SRC_BIT |
-         VK_FORMAT_FEATURE_2_BLIT_DST_BIT |
+      VkFormatFeatureFlags2 disallowed_ycbcr_image_features =
          VK_FORMAT_FEATURE_2_COLOR_ATTACHMENT_BIT |
-         VK_FORMAT_FEATURE_2_COLOR_ATTACHMENT_BLEND_BIT |
-         VK_FORMAT_FEATURE_2_STORAGE_IMAGE_BIT;
+         VK_FORMAT_FEATURE_2_COLOR_ATTACHMENT_BLEND_BIT;
+
+      /* For video decode formats, allow BLIT and STORAGE operations */
+      if (!(flags & (VK_FORMAT_FEATURE_2_VIDEO_DECODE_OUTPUT_BIT_KHR |
+                     VK_FORMAT_FEATURE_2_VIDEO_DECODE_DPB_BIT_KHR))) {
+         disallowed_ycbcr_image_features |=
+            VK_FORMAT_FEATURE_2_BLIT_SRC_BIT |
+            VK_FORMAT_FEATURE_2_BLIT_DST_BIT |
+            VK_FORMAT_FEATURE_2_STORAGE_IMAGE_BIT;
+      }
 
       flags &= ~disallowed_ycbcr_image_features;
    }
@@ -786,7 +876,15 @@ anv_get_image_format_features2(const struct intel_device_info *devinfo,
           * camera/media interop in Android.
           */
          if (vk_format != VK_FORMAT_G8_B8R8_2PLANE_420_UNORM &&
-             vk_format != VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM) {
+             vk_format != VK_FORMAT_G8_B8_R8_3PLANE_420_UNORM &&
+             vk_format != VK_FORMAT_G8_B8R8_2PLANE_422_UNORM &&
+             vk_format != VK_FORMAT_G8_B8_R8_3PLANE_422_UNORM &&
+             vk_format != VK_FORMAT_G8_B8_R8_3PLANE_444_UNORM &&
+             vk_format != VK_FORMAT_G16_B16_R16_3PLANE_420_UNORM &&
+             vk_format != VK_FORMAT_G16_B16R16_2PLANE_420_UNORM &&
+             vk_format != VK_FORMAT_G16_B16_R16_3PLANE_422_UNORM &&
+             vk_format != VK_FORMAT_G16_B16R16_2PLANE_422_UNORM &&
+             vk_format != VK_FORMAT_G16_B16_R16_3PLANE_444_UNORM) {
             anv_finishme("support more multi-planar formats with DRM modifiers");
             return 0;
          }
@@ -820,6 +918,13 @@ get_buffer_format_features2(const struct intel_device_info *devinfo,
    if (vk_format_is_depth_or_stencil(vk_format))
       return 0;
 
+   /* On Ivy Bridge, RGB24 formats (24-bit, 48-bit, and 96-bit per pixel) cause
+    * asserts in ISL functions because they are not properly supported by the
+    * hardware. Filter them out for buffer usage as well.
+    */
+   if (anv_is_rgb24_format_unsupported_on_ivb(devinfo, isl_format))
+      return 0;
+
    if (isl_format_supports_sampling(devinfo, isl_format) &&
        !isl_format_is_compressed(isl_format))
       flags |= VK_FORMAT_FEATURE_2_UNIFORM_TEXEL_BUFFER_BIT;
@@ -833,7 +938,12 @@ get_buffer_format_features2(const struct intel_device_info *devinfo,
    if (isl_format == ISL_FORMAT_R32_SINT || isl_format == ISL_FORMAT_R32_UINT)
       flags |= VK_FORMAT_FEATURE_2_STORAGE_TEXEL_BUFFER_ATOMIC_BIT;
 
-   if (isl_format_supports_typed_reads(devinfo, isl_format))
+   /* For hasvk (Gen7-8), we always enable storage read without format via
+    * software emulation in the compiler, so we advertise the capability for
+    * all storage image formats.
+    */
+   if (isl_format_supports_typed_reads(devinfo, isl_format) ||
+       isl_is_storage_image_format(devinfo, isl_format))
       flags |= VK_FORMAT_FEATURE_2_STORAGE_READ_WITHOUT_FORMAT_BIT;
    if (isl_format_supports_typed_writes(devinfo, isl_format))
       flags |= VK_FORMAT_FEATURE_2_STORAGE_WRITE_WITHOUT_FORMAT_BIT;
@@ -842,9 +952,10 @@ get_buffer_format_features2(const struct intel_device_info *devinfo,
 }
 
 static void
-get_drm_format_modifier_properties_list(const struct anv_physical_device *physical_device,
-                                        VkFormat vk_format,
-                                        VkDrmFormatModifierPropertiesListEXT *list)
+get_drm_format_modifier_properties_list(const struct anv_physical_device
+                                        *physical_device, VkFormat vk_format,
+                                        VkDrmFormatModifierPropertiesListEXT
+                                        *list)
 {
    const struct intel_device_info *devinfo = &physical_device->info;
    const struct anv_format *anv_format = anv_get_format(vk_format);
@@ -858,24 +969,28 @@ get_drm_format_modifier_properties_list(const struct anv_physical_device *physic
          anv_get_image_format_features2(devinfo, vk_format, anv_format,
                                         VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT,
                                         isl_mod_info);
-      VkFormatFeatureFlags features = vk_format_features2_to_features(features2);
+      VkFormatFeatureFlags features =
+         vk_format_features2_to_features(features2);
       if (!features)
          continue;
 
-      vk_outarray_append_typed(VkDrmFormatModifierPropertiesEXT, &out, out_props) {
+      vk_outarray_append_typed(VkDrmFormatModifierPropertiesEXT, &out,
+                               out_props) {
          *out_props = (VkDrmFormatModifierPropertiesEXT) {
-            .drmFormatModifier = isl_mod_info->modifier,
-            .drmFormatModifierPlaneCount = anv_format->n_planes,
-            .drmFormatModifierTilingFeatures = features,
-         };
+         .drmFormatModifier =
+               isl_mod_info->modifier,.drmFormatModifierPlaneCount =
+               anv_format->n_planes,.drmFormatModifierTilingFeatures =
+               features,};
       };
    }
 }
 
 static void
-get_drm_format_modifier_properties_list_2(const struct anv_physical_device *physical_device,
+get_drm_format_modifier_properties_list_2(const struct anv_physical_device
+                                          *physical_device,
                                           VkFormat vk_format,
-                                          VkDrmFormatModifierPropertiesList2EXT *list)
+                                          VkDrmFormatModifierPropertiesList2EXT
+                                          *list)
 {
    const struct intel_device_info *devinfo = &physical_device->info;
    const struct anv_format *anv_format = anv_get_format(vk_format);
@@ -892,20 +1007,111 @@ get_drm_format_modifier_properties_list_2(const struct anv_physical_device *phys
       if (!features2)
          continue;
 
-      vk_outarray_append_typed(VkDrmFormatModifierProperties2EXT, &out, out_props) {
+      vk_outarray_append_typed(VkDrmFormatModifierProperties2EXT, &out,
+                               out_props) {
          *out_props = (VkDrmFormatModifierProperties2EXT) {
-            .drmFormatModifier = isl_mod_info->modifier,
-            .drmFormatModifierPlaneCount = anv_format->n_planes,
-            .drmFormatModifierTilingFeatures = features2,
-         };
+         .drmFormatModifier =
+               isl_mod_info->modifier,.drmFormatModifierPlaneCount =
+               anv_format->n_planes,.drmFormatModifierTilingFeatures =
+               features2,};
       };
    }
 }
 
-void anv_GetPhysicalDeviceFormatProperties2(
-    VkPhysicalDevice                            physicalDevice,
-    VkFormat                                    vk_format,
-    VkFormatProperties2*                        pFormatProperties)
+static void
+get_image_drm_format_modifier_properties_list(
+   const struct anv_physical_device *physical_device,
+   const VkPhysicalDeviceImageFormatInfo2 *base_info,
+   VkDrmFormatModifierPropertiesListEXT *list)
+{
+   const struct intel_device_info *devinfo = &physical_device->info;
+   const struct anv_format *anv_format = anv_get_format(base_info->format);
+
+   VK_OUTARRAY_MAKE_TYPED(VkDrmFormatModifierPropertiesEXT, out,
+                          list->pDrmFormatModifierProperties,
+                          &list->drmFormatModifierCount);
+
+   /* Only advertise modifiers for tiling mode VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT */
+   if (base_info->tiling != VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT)
+      return;
+
+   isl_drm_modifier_info_for_each(isl_mod_info) {
+      /* Check if this modifier is supported for this specific image configuration */
+      VkFormatFeatureFlags2 features2 =
+         anv_get_image_format_features2(devinfo, base_info->format, anv_format,
+                                        VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT,
+                                        isl_mod_info);
+      VkFormatFeatureFlags features =
+         vk_format_features2_to_features(features2);
+      if (!features)
+         continue;
+
+      /* Additional filtering based on image usage for video decode */
+      if (base_info->usage & VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR) {
+         /* Only allow Y tiling for video decode */
+         if (isl_mod_info->tiling != ISL_TILING_Y0)
+            continue;
+      }
+
+      vk_outarray_append_typed(VkDrmFormatModifierPropertiesEXT, &out,
+                               out_props) {
+         *out_props = (VkDrmFormatModifierPropertiesEXT) {
+         .drmFormatModifier =
+               isl_mod_info->modifier,.drmFormatModifierPlaneCount =
+               anv_format->n_planes,.drmFormatModifierTilingFeatures =
+               features,};
+      };
+   }
+}
+
+static void
+get_image_drm_format_modifier_properties_list_2(
+   const struct anv_physical_device *physical_device,
+   const VkPhysicalDeviceImageFormatInfo2 *base_info,
+   VkDrmFormatModifierPropertiesList2EXT *list)
+{
+   const struct intel_device_info *devinfo = &physical_device->info;
+   const struct anv_format *anv_format = anv_get_format(base_info->format);
+
+   VK_OUTARRAY_MAKE_TYPED(VkDrmFormatModifierProperties2EXT, out,
+                          list->pDrmFormatModifierProperties,
+                          &list->drmFormatModifierCount);
+
+   /* Only advertise modifiers for tiling mode VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT */
+   if (base_info->tiling != VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT)
+      return;
+
+   isl_drm_modifier_info_for_each(isl_mod_info) {
+      /* Check if this modifier is supported for this specific image configuration */
+      VkFormatFeatureFlags2 features2 =
+         anv_get_image_format_features2(devinfo, base_info->format, anv_format,
+                                        VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT,
+                                        isl_mod_info);
+      if (!features2)
+         continue;
+
+      /* Additional filtering based on image usage for video decode */
+      if (base_info->usage & VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR) {
+         /* Only allow Y tiling for video decode */
+         if (isl_mod_info->tiling != ISL_TILING_Y0)
+            continue;
+      }
+
+      vk_outarray_append_typed(VkDrmFormatModifierProperties2EXT, &out,
+                               out_props) {
+         *out_props = (VkDrmFormatModifierProperties2EXT) {
+         .drmFormatModifier =
+               isl_mod_info->modifier,.drmFormatModifierPlaneCount =
+               anv_format->n_planes,.drmFormatModifierTilingFeatures =
+               features2,};
+      };
+   }
+}
+
+void
+anv_GetPhysicalDeviceFormatProperties2(VkPhysicalDevice physicalDevice,
+                                       VkFormat vk_format,
+                                       VkFormatProperties2 *pFormatProperties)
 {
    ANV_FROM_HANDLE(anv_physical_device, physical_device, physicalDevice);
    const struct intel_device_info *devinfo = &physical_device->info;
@@ -921,31 +1127,34 @@ void anv_GetPhysicalDeviceFormatProperties2(
    buffer2 = get_buffer_format_features2(devinfo, vk_format, anv_format);
 
    pFormatProperties->formatProperties = (VkFormatProperties) {
-      .linearTilingFeatures = vk_format_features2_to_features(linear2),
-      .optimalTilingFeatures = vk_format_features2_to_features(optimal2),
-      .bufferFeatures = vk_format_features2_to_features(buffer2),
-   };
+   .linearTilingFeatures =
+         vk_format_features2_to_features(linear2),.optimalTilingFeatures =
+         vk_format_features2_to_features(optimal2),.bufferFeatures =
+         vk_format_features2_to_features(buffer2),};
 
    vk_foreach_struct(ext, pFormatProperties->pNext) {
       /* Use unsigned since some cases are not in the VkStructureType enum. */
-      switch ((unsigned)ext->sType) {
+      switch ((unsigned) ext->sType) {
       case VK_STRUCTURE_TYPE_DRM_FORMAT_MODIFIER_PROPERTIES_LIST_EXT:
          get_drm_format_modifier_properties_list(physical_device, vk_format,
-                                                 (void *)ext);
+                                                 (void *) ext);
          break;
 
       case VK_STRUCTURE_TYPE_DRM_FORMAT_MODIFIER_PROPERTIES_LIST_2_EXT:
          get_drm_format_modifier_properties_list_2(physical_device, vk_format,
-                                                   (void *)ext);
+                                                   (void *) ext);
          break;
 
-      case VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3: {
-         VkFormatProperties3 *props = (VkFormatProperties3 *)ext;
-         props->linearTilingFeatures = linear2;
-         props->optimalTilingFeatures = optimal2;
-         props->bufferFeatures = buffer2;
+      case VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_3:{
+            VkFormatProperties3 *props = (VkFormatProperties3 *) ext;
+            props->linearTilingFeatures = linear2;
+            props->optimalTilingFeatures = optimal2;
+            props->bufferFeatures = buffer2;
+            break;
+         }
+      case VK_STRUCTURE_TYPE_VIDEO_PROFILE_LIST_INFO_KHR:
+         /* don't have anything to use this for yet */
          break;
-      }
       default:
          vk_debug_ignored_stype(ext->sType);
          break;
@@ -954,12 +1163,12 @@ void anv_GetPhysicalDeviceFormatProperties2(
 }
 
 static VkResult
-anv_get_image_format_properties(
-   struct anv_physical_device *physical_device,
-   const VkPhysicalDeviceImageFormatInfo2 *info,
-   VkImageFormatProperties *pImageFormatProperties,
-   VkSamplerYcbcrConversionImageFormatProperties *pYcbcrImageFormatProperties,
-   bool from_wsi)
+anv_get_image_format_properties(struct anv_physical_device *physical_device,
+                                const VkPhysicalDeviceImageFormatInfo2 *info,
+                                VkImageFormatProperties
+                                *pImageFormatProperties,
+                                VkSamplerYcbcrConversionImageFormatProperties
+                                *pYcbcrImageFormatProperties, bool from_wsi)
 {
    VkFormatFeatureFlags2 format_feature_flags;
    VkExtent3D maxExtent;
@@ -977,17 +1186,25 @@ anv_get_image_format_properties(
 
    if (info->tiling == VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT) {
       const VkPhysicalDeviceImageDrmFormatModifierInfoEXT *vk_mod_info =
-         vk_find_struct_const(info->pNext, PHYSICAL_DEVICE_IMAGE_DRM_FORMAT_MODIFIER_INFO_EXT);
+         vk_find_struct_const(info->pNext,
+                              PHYSICAL_DEVICE_IMAGE_DRM_FORMAT_MODIFIER_INFO_EXT);
 
-      isl_mod_info = isl_drm_modifier_get_info(vk_mod_info->drmFormatModifier);
+      isl_mod_info =
+         isl_drm_modifier_get_info(vk_mod_info->drmFormatModifier);
       if (isl_mod_info == NULL)
          goto unsupported;
+
+      /* only allow Y tiling for video decode. */
+      if (info->usage & VK_IMAGE_USAGE_VIDEO_DECODE_DST_BIT_KHR) {
+         if (isl_mod_info->tiling != ISL_TILING_Y0)
+            goto unsupported;
+      }
    }
 
    assert(format->vk_format == info->format);
-   format_feature_flags = anv_get_image_format_features2(devinfo, info->format,
-                                                         format, info->tiling,
-                                                         isl_mod_info);
+   format_feature_flags =
+      anv_get_image_format_features2(devinfo, info->format, format,
+                                     info->tiling, isl_mod_info);
 
    /* Remove the VkFormatFeatureFlags that are incompatible with any declared
     * image view format. (Removals are more likely to occur when a DRM format
@@ -996,7 +1213,8 @@ anv_get_image_format_properties(
    if ((info->flags & VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT) && format_list_info) {
       for (uint32_t i = 0; i < format_list_info->viewFormatCount; ++i) {
          VkFormat vk_view_format = format_list_info->pViewFormats[i];
-         const struct anv_format *anv_view_format = anv_get_format(vk_view_format);
+         const struct anv_format *anv_view_format =
+            anv_get_format(vk_view_format);
          VkFormatFeatureFlags2 view_format_features =
             anv_get_image_format_features2(devinfo, vk_view_format,
                                            anv_view_format,
@@ -1016,7 +1234,7 @@ anv_get_image_format_properties(
       maxExtent.width = 16384;
       maxExtent.height = 1;
       maxExtent.depth = 1;
-      maxMipLevels = 15; /* log2(maxWidth) + 1 */
+      maxMipLevels = 15;        /* log2(maxWidth) + 1 */
       maxArraySize = 2048;
       sampleCounts = VK_SAMPLE_COUNT_1_BIT;
       break;
@@ -1027,7 +1245,7 @@ anv_get_image_format_properties(
       maxExtent.width = 16384;
       maxExtent.height = 16384;
       maxExtent.depth = 1;
-      maxMipLevels = 15; /* log2(maxWidth) + 1 */
+      maxMipLevels = 15;        /* log2(maxWidth) + 1 */
       maxArraySize = 2048;
       sampleCounts = VK_SAMPLE_COUNT_1_BIT;
       break;
@@ -1043,7 +1261,7 @@ anv_get_image_format_properties(
       if (devinfo->ver < 9 && info->tiling == VK_IMAGE_TILING_LINEAR)
          maxMipLevels = 1;
       else
-         maxMipLevels = 12; /* log2(maxWidth) + 1 */
+         maxMipLevels = 12;     /* log2(maxWidth) + 1 */
       maxArraySize = 1;
       sampleCounts = VK_SAMPLE_COUNT_1_BIT;
       break;
@@ -1089,21 +1307,23 @@ anv_get_image_format_properties(
     */
    if (info->type == VK_IMAGE_TYPE_1D &&
        isl_format_is_compressed(format->planes[0].isl_format)) {
-       goto unsupported;
+      goto unsupported;
    }
 
    if (info->tiling == VK_IMAGE_TILING_OPTIMAL &&
        info->type == VK_IMAGE_TYPE_2D &&
        (format_feature_flags & (VK_FORMAT_FEATURE_2_COLOR_ATTACHMENT_BIT |
-                                VK_FORMAT_FEATURE_2_DEPTH_STENCIL_ATTACHMENT_BIT)) &&
-       !(info->flags & VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT) &&
-       !(image_usage & VK_IMAGE_USAGE_STORAGE_BIT) &&
-       isl_format_supports_multisampling(devinfo, format->planes[0].isl_format)) {
+                                VK_FORMAT_FEATURE_2_DEPTH_STENCIL_ATTACHMENT_BIT))
+       && !(info->flags & VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT)
+       && !(image_usage & VK_IMAGE_USAGE_STORAGE_BIT)
+       && isl_format_supports_multisampling(devinfo,
+                                            format->planes[0].isl_format)) {
       sampleCounts = isl_device_get_sample_counts(&physical_device->isl_dev);
       /* Gfx7 doesn't support 8xMSAA with depth/stencil images when their width
        * is greater than 8192 pixels. */
       if (devinfo->ver == 7 &&
-         (format_feature_flags & VK_FORMAT_FEATURE_2_DEPTH_STENCIL_ATTACHMENT_BIT)) {
+          (format_feature_flags &
+           VK_FORMAT_FEATURE_2_DEPTH_STENCIL_ATTACHMENT_BIT)) {
          maxExtent.width = 8192;
       }
    }
@@ -1152,7 +1372,9 @@ anv_get_image_format_properties(
    }
 
    if (view_usage & VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) {
-      if (!(format_feature_flags & VK_FORMAT_FEATURE_2_DEPTH_STENCIL_ATTACHMENT_BIT)) {
+      if (!
+          (format_feature_flags &
+           VK_FORMAT_FEATURE_2_DEPTH_STENCIL_ATTACHMENT_BIT)) {
          goto unsupported;
       }
    }
@@ -1176,9 +1398,8 @@ anv_get_image_format_properties(
        * VK_IMAGE_CREATE_ALIAS_BIT, flags must not contain
        * VK_IMAGE_CREATE_DISJOINT_BIT.
        */
-      if (format->n_planes == 1 &&
-          !(info->flags & VK_IMAGE_CREATE_ALIAS_BIT)) {
-          goto unsupported;
+      if (format->n_planes == 1 && !(info->flags & VK_IMAGE_CREATE_ALIAS_BIT)) {
+         goto unsupported;
       }
    }
 
@@ -1208,7 +1429,8 @@ anv_get_image_format_properties(
 
    if (view_usage & VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT) {
       if (!(format_feature_flags & (VK_FORMAT_FEATURE_2_COLOR_ATTACHMENT_BIT |
-                                    VK_FORMAT_FEATURE_2_DEPTH_STENCIL_ATTACHMENT_BIT))) {
+                                    VK_FORMAT_FEATURE_2_DEPTH_STENCIL_ATTACHMENT_BIT)))
+      {
          goto unsupported;
       }
    }
@@ -1227,16 +1449,12 @@ anv_get_image_format_properties(
       maxResourceSize = (uint64_t) 1 << 44;
 
    *pImageFormatProperties = (VkImageFormatProperties) {
-      .maxExtent = maxExtent,
-      .maxMipLevels = maxMipLevels,
-      .maxArrayLayers = maxArraySize,
-      .sampleCounts = sampleCounts,
-
-      /* FINISHME: Accurately calculate
-       * VkImageFormatProperties::maxResourceSize.
-       */
-      .maxResourceSize = maxResourceSize,
-   };
+      .maxExtent = maxExtent,.maxMipLevels = maxMipLevels,.maxArrayLayers =
+         maxArraySize,.sampleCounts = sampleCounts,
+         /* FINISHME: Accurately calculate
+          * VkImageFormatProperties::maxResourceSize.
+          */
+   .maxResourceSize = maxResourceSize,};
 
    if (pYcbcrImageFormatProperties) {
       pYcbcrImageFormatProperties->combinedImageSamplerDescriptorCount =
@@ -1245,26 +1463,23 @@ anv_get_image_format_properties(
 
    return VK_SUCCESS;
 
-unsupported:
+ unsupported:
    *pImageFormatProperties = (VkImageFormatProperties) {
-      .maxExtent = { 0, 0, 0 },
-      .maxMipLevels = 0,
-      .maxArrayLayers = 0,
-      .sampleCounts = 0,
-      .maxResourceSize = 0,
-   };
+   .maxExtent = { 0, 0, 0 },.maxMipLevels = 0,.maxArrayLayers =
+         0,.sampleCounts = 0,.maxResourceSize = 0,};
 
    return VK_ERROR_FORMAT_NOT_SUPPORTED;
 }
 
-VkResult anv_GetPhysicalDeviceImageFormatProperties(
-    VkPhysicalDevice                            physicalDevice,
-    VkFormat                                    format,
-    VkImageType                                 type,
-    VkImageTiling                               tiling,
-    VkImageUsageFlags                           usage,
-    VkImageCreateFlags                          createFlags,
-    VkImageFormatProperties*                    pImageFormatProperties)
+VkResult
+anv_GetPhysicalDeviceImageFormatProperties(VkPhysicalDevice physicalDevice,
+                                           VkFormat format,
+                                           VkImageType type,
+                                           VkImageTiling tiling,
+                                           VkImageUsageFlags usage,
+                                           VkImageCreateFlags createFlags,
+                                           VkImageFormatProperties
+                                           *pImageFormatProperties)
 {
    ANV_FROM_HANDLE(anv_physical_device, physical_device, physicalDevice);
 
@@ -1279,7 +1494,8 @@ VkResult anv_GetPhysicalDeviceImageFormatProperties(
    };
 
    return anv_get_image_format_properties(physical_device, &info,
-                                          pImageFormatProperties, NULL, false);
+                                          pImageFormatProperties, NULL,
+                                          false);
 }
 
 
@@ -1290,8 +1506,7 @@ static const VkExternalMemoryProperties opaque_fd_only_props = {
       VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT,
    .exportFromImportedHandleTypes =
       VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT,
-   .compatibleHandleTypes =
-      VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT,
+   .compatibleHandleTypes = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT,
 };
 
 /* Supports opaque fd and dma_buf. */
@@ -1316,7 +1531,7 @@ static const VkExternalMemoryProperties userptr_props = {
 
 static const VkExternalMemoryProperties android_buffer_props = {
    .externalMemoryFeatures = VK_EXTERNAL_MEMORY_FEATURE_EXPORTABLE_BIT |
-                             VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT,
+      VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT,
    .exportFromImportedHandleTypes =
       VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID,
    .compatibleHandleTypes =
@@ -1327,17 +1542,20 @@ static const VkExternalMemoryProperties android_buffer_props = {
 static const VkExternalMemoryProperties android_image_props = {
    /* VK_EXTERNAL_MEMORY_FEATURE_EXPORTABLE_BIT will be set dynamically */
    .externalMemoryFeatures = VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT |
-                             VK_EXTERNAL_MEMORY_FEATURE_DEDICATED_ONLY_BIT,
+      VK_EXTERNAL_MEMORY_FEATURE_DEDICATED_ONLY_BIT,
    .exportFromImportedHandleTypes =
       VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID,
    .compatibleHandleTypes =
       VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID,
 };
 
-VkResult anv_GetPhysicalDeviceImageFormatProperties2(
-    VkPhysicalDevice                            physicalDevice,
-    const VkPhysicalDeviceImageFormatInfo2*     base_info,
-    VkImageFormatProperties2*                   base_props)
+VkResult
+anv_GetPhysicalDeviceImageFormatProperties2(VkPhysicalDevice physicalDevice,
+                                            const
+                                            VkPhysicalDeviceImageFormatInfo2
+                                            *base_info,
+                                            VkImageFormatProperties2
+                                            *base_props)
 {
    ANV_FROM_HANDLE(anv_physical_device, physical_device, physicalDevice);
    const VkPhysicalDeviceExternalImageFormatInfo *external_info = NULL;
@@ -1349,7 +1567,7 @@ VkResult anv_GetPhysicalDeviceImageFormatProperties2(
 
    /* Extract input structs */
    vk_foreach_struct_const(s, base_info->pNext) {
-      switch ((unsigned)s->sType) {
+      switch ((unsigned) s->sType) {
       case VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_IMAGE_FORMAT_INFO:
          external_info = (const void *) s;
          break;
@@ -1363,6 +1581,9 @@ VkResult anv_GetPhysicalDeviceImageFormatProperties2(
       case VK_STRUCTURE_TYPE_WSI_IMAGE_CREATE_INFO_MESA:
          from_wsi = true;
          break;
+      case VK_STRUCTURE_TYPE_VIDEO_PROFILE_LIST_INFO_KHR:
+         /* Ignore but don't warn */
+         break;
       default:
          vk_debug_ignored_stype(s->sType);
          break;
@@ -1370,16 +1591,26 @@ VkResult anv_GetPhysicalDeviceImageFormatProperties2(
    }
 
    /* Extract output structs */
+   VkDrmFormatModifierPropertiesListEXT *modifier_props = NULL;
+   VkDrmFormatModifierPropertiesList2EXT *modifier_props_2 = NULL;
+
    vk_foreach_struct(s, base_props->pNext) {
       switch (s->sType) {
       case VK_STRUCTURE_TYPE_EXTERNAL_IMAGE_FORMAT_PROPERTIES:
          external_props = (void *) s;
          break;
       case VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_IMAGE_FORMAT_PROPERTIES:
-         ycbcr_props = (void *) s;
+         ycbcr_props =
+            (void *) s;
          break;
       case VK_STRUCTURE_TYPE_ANDROID_HARDWARE_BUFFER_USAGE_ANDROID:
          android_usage = (void *) s;
+         break;
+      case VK_STRUCTURE_TYPE_DRM_FORMAT_MODIFIER_PROPERTIES_LIST_EXT:
+         modifier_props = (void *) s;
+         break;
+      case VK_STRUCTURE_TYPE_DRM_FORMAT_MODIFIER_PROPERTIES_LIST_2_EXT:
+         modifier_props_2 = (void *) s;
          break;
       default:
          vk_debug_ignored_stype(s->sType);
@@ -1388,17 +1619,19 @@ VkResult anv_GetPhysicalDeviceImageFormatProperties2(
    }
 
    result = anv_get_image_format_properties(physical_device, base_info,
-               &base_props->imageFormatProperties, ycbcr_props, from_wsi);
+                                            &base_props->
+                                            imageFormatProperties,
+                                            ycbcr_props, from_wsi);
    if (result != VK_SUCCESS)
       goto fail;
 
    bool ahw_supported =
-      physical_device->vk.supported_extensions.ANDROID_external_memory_android_hardware_buffer;
+      physical_device->vk.supported_extensions.
+      ANDROID_external_memory_android_hardware_buffer;
 
    if (ahw_supported && android_usage) {
       android_usage->androidHardwareBufferUsage =
-         vk_image_usage_to_ahb_usage(base_info->flags,
-                                     base_info->usage);
+         vk_image_usage_to_ahb_usage(base_info->flags, base_info->usage);
 
       /* Limit maxArrayLayers to 1 for AHardwareBuffer based images for now. */
       base_props->imageFormatProperties.maxArrayLayers = 1;
@@ -1465,13 +1698,16 @@ VkResult anv_GetPhysicalDeviceImageFormatProperties2(
                 * the image belongs too. Both OPAQUE_FD and DMA_BUF are
                 * interchangeable here.
                 */
-               external_props->externalMemoryProperties = opaque_fd_dma_buf_props;
-            } else {
+               external_props->externalMemoryProperties =
+                  opaque_fd_dma_buf_props;
+            }
+            else {
                /* With an implicit memory layout, we must rely on deviceUUID
                 * and driverUUID to determine the layout. Therefore DMA_BUF is
                 * incompatible here.
                 */
-               external_props->externalMemoryProperties = opaque_fd_only_props;
+               external_props->externalMemoryProperties =
+                  opaque_fd_only_props;
             }
          }
          break;
@@ -1492,7 +1728,8 @@ VkResult anv_GetPhysicalDeviceImageFormatProperties2(
           * interchangeable here.
           */
          if (external_props)
-            external_props->externalMemoryProperties = opaque_fd_dma_buf_props;
+            external_props->externalMemoryProperties =
+               opaque_fd_dma_buf_props;
          break;
       case VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT:
          /* This memory handle has no restrictions on driverUUID nor deviceUUID,
@@ -1515,15 +1752,17 @@ VkResult anv_GetPhysicalDeviceImageFormatProperties2(
           * requires support for VK_IMAGE_TILING_OPTIMAL. Android systems
           * communicate the image's memory layout through backdoor channels.
           */
-         if (ahw_supported && external_props) {
+         if (ahw_supported
+             && external_props) {
             external_props->externalMemoryProperties = android_image_props;
             if (anv_ahb_format_for_vk_format(base_info->format)) {
-               external_props->externalMemoryProperties.externalMemoryFeatures |=
+               external_props->externalMemoryProperties.
+                  externalMemoryFeatures |=
                   VK_EXTERNAL_MEMORY_FEATURE_EXPORTABLE_BIT;
             }
             break;
          }
-         FALLTHROUGH; /* If ahw not supported */
+         FALLTHROUGH;           /* If ahw not supported */
       default:
          /* From the Vulkan 1.0.42 spec:
           *
@@ -1539,6 +1778,17 @@ VkResult anv_GetPhysicalDeviceImageFormatProperties2(
       }
    }
 
+   /* Fill DRM format modifier properties if requested */
+   if (modifier_props) {
+      get_image_drm_format_modifier_properties_list(physical_device, base_info,
+                                                     modifier_props);
+   }
+
+   if (modifier_props_2) {
+      get_image_drm_format_modifier_properties_list_2(physical_device, base_info,
+                                                       modifier_props_2);
+   }
+
    return VK_SUCCESS;
 
  fail:
@@ -1550,40 +1800,51 @@ VkResult anv_GetPhysicalDeviceImageFormatProperties2(
        *    the implementation for use in vkCreateImage, then all members of
        *    imageFormatProperties will be filled with zero.
        */
-      base_props->imageFormatProperties = (VkImageFormatProperties) {};
+      base_props->imageFormatProperties = (VkImageFormatProperties) {
+      };
    }
 
    return result;
 }
 
-void anv_GetPhysicalDeviceSparseImageFormatProperties(
-    VkPhysicalDevice                            physicalDevice,
-    VkFormat                                    format,
-    VkImageType                                 type,
-    VkSampleCountFlagBits                       samples,
-    VkImageUsageFlags                           usage,
-    VkImageTiling                               tiling,
-    uint32_t*                                   pNumProperties,
-    VkSparseImageFormatProperties*              pProperties)
+void
+anv_GetPhysicalDeviceSparseImageFormatProperties(VkPhysicalDevice
+                                                 physicalDevice,
+                                                 VkFormat format,
+                                                 VkImageType type,
+                                                 VkSampleCountFlagBits
+                                                 samples,
+                                                 VkImageUsageFlags usage,
+                                                 VkImageTiling tiling,
+                                                 uint32_t *pNumProperties,
+                                                 VkSparseImageFormatProperties
+                                                 *pProperties)
 {
    /* Sparse images are not yet supported. */
    *pNumProperties = 0;
 }
 
-void anv_GetPhysicalDeviceSparseImageFormatProperties2(
-    VkPhysicalDevice                            physicalDevice,
-    const VkPhysicalDeviceSparseImageFormatInfo2* pFormatInfo,
-    uint32_t*                                   pPropertyCount,
-    VkSparseImageFormatProperties2*             pProperties)
+void
+anv_GetPhysicalDeviceSparseImageFormatProperties2(VkPhysicalDevice
+                                                  physicalDevice,
+                                                  const
+                                                  VkPhysicalDeviceSparseImageFormatInfo2
+                                                  *pFormatInfo,
+                                                  uint32_t *pPropertyCount,
+                                                  VkSparseImageFormatProperties2
+                                                  *pProperties)
 {
    /* Sparse images are not yet supported. */
    *pPropertyCount = 0;
 }
 
-void anv_GetPhysicalDeviceExternalBufferProperties(
-    VkPhysicalDevice                             physicalDevice,
-    const VkPhysicalDeviceExternalBufferInfo*    pExternalBufferInfo,
-    VkExternalBufferProperties*                  pExternalBufferProperties)
+void
+anv_GetPhysicalDeviceExternalBufferProperties(VkPhysicalDevice physicalDevice,
+                                              const
+                                              VkPhysicalDeviceExternalBufferInfo
+                                              *pExternalBufferInfo,
+                                              VkExternalBufferProperties
+                                              *pExternalBufferProperties)
 {
    /* The Vulkan 1.0.42 spec says "handleType must be a valid
     * VkExternalMemoryHandleTypeFlagBits value" in
@@ -1605,17 +1866,20 @@ void anv_GetPhysicalDeviceExternalBufferProperties(
    switch (pExternalBufferInfo->handleType) {
    case VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT:
    case VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT:
-      pExternalBufferProperties->externalMemoryProperties = opaque_fd_dma_buf_props;
+      pExternalBufferProperties->externalMemoryProperties =
+         opaque_fd_dma_buf_props;
       return;
    case VK_EXTERNAL_MEMORY_HANDLE_TYPE_HOST_ALLOCATION_BIT_EXT:
       pExternalBufferProperties->externalMemoryProperties = userptr_props;
       return;
    case VK_EXTERNAL_MEMORY_HANDLE_TYPE_ANDROID_HARDWARE_BUFFER_BIT_ANDROID:
-      if (physical_device->vk.supported_extensions.ANDROID_external_memory_android_hardware_buffer) {
-         pExternalBufferProperties->externalMemoryProperties = android_buffer_props;
+      if (physical_device->vk.supported_extensions.
+          ANDROID_external_memory_android_hardware_buffer) {
+         pExternalBufferProperties->externalMemoryProperties =
+            android_buffer_props;
          return;
       }
-      FALLTHROUGH; /* If ahw not supported */
+      FALLTHROUGH;              /* If ahw not supported */
    default:
       goto unsupported;
    }
@@ -1627,6 +1891,5 @@ void anv_GetPhysicalDeviceExternalBufferProperties(
     */
    pExternalBufferProperties->externalMemoryProperties =
       (VkExternalMemoryProperties) {
-         .compatibleHandleTypes = pExternalBufferInfo->handleType,
-      };
+   .compatibleHandleTypes = pExternalBufferInfo->handleType,};
 }

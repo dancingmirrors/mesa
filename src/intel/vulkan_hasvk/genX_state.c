@@ -33,12 +33,13 @@
 #include "common/intel_sample_positions.h"
 #include "common/intel_pixel_hash.h"
 #include "genxml/gen_macros.h"
-#include "genxml/genX_pack.h"
+#include "genxml/hasvk_genX_pack.h"
 
 #include "vk_standard_sample_locations.h"
 #include "vk_util.h"
 #include "vk_format.h"
 
+/* *INDENT-OFF* */
 static VkResult
 init_render_queue_state(struct anv_queue *queue)
 {
@@ -101,9 +102,11 @@ init_render_queue_state(struct anv_queue *queue)
 
    return anv_queue_submit_simple_batch(queue, &batch);
 }
+/* *INDENT-ON* */
 
 void
-genX(init_physical_device_state)(ASSERTED struct anv_physical_device *pdevice)
+genX(init_physical_device_state) (ASSERTED struct anv_physical_device *
+                                  pdevice)
 {
    assert(pdevice->info.verx10 == GFX_VERx10);
 
@@ -111,8 +114,7 @@ genX(init_physical_device_state)(ASSERTED struct anv_physical_device *pdevice)
    pdevice->cmd_capture_data = genX(cmd_capture_data);
 }
 
-VkResult
-genX(init_device_state)(struct anv_device *device)
+VkResult genX(init_device_state) (struct anv_device * device)
 {
    VkResult res;
 
@@ -122,6 +124,9 @@ genX(init_device_state)(struct anv_device *device)
       switch (queue->family->engine_class) {
       case INTEL_ENGINE_CLASS_RENDER:
          res = init_render_queue_state(queue);
+         break;
+      case INTEL_ENGINE_CLASS_VIDEO:
+         res = VK_SUCCESS;
          break;
       default:
          res = vk_error(device, VK_ERROR_INITIALIZATION_FAILED);
@@ -135,9 +140,9 @@ genX(init_device_state)(struct anv_device *device)
 }
 
 void
-genX(emit_l3_config)(struct anv_batch *batch,
-                     const struct anv_device *device,
-                     const struct intel_l3_config *cfg)
+genX(emit_l3_config) (struct anv_batch * batch,
+                      const struct anv_device * device,
+                      const struct intel_l3_config * cfg)
 {
    UNUSED const struct intel_device_info *devinfo = device->info;
 
@@ -149,7 +154,8 @@ genX(emit_l3_config)(struct anv_batch *batch,
    anv_batch_write_reg(batch, L3_ALLOCATION_REG, l3cr) {
       if (cfg == NULL) {
          UNREACHABLE("Invalid L3$ config");
-      } else {
+      }
+      else {
          l3cr.SLMEnable = cfg->n[INTEL_L3P_SLM];
          assert(cfg->n[INTEL_L3P_IS] == 0);
          assert(cfg->n[INTEL_L3P_C] == 0);
@@ -165,11 +171,11 @@ genX(emit_l3_config)(struct anv_batch *batch,
 
    const bool has_dc = cfg->n[INTEL_L3P_DC] || cfg->n[INTEL_L3P_ALL];
    const bool has_is = cfg->n[INTEL_L3P_IS] || cfg->n[INTEL_L3P_RO] ||
-                       cfg->n[INTEL_L3P_ALL];
+      cfg->n[INTEL_L3P_ALL];
    const bool has_c = cfg->n[INTEL_L3P_C] || cfg->n[INTEL_L3P_RO] ||
-                      cfg->n[INTEL_L3P_ALL];
+      cfg->n[INTEL_L3P_ALL];
    const bool has_t = cfg->n[INTEL_L3P_T] || cfg->n[INTEL_L3P_RO] ||
-                      cfg->n[INTEL_L3P_ALL];
+      cfg->n[INTEL_L3P_ALL];
 
    assert(!cfg->n[INTEL_L3P_ALL]);
 
@@ -178,7 +184,8 @@ genX(emit_l3_config)(struct anv_batch *batch,
     * client (URB for all validated configurations) set to the
     * lower-bandwidth 2-bank address hashing mode.
     */
-   const bool urb_low_bw = cfg->n[INTEL_L3P_SLM] && devinfo->platform != INTEL_PLATFORM_BYT;
+   const bool urb_low_bw = cfg->n[INTEL_L3P_SLM]
+      && devinfo->platform != INTEL_PLATFORM_BYT;
    assert(!urb_low_bw || cfg->n[INTEL_L3P_URB] == cfg->n[INTEL_L3P_SLM]);
 
    /* Minimum number of ways that can be allocated to the URB. */
@@ -194,7 +201,8 @@ genX(emit_l3_config)(struct anv_batch *batch,
       l3sqc.L3SQGeneralPriorityCreditInitialization = SQGPCI_DEFAULT;
 #else
       l3sqc.L3SQGeneralPriorityCreditInitialization =
-         devinfo->platform == INTEL_PLATFORM_BYT ? BYT_SQGPCI_DEFAULT : SQGPCI_DEFAULT;
+         devinfo->platform ==
+         INTEL_PLATFORM_BYT ? BYT_SQGPCI_DEFAULT : SQGPCI_DEFAULT;
 #endif
       l3sqc.L3SQHighPriorityCreditInitialization = SQHPCI_DEFAULT;
    }
@@ -221,15 +229,12 @@ genX(emit_l3_config)(struct anv_batch *batch,
 
 #if GFX_VERx10 == 75
    if (device->physical->cmd_parser_version >= 4) {
-      /* Enable L3 atomics on HSW if we have a DC partition, otherwise keep
-       * them disabled to avoid crashing the system hard.
-       */
       anv_batch_write_reg(batch, GENX(SCRATCH1), s1) {
-         s1.L3AtomicDisable = !has_dc;
+         s1.L3AtomicDisable = true;
       }
       anv_batch_write_reg(batch, GENX(CHICKEN3), c3) {
          c3.L3AtomicDisableMask = true;
-         c3.L3AtomicDisable = !has_dc;
+         c3.L3AtomicDisable = true;
       }
    }
 #endif /* GFX_VERx10 == 75 */
@@ -237,6 +242,7 @@ genX(emit_l3_config)(struct anv_batch *batch,
 #endif /* GFX_VER < 8 */
 }
 
+/* *INDENT-OFF* */
 void
 genX(emit_multisample)(struct anv_batch *batch, uint32_t samples,
                        const struct vk_sample_locations_state *sl)
@@ -273,8 +279,10 @@ genX(emit_multisample)(struct anv_batch *batch, uint32_t samples,
 #endif
    }
 }
+/* *INDENT-ON* */
 
 #if GFX_VER >= 8
+/* *INDENT-OFF* */
 void
 genX(emit_sample_pattern)(struct anv_batch *batch,
                           const struct vk_sample_locations_state *sl)
@@ -339,8 +347,10 @@ genX(emit_sample_pattern)(struct anv_batch *batch,
       }
    }
 }
+/* *INDENT-ON* */
 #endif
 
+/* *INDENT-OFF* */
 static uint32_t
 vk_to_intel_tex_filter(VkFilter filter, bool anisotropyEnable)
 {
@@ -353,6 +363,7 @@ vk_to_intel_tex_filter(VkFilter filter, bool anisotropyEnable)
       return anisotropyEnable ? MAPFILTER_ANISOTROPIC : MAPFILTER_LINEAR;
    }
 }
+/* *INDENT-ON* */
 
 static uint32_t
 vk_to_intel_max_anisotropy(float ratio)
@@ -361,14 +372,14 @@ vk_to_intel_max_anisotropy(float ratio)
 }
 
 static const uint32_t vk_to_intel_mipmap_mode[] = {
-   [VK_SAMPLER_MIPMAP_MODE_NEAREST]          = MIPFILTER_NEAREST,
-   [VK_SAMPLER_MIPMAP_MODE_LINEAR]           = MIPFILTER_LINEAR
+   [VK_SAMPLER_MIPMAP_MODE_NEAREST] = MIPFILTER_NEAREST,
+   [VK_SAMPLER_MIPMAP_MODE_LINEAR] = MIPFILTER_LINEAR
 };
 
 static const uint32_t vk_to_intel_tex_address[] = {
-   [VK_SAMPLER_ADDRESS_MODE_REPEAT]          = TCM_WRAP,
+   [VK_SAMPLER_ADDRESS_MODE_REPEAT] = TCM_WRAP,
    [VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT] = TCM_MIRROR,
-   [VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE]   = TCM_CLAMP,
+   [VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE] = TCM_CLAMP,
    [VK_SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE] = TCM_MIRROR_ONCE,
    [VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER] = TCM_CLAMP_BORDER,
 };
@@ -385,21 +396,20 @@ static const uint32_t vk_to_intel_tex_address[] = {
  * and swapping of the arguments involved.
  */
 static const uint32_t vk_to_intel_shadow_compare_op[] = {
-   [VK_COMPARE_OP_NEVER]                        = PREFILTEROP_ALWAYS,
-   [VK_COMPARE_OP_LESS]                         = PREFILTEROP_LEQUAL,
-   [VK_COMPARE_OP_EQUAL]                        = PREFILTEROP_NOTEQUAL,
-   [VK_COMPARE_OP_LESS_OR_EQUAL]                = PREFILTEROP_LESS,
-   [VK_COMPARE_OP_GREATER]                      = PREFILTEROP_GEQUAL,
-   [VK_COMPARE_OP_NOT_EQUAL]                    = PREFILTEROP_EQUAL,
-   [VK_COMPARE_OP_GREATER_OR_EQUAL]             = PREFILTEROP_GREATER,
-   [VK_COMPARE_OP_ALWAYS]                       = PREFILTEROP_NEVER,
+   [VK_COMPARE_OP_NEVER] = PREFILTEROP_ALWAYS,
+   [VK_COMPARE_OP_LESS] = PREFILTEROP_LEQUAL,
+   [VK_COMPARE_OP_EQUAL] = PREFILTEROP_NOTEQUAL,
+   [VK_COMPARE_OP_LESS_OR_EQUAL] = PREFILTEROP_LESS,
+   [VK_COMPARE_OP_GREATER] = PREFILTEROP_GEQUAL,
+   [VK_COMPARE_OP_NOT_EQUAL] = PREFILTEROP_EQUAL,
+   [VK_COMPARE_OP_GREATER_OR_EQUAL] = PREFILTEROP_GREATER,
+   [VK_COMPARE_OP_ALWAYS] = PREFILTEROP_NEVER,
 };
 
-VkResult genX(CreateSampler)(
-    VkDevice                                    _device,
-    const VkSamplerCreateInfo*                  pCreateInfo,
-    const VkAllocationCallbacks*                pAllocator,
-    VkSampler*                                  pSampler)
+VkResult genX(CreateSampler) (VkDevice _device,
+                              const VkSamplerCreateInfo * pCreateInfo,
+                              const VkAllocationCallbacks * pAllocator,
+                              VkSampler * pSampler)
 {
    ANV_FROM_HANDLE(anv_device, device, _device);
    struct anv_sampler *sampler;
@@ -416,6 +426,7 @@ VkResult genX(CreateSampler)(
    uint32_t border_color_stride = GFX_VERx10 == 75 ? 512 : 64;
    uint32_t border_color_offset;
    ASSERTED bool has_custom_color = false;
+   /* *INDENT-OFF* */
    if (pCreateInfo->borderColor <= VK_BORDER_COLOR_INT_OPAQUE_WHITE) {
       border_color_offset = device->border_colors.offset +
                             pCreateInfo->borderColor *
@@ -426,64 +437,77 @@ VkResult genX(CreateSampler)(
          anv_state_reserved_pool_alloc(&device->custom_border_colors);
       border_color_offset = sampler->custom_border_color.offset;
    }
+   /* *INDENT-ON* */
 
    const struct vk_format_ycbcr_info *ycbcr_info = NULL;
    vk_foreach_struct_const(ext, pCreateInfo->pNext) {
       switch (ext->sType) {
-      case VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_INFO: {
-         VkSamplerYcbcrConversionInfo *pSamplerConversion =
-            (VkSamplerYcbcrConversionInfo *) ext;
-         VK_FROM_HANDLE(vk_ycbcr_conversion, conversion,
-                        pSamplerConversion->conversion);
+      case VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_INFO:{
+            VkSamplerYcbcrConversionInfo *pSamplerConversion =
+               (VkSamplerYcbcrConversionInfo *) ext;
+            VK_FROM_HANDLE(vk_ycbcr_conversion, conversion,
+                           pSamplerConversion->conversion);
 
-         /* Ignore conversion for non-YUV formats. This fulfills a requirement
-          * for clients that want to utilize same code path for images with
-          * external formats (VK_FORMAT_UNDEFINED) and "regular" RGBA images
-          * where format is known.
-          */
-         if (conversion == NULL)
+            /* Ignore conversion for non-YUV formats. This fulfills a requirement
+             * for clients that want to utilize same code path for images with
+             * external formats (VK_FORMAT_UNDEFINED) and "regular" RGBA images
+             * where format is known.
+             */
+            if (conversion == NULL)
+               break;
+
+            ycbcr_info = vk_format_get_ycbcr_info(conversion->state.format);
+            if (ycbcr_info == NULL)
+               break;
+
+            sampler->n_planes = ycbcr_info->n_planes;
+            sampler->conversion = conversion;
             break;
-
-         ycbcr_info = vk_format_get_ycbcr_info(conversion->state.format);
-         if (ycbcr_info == NULL)
-            break;
-
-         sampler->n_planes = ycbcr_info->n_planes;
-         sampler->conversion = conversion;
-         break;
-      }
-      case VK_STRUCTURE_TYPE_SAMPLER_CUSTOM_BORDER_COLOR_CREATE_INFO_EXT: {
-         VkSamplerCustomBorderColorCreateInfoEXT *custom_border_color =
-            (VkSamplerCustomBorderColorCreateInfoEXT *) ext;
-         if (sampler->custom_border_color.map == NULL)
-            break;
-
-         union isl_color_value color = { .u32 = {
-            custom_border_color->customBorderColor.uint32[0],
-            custom_border_color->customBorderColor.uint32[1],
-            custom_border_color->customBorderColor.uint32[2],
-            custom_border_color->customBorderColor.uint32[3],
-         } };
-
-         const struct anv_format *format_desc =
-            custom_border_color->format != VK_FORMAT_UNDEFINED ?
-            anv_get_format(custom_border_color->format) : NULL;
-
-         /* For formats with a swizzle, it does not carry over to the sampler
-          * for border colors, so we need to do the swizzle ourselves here.
-          */
-         if (format_desc && format_desc->n_planes == 1 &&
-             !isl_swizzle_is_identity(format_desc->planes[0].swizzle)) {
-            const struct anv_format_plane *fmt_plane = &format_desc->planes[0];
-
-            assert(!isl_format_has_int_channel(fmt_plane->isl_format));
-            color = isl_color_value_swizzle(color, fmt_plane->swizzle, true);
          }
+      case VK_STRUCTURE_TYPE_SAMPLER_CUSTOM_BORDER_COLOR_CREATE_INFO_EXT:{
+            VkSamplerCustomBorderColorCreateInfoEXT *custom_border_color =
+               (VkSamplerCustomBorderColorCreateInfoEXT *) ext;
+            if (sampler->custom_border_color.map == NULL)
+               break;
 
-         memcpy(sampler->custom_border_color.map, color.u32, sizeof(color));
-         has_custom_color = true;
-         break;
-      }
+            union isl_color_value color = {.u32 = {
+                                                   custom_border_color->
+                                                   customBorderColor.
+                                                   uint32[0],
+                                                   custom_border_color->
+                                                   customBorderColor.
+                                                   uint32[1],
+                                                   custom_border_color->
+                                                   customBorderColor.
+                                                   uint32[2],
+                                                   custom_border_color->
+                                                   customBorderColor.
+                                                   uint32[3],
+                                                   }
+            };
+
+            const struct anv_format *format_desc =
+               custom_border_color->format != VK_FORMAT_UNDEFINED ?
+               anv_get_format(custom_border_color->format) : NULL;
+
+            /* For formats with a swizzle, it does not carry over to the sampler
+             * for border colors, so we need to do the swizzle ourselves here.
+             */
+            if (format_desc && format_desc->n_planes == 1 &&
+                !isl_swizzle_is_identity(format_desc->planes[0].swizzle)) {
+               const struct anv_format_plane *fmt_plane =
+                  &format_desc->planes[0];
+
+               assert(!isl_format_has_int_channel(fmt_plane->isl_format));
+               color =
+                  isl_color_value_swizzle(color, fmt_plane->swizzle, true);
+            }
+
+            memcpy(sampler->custom_border_color.map, color.u32,
+                   sizeof(color));
+            has_custom_color = true;
+            break;
+         }
       case VK_STRUCTURE_TYPE_SAMPLER_BORDER_COLOR_COMPONENT_MAPPING_CREATE_INFO_EXT:
          break;
       default:
@@ -512,27 +536,31 @@ VkResult genX(CreateSampler)(
       const bool plane_has_chroma =
          ycbcr_info && ycbcr_info->planes[p].has_chroma;
       const VkFilter min_filter =
-         plane_has_chroma ? sampler->conversion->state.chroma_filter : pCreateInfo->minFilter;
+         plane_has_chroma ? sampler->conversion->state.
+         chroma_filter : pCreateInfo->minFilter;
       const VkFilter mag_filter =
-         plane_has_chroma ? sampler->conversion->state.chroma_filter : pCreateInfo->magFilter;
-      const bool enable_min_filter_addr_rounding = min_filter != VK_FILTER_NEAREST;
-      const bool enable_mag_filter_addr_rounding = mag_filter != VK_FILTER_NEAREST;
+         plane_has_chroma ? sampler->conversion->state.
+         chroma_filter : pCreateInfo->magFilter;
+      const bool enable_min_filter_addr_rounding =
+         min_filter != VK_FILTER_NEAREST;
+      const bool enable_mag_filter_addr_rounding =
+         mag_filter != VK_FILTER_NEAREST;
       /* From Broadwell PRM, SAMPLER_STATE:
        *   "Mip Mode Filter must be set to MIPFILTER_NONE for Planar YUV surfaces."
        */
       enum isl_format plane0_isl_format = sampler->conversion ?
-         anv_get_format(sampler->conversion->state.format)->planes[0].isl_format :
-         ISL_FORMAT_UNSUPPORTED;
+         anv_get_format(sampler->conversion->state.format)->planes[0].
+         isl_format : ISL_FORMAT_UNSUPPORTED;
       const bool isl_format_is_planar_yuv =
-         plane0_isl_format != ISL_FORMAT_UNSUPPORTED &&
-         isl_format_is_yuv(plane0_isl_format) &&
-         isl_format_is_planar(plane0_isl_format);
+         plane0_isl_format != ISL_FORMAT_UNSUPPORTED
+         && isl_format_is_yuv(plane0_isl_format)
+         && isl_format_is_planar(plane0_isl_format);
 
       const uint32_t mip_filter_mode =
          isl_format_is_planar_yuv ?
          MIPFILTER_NONE : vk_to_intel_mipmap_mode[pCreateInfo->mipmapMode];
 
-      struct GENX(SAMPLER_STATE) sampler_state = {
+      struct GENX (SAMPLER_STATE) sampler_state = {
          .SamplerDisable = false,
          .TextureBorderColorMode = DX10OGL,
 
@@ -546,8 +574,10 @@ VkResult genX(CreateSampler)(
          .BaseMipLevel = 0.0,
 #endif
          .MipModeFilter = mip_filter_mode,
-         .MagModeFilter = vk_to_intel_tex_filter(mag_filter, pCreateInfo->anisotropyEnable),
-         .MinModeFilter = vk_to_intel_tex_filter(min_filter, pCreateInfo->anisotropyEnable),
+         .MagModeFilter =
+            vk_to_intel_tex_filter(mag_filter, pCreateInfo->anisotropyEnable),
+         .MinModeFilter =
+            vk_to_intel_tex_filter(min_filter, pCreateInfo->anisotropyEnable),
          .TextureLODBias = CLAMP(pCreateInfo->mipLodBias, -16, 15.996),
          .AnisotropicAlgorithm =
             pCreateInfo->anisotropyEnable ? EWAApproximation : LEGACY,
@@ -558,7 +588,8 @@ VkResult genX(CreateSampler)(
          .ChromaKeyMode = 0,
          .ShadowFunction =
             vk_to_intel_shadow_compare_op[pCreateInfo->compareEnable ?
-                                        pCreateInfo->compareOp : VK_COMPARE_OP_NEVER],
+                                          pCreateInfo->compareOp :
+                                          VK_COMPARE_OP_NEVER],
          .CubeSurfaceControlMode = seamless_cube ? OVERRIDE : PROGRAMMED,
 
          .BorderColorPointer = border_color_offset,
@@ -567,7 +598,8 @@ VkResult genX(CreateSampler)(
          .LODClampMagnificationMode = MIPNONE,
 #endif
 
-         .MaximumAnisotropy = vk_to_intel_max_anisotropy(pCreateInfo->maxAnisotropy),
+         .MaximumAnisotropy =
+            vk_to_intel_max_anisotropy(pCreateInfo->maxAnisotropy),
          .RAddressMinFilterRoundingEnable = enable_min_filter_addr_rounding,
          .RAddressMagFilterRoundingEnable = enable_mag_filter_addr_rounding,
          .VAddressMinFilterRoundingEnable = enable_min_filter_addr_rounding,
@@ -575,13 +607,17 @@ VkResult genX(CreateSampler)(
          .UAddressMinFilterRoundingEnable = enable_min_filter_addr_rounding,
          .UAddressMagFilterRoundingEnable = enable_mag_filter_addr_rounding,
          .TrilinearFilterQuality = 0,
-         .NonnormalizedCoordinateEnable = pCreateInfo->unnormalizedCoordinates,
-         .TCXAddressControlMode = vk_to_intel_tex_address[pCreateInfo->addressModeU],
-         .TCYAddressControlMode = vk_to_intel_tex_address[pCreateInfo->addressModeV],
-         .TCZAddressControlMode = vk_to_intel_tex_address[pCreateInfo->addressModeW],
+         .NonnormalizedCoordinateEnable =
+            pCreateInfo->unnormalizedCoordinates,
+         .TCXAddressControlMode =
+            vk_to_intel_tex_address[pCreateInfo->addressModeU],
+         .TCYAddressControlMode =
+            vk_to_intel_tex_address[pCreateInfo->addressModeV],
+         .TCZAddressControlMode =
+            vk_to_intel_tex_address[pCreateInfo->addressModeW],
       };
 
-      GENX(SAMPLER_STATE_pack)(NULL, sampler->state[p], &sampler_state);
+      GENX(SAMPLER_STATE_pack) (NULL, sampler->state[p], &sampler_state);
 
       if (sampler->bindless_state.map) {
          memcpy(sampler->bindless_state.map + p * 32,

@@ -31,8 +31,9 @@
 #include "vk_format.h"
 
 #include "genxml/gen_macros.h"
-#include "genxml/genX_pack.h"
+#include "genxml/hasvk_genX_pack.h"
 
+/* *INDENT-OFF* */
 static uint32_t
 get_depth_format(struct anv_cmd_buffer *cmd_buffer)
 {
@@ -216,12 +217,13 @@ genX(cmd_buffer_flush_dynamic_state)(struct anv_cmd_buffer *cmd_buffer)
 #endif
          ib.IndexFormat           = cmd_buffer->state.gfx.index_type;
          ib.MOCS                  = anv_mocs(cmd_buffer->device,
-                                             buffer->address.bo,
+                                             buffer ? buffer->address.bo : NULL,
                                              ISL_SURF_USAGE_INDEX_BUFFER_BIT);
 
-         ib.BufferStartingAddress = anv_address_add(buffer->address, offset);
-         ib.BufferEndingAddress   = anv_address_add(buffer->address,
-                                                    buffer->vk.size);
+         if (buffer) {
+            ib.BufferStartingAddress = anv_address_add(buffer->address, offset);
+            ib.BufferEndingAddress   = anv_address_add(buffer->address, buffer->vk.size);
+         }
       }
    }
 
@@ -319,3 +321,4 @@ genX(cmd_buffer_enable_pma_fix)(struct anv_cmd_buffer *cmd_buffer,
 {
    /* The NP PMA fix doesn't exist on gfx7 */
 }
+/* *INDENT-ON* */
