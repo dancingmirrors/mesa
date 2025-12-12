@@ -354,10 +354,27 @@ isl_genX(emit_depth_stencil_hiz_s)(const struct isl_device *dev, void *batch,
       assert(GFX_VER >= 12 || info->hiz_usage == ISL_AUX_USAGE_HIZ);
       db.HierarchicalDepthBufferEnable = true;
 
-#if GFX_VER >= 9
+#if GFX_VER == 7
+      /* WORKAROUND: Fix off-by-one error in HiZ address on Gen7.
+       * Same issue as depth/stencil - create local copy since info is const.
+       */
+      uint64_t hiz_address_fixed = info->hiz_address;
+
+      if (hiz_address_fixed % info->hiz_surf->alignment_B != 0) {
+         uint64_t misalignment = hiz_address_fixed % info->hiz_surf->alignment_B;
+
+         /* WORKAROUND: If off by exactly 1, fix it */
+         if (misalignment == info->hiz_surf->alignment_B - 1) {
+            hiz_address_fixed += 1;
+         }
+      }
+
+      assert(hiz_address_fixed % info->hiz_surf->alignment_B == 0);
+      hiz.SurfaceBaseAddress = hiz_address_fixed;
+#else
       assert(info->hiz_address % info->hiz_surf->alignment_B == 0);
-#endif
       hiz.SurfaceBaseAddress = info->hiz_address;
+#endif
       hiz.SurfacePitch = info->hiz_surf->row_pitch_B - 1;
 
 #if GFX_VERx10 >= 125
