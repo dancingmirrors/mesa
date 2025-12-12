@@ -664,8 +664,16 @@ vdpDecoderRender_h264(VdpDecoder decoder, VdpDecoderData *decoderData,
         goto quit;
     }
 
-    // TODO: this may not be entirely true for YUV444
-    int ChromaArrayType = pic_param.seq_fields.bits.chroma_format_idc;
+    // According to H.264 spec, ChromaArrayType depends on separate_colour_plane_flag:
+    // - If separate_colour_plane_flag == 1: ChromaArrayType = 0 (treat as monochrome)
+    // - Otherwise: ChromaArrayType = chroma_format_idc
+    // Note: residual_colour_transform_flag is the old name for separate_colour_plane_flag
+    int ChromaArrayType;
+    if (pic_param.seq_fields.bits.residual_colour_transform_flag) {
+        ChromaArrayType = 0;
+    } else {
+        ChromaArrayType = pic_param.seq_fields.bits.chroma_format_idc;
+    }
 
     do {
         VASliceParameterBufferH264 sp_h264;

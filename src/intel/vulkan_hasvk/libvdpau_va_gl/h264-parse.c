@@ -43,6 +43,7 @@ struct slice_parameters {
     int first_mb_in_slice;
     int slice_type;
     int pic_parameter_set_id;
+    int colour_plane_id;
     int frame_num;
     int field_pic_flag;
     int bottom_field_flag;
@@ -367,8 +368,17 @@ parse_slice_header(rbsp_state_t *st, const VAPictureParameterBufferH264 *vapp,
 
     sp.pic_parameter_set_id = rbsp_get_uev(st);
 
-    // TODO: separate_colour_plane_flag is 0 for all but YUV444. Now ok, but should detect properly.
-    // See 7.3.3
+    // According to H.264 spec 7.3.3, colour_plane_id is present when
+    // separate_colour_plane_flag == 1 (which requires chroma_format_idc == 3, i.e., YUV444)
+    // Note: In VA-API, this flag is named residual_colour_transform_flag (older H.264 name)
+    // We parse it to keep the bitstream reader in sync, even though the value itself
+    // is not propagated to VASliceParameterBufferH264 (decoder already has this info
+    // from chroma_format_idc and separate_colour_plane_flag in picture parameters)
+    sp.colour_plane_id = 0;
+    if (vapp->seq_fields.bits.chroma_format_idc == 3 &&
+        vapp->seq_fields.bits.residual_colour_transform_flag == 1) {
+        sp.colour_plane_id = rbsp_get_u(st, 2);
+    }
 
     sp.frame_num = rbsp_get_u(st, vapp->seq_fields.bits.log2_max_frame_num_minus4 + 4);
     sp.field_pic_flag = 0;
