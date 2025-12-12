@@ -380,7 +380,7 @@ vdpDecoderQueryCapabilities(VdpDevice device, VdpDecoderProfile profile, VdpBool
 
     case VDP_DECODER_PROFILE_H264_BASELINE:
         *is_supported = available_profiles.h264_baseline;
-        // TODO: Do underlying libva really support 5.1?
+        // TODO: Does underlying libva really support 5.1?
         *max_level = VDP_DECODER_LEVEL_H264_5_1;
         break;
 
