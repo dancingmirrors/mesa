@@ -189,7 +189,9 @@ isl_genX(emit_depth_stencil_hiz_s)(const struct isl_device *dev, void *batch,
       assert(depth_address_fixed % info->depth_surf->alignment_B == 0);
       db.SurfaceBaseAddress = depth_address_fixed;
 #else
+#if GFX_VER >= 9
       assert(info->depth_address % info->depth_surf->alignment_B == 0);
+#endif
       db.SurfaceBaseAddress = info->depth_address;
 #endif
 
@@ -311,7 +313,9 @@ isl_genX(emit_depth_stencil_hiz_s)(const struct isl_device *dev, void *batch,
       assert(stencil_address_fixed % info->stencil_surf->alignment_B == 0);
       sb.SurfaceBaseAddress = stencil_address_fixed;
 #else
+#if GFX_VER >= 9
       assert(info->stencil_address % info->stencil_surf->alignment_B == 0);
+#endif
       sb.SurfaceBaseAddress = info->stencil_address;
 #endif
       sb.SurfacePitch = info->stencil_surf->row_pitch_B - 1;
@@ -372,7 +376,9 @@ isl_genX(emit_depth_stencil_hiz_s)(const struct isl_device *dev, void *batch,
       assert(hiz_address_fixed % info->hiz_surf->alignment_B == 0);
       hiz.SurfaceBaseAddress = hiz_address_fixed;
 #else
+#if GFX_VER >= 9
       assert(info->hiz_address % info->hiz_surf->alignment_B == 0);
+#endif
       hiz.SurfaceBaseAddress = info->hiz_address;
 #endif
       hiz.SurfacePitch = info->hiz_surf->row_pitch_B - 1;
