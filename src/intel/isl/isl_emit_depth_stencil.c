@@ -22,6 +22,7 @@
  */
 
 #include <stdint.h>
+#include <inttypes.h>
 
 #define __gen_address_type uint64_t
 #define __gen_user_data void
@@ -169,10 +170,28 @@ isl_genX(emit_depth_stencil_hiz_s)(const struct isl_device *dev, void *batch,
 #if GFX_VER >= 7
       db.DepthWriteEnable = true;
 #endif
-#if GFX_VER >= 9
+
+#if GFX_VER == 7
+      /* WORKAROUND: Fix off-by-one error in depth address on Gen7.
+       * Create a local copy since info is const.
+       */
+      uint64_t depth_address_fixed = info->depth_address;
+
+      if (depth_address_fixed % info->depth_surf->alignment_B != 0) {
+         uint64_t misalignment = depth_address_fixed % info->depth_surf->alignment_B;
+
+         /* WORKAROUND: If off by exactly 1, fix it */
+         if (misalignment == info->depth_surf->alignment_B - 1) {
+            depth_address_fixed += 1;
+         }
+      }
+
+      assert(depth_address_fixed % info->depth_surf->alignment_B == 0);
+      db.SurfaceBaseAddress = depth_address_fixed;
+#else
       assert(info->depth_address % info->depth_surf->alignment_B == 0);
-#endif
       db.SurfaceBaseAddress = info->depth_address;
+#endif
 
 #if GFX_VERx10 >= 125
       db.TiledMode = isl_encode_tiling[info->depth_surf->tiling];
@@ -273,10 +292,28 @@ isl_genX(emit_depth_stencil_hiz_s)(const struct isl_device *dev, void *batch,
 #elif GFX_VERx10 >= 75
       sb.StencilBufferEnable = true;
 #endif
-#if GFX_VER >= 9
+
+#if GFX_VER == 7
+      /* WORKAROUND: Fix off-by-one error in stencil address on Gen7.
+       * Same issue as depth - create local copy since info is const.
+       */
+      uint64_t stencil_address_fixed = info->stencil_address;
+
+      if (stencil_address_fixed % info->stencil_surf->alignment_B != 0) {
+         uint64_t misalignment = stencil_address_fixed % info->stencil_surf->alignment_B;
+
+         /* WORKAROUND: If off by exactly 1, fix it */
+         if (misalignment == info->stencil_surf->alignment_B - 1) {
+            stencil_address_fixed += 1;
+         }
+      }
+
+      assert(stencil_address_fixed % info->stencil_surf->alignment_B == 0);
+      sb.SurfaceBaseAddress = stencil_address_fixed;
+#else
       assert(info->stencil_address % info->stencil_surf->alignment_B == 0);
-#endif
       sb.SurfaceBaseAddress = info->stencil_address;
+#endif
       sb.SurfacePitch = info->stencil_surf->row_pitch_B - 1;
 #if GFX_VER >= 8
       sb.SurfaceQPitch =
