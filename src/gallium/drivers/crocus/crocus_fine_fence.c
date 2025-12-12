@@ -5,14 +5,10 @@
 static void
 crocus_fine_fence_reset(struct crocus_batch *batch)
 {
-   struct pipe_resource *pres = NULL;
-   struct pipe_resource *tmp = NULL;
-   u_upload_alloc(batch->fine_fences.uploader,
+   u_upload_alloc_ref(batch->fine_fences.uploader,
                   0, sizeof(uint64_t), sizeof(uint64_t),
-                  &batch->fine_fences.ref.offset, &pres,
-                  &tmp, (void **)&batch->fine_fences.map);
-   pipe_resource_release(&batch->ice->ctx, tmp);
-   pipe_resource_reference(&batch->fine_fences.ref.res, pres);
+                  &batch->fine_fences.ref.offset, &batch->fine_fences.ref.res,
+                  (void **)&batch->fine_fences.map);
    WRITE_ONCE(*batch->fine_fences.map, 0);
    batch->fine_fences.next++;
 }

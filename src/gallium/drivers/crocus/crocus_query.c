@@ -539,13 +539,9 @@ crocus_begin_query(struct pipe_context *ctx, struct pipe_query *query)
    else
       size = sizeof(struct crocus_query_snapshots);
 
-   struct pipe_resource *pres = NULL;
-   struct pipe_resource *tmp = NULL;
-   u_upload_alloc(ice->query_buffer_uploader, 0,
+   u_upload_alloc_ref(ice->query_buffer_uploader, 0,
                   size, util_next_power_of_two(size), &q->query_state_ref.offset,
-                  &pres, &tmp, &ptr);
-   pipe_resource_release(&ice->ctx, tmp);
-   pipe_resource_reference(&q->query_state_ref.res, pres);
+                  &q->query_state_ref.res, &ptr);
 
    if (!q->query_state_ref.res)
       return false;
