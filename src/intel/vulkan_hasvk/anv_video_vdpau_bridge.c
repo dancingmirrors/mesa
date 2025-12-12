@@ -942,9 +942,7 @@ anv_vdpau_copy_surface_to_image_dmabuf(struct anv_device *device,
    uint64_t y_offset = dst_binding->address.offset + y_surface->memory_range.offset;
    uint64_t uv_offset = dst_binding->address.offset + uv_surface->memory_range.offset;
 
-   /* WORKAROUND: Ivy Bridge and Haswell have off-by-one alignment issues similar to
-    * depth/stencil surfaces. Check and fix alignment if needed.
-    */
+   /* Fix off-by-one alignment if needed */
    if (device->info->verx10 == 70 || device->info->verx10 == 75) {
       uint32_t y_alignment = y_surface->isl.alignment_B;
       uint32_t uv_alignment = uv_surface->isl.alignment_B;
@@ -1440,9 +1438,7 @@ anv_vdpau_copy_surface_to_image(struct anv_device *device,
    uint64_t y_offset = binding->address.offset + y_surface->memory_range.offset;
    uint64_t uv_offset = binding->address.offset + uv_surface->memory_range.offset;
 
-   /* WORKAROUND: Ivy Bridge and Haswell have off-by-one alignment issues similar to
-    * depth/stencil surfaces. Check and fix alignment if needed.
-    */
+    /* Fix off-by-one alignment if needed */
    if (device->info->verx10 == 70 || device->info->verx10 == 75) {
       uint32_t y_alignment = y_surface->isl.alignment_B;
       uint32_t uv_alignment = uv_surface->isl.alignment_B;

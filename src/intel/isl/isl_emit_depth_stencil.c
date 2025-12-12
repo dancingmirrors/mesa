@@ -172,15 +172,12 @@ isl_genX(emit_depth_stencil_hiz_s)(const struct isl_device *dev, void *batch,
 #endif
 
 #if GFX_VER == 7
-      /* WORKAROUND: Fix off-by-one error in depth address on Gen7.
-       * Create a local copy since info is const.
-       */
+      /* Fix off-by-one alignment if needed */
       uint64_t depth_address_fixed = info->depth_address;
 
       if (depth_address_fixed % info->depth_surf->alignment_B != 0) {
          uint64_t misalignment = depth_address_fixed % info->depth_surf->alignment_B;
 
-         /* WORKAROUND: If off by exactly 1, fix it */
          if (misalignment == info->depth_surf->alignment_B - 1) {
             depth_address_fixed += 1;
          }
@@ -296,15 +293,12 @@ isl_genX(emit_depth_stencil_hiz_s)(const struct isl_device *dev, void *batch,
 #endif
 
 #if GFX_VER == 7
-      /* WORKAROUND: Fix off-by-one error in stencil address on Gen7.
-       * Same issue as depth - create local copy since info is const.
-       */
+      /* Fix off-by-one alignment if needed */
       uint64_t stencil_address_fixed = info->stencil_address;
 
       if (stencil_address_fixed % info->stencil_surf->alignment_B != 0) {
          uint64_t misalignment = stencil_address_fixed % info->stencil_surf->alignment_B;
 
-         /* WORKAROUND: If off by exactly 1, fix it */
          if (misalignment == info->stencil_surf->alignment_B - 1) {
             stencil_address_fixed += 1;
          }
@@ -359,15 +353,12 @@ isl_genX(emit_depth_stencil_hiz_s)(const struct isl_device *dev, void *batch,
       db.HierarchicalDepthBufferEnable = true;
 
 #if GFX_VER == 7
-      /* WORKAROUND: Fix off-by-one error in HiZ address on Gen7.
-       * Same issue as depth/stencil - create local copy since info is const.
-       */
+      /* Fix off-by-one alignment if needed */
       uint64_t hiz_address_fixed = info->hiz_address;
 
       if (hiz_address_fixed % info->hiz_surf->alignment_B != 0) {
          uint64_t misalignment = hiz_address_fixed % info->hiz_surf->alignment_B;
 
-         /* WORKAROUND: If off by exactly 1, fix it */
          if (misalignment == info->hiz_surf->alignment_B - 1) {
             hiz_address_fixed += 1;
          }
