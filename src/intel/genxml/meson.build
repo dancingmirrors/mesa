@@ -17,15 +17,6 @@ gen_xml_files = [
   'gen300.xml',
 ]
 
-# Old-style genxml files for hasvk driver
-# These use the old XML format (start/end instead of dword/bits)
-# and are prefixed with hasvk_ to avoid conflicts
-gen_xml_hasvk_files = [
-  'hasvk_gen7.xml',
-  'hasvk_gen75.xml',
-  'hasvk_gen8.xml',
-]
-
 gen_xml_rt_files = [
   'gen125_rt.xml',
   'gen200_rt.xml',
@@ -33,7 +24,7 @@ gen_xml_rt_files = [
 ]
 
 gen_pack_header_deps = files('intel_genxml.py', 'util.py')
-foreach f : gen_xml_files + gen_xml_rt_files + gen_xml_hasvk_files
+foreach f : gen_xml_files + gen_xml_rt_files
   gen_pack_header_deps += files(f)
 endforeach
 
@@ -106,58 +97,46 @@ genX_bits_h = custom_target(
 gen_xml_pack = []
 foreach f : gen_xml_files + gen_xml_rt_files
   _name = '@0@_pack.h'.format(f.split('.')[0])
-  gen_xml_pack += custom_target(
-    _name,
-    input : ['gen_pack_header.py', f],
-    output : _name,
-    command : [prog_python, '@INPUT@', '--engines=render,blitter,compute'],
-    capture : true,
-    depend_files: gen_pack_header_deps
-  )
-endforeach
-
-# Generate hasvk-specific pack headers
-# Output names match the input file names (hasvk_gen7_pack.h, etc.)
-# Include all engines (render,blitter,compute,video) since hasvk needs video decode
-foreach f : gen_xml_hasvk_files
   _base = f.split('.')[0]
-  _name = '@0@_pack.h'.format(_base)
+  
+  # For gen70, gen75, and gen80, include video engine commands in the main pack header.
+  # This is needed for the hasvk driver which switched from custom genxml files to
+  # using the standard anv genxml files. These generations need video commands for
+  # query operations and basic video synchronization (MI_FLUSH_DW, MFX_WAIT).
+  if _base in ['gen70', 'gen75', 'gen80']
+    _engines = 'render,blitter,compute,video'
+  else
+    _engines = 'render,blitter,compute'
+  endif
+  
   gen_xml_pack += custom_target(
     _name,
     input : ['gen_pack_header.py', f],
     output : _name,
-    command : [prog_python, '@INPUT@', '--engines=render,blitter,compute,video'],
+    command : [prog_python, '@INPUT@', '--engines=' + _engines],
     capture : true,
     depend_files: gen_pack_header_deps
   )
 endforeach
 
+# Generate separate video pack headers for other generations.
+# Note: gen70, gen75, and gen80 don't need these since video commands
+# are already included in their main pack headers (see above).
 gen_xml_video_pack = []
 foreach f : gen_xml_files
-  _name = '@0@_video_pack.h'.format(f.split('.')[0])
-  gen_xml_pack += custom_target(
-    _name,
-    input : ['gen_pack_header.py', f],
-    output : _name,
-    command : [prog_python, '@INPUT@', '--engines=video'],
-    capture : true,
-    depend_files: gen_pack_header_deps
-  )
-endforeach
-
-# Generate hasvk-specific video pack headers
-# Output names match the input file names (hasvk_gen7_video_pack.h, etc.)
-foreach f : gen_xml_hasvk_files
   _base = f.split('.')[0]
-  _name = '@0@_video_pack.h'.format(_base)
-  gen_xml_pack += custom_target(
-    _name,
-    input : ['gen_pack_header.py', f],
-    output : _name,
-    command : [prog_python, '@INPUT@', '--engines=video'],
-    capture : true,
-    depend_files: gen_pack_header_deps
-  )
+  # Skip video pack generation for gen70/75/80 since they include video in main pack
+  if _base not in ['gen70', 'gen75', 'gen80']
+    _name = '@0@_video_pack.h'.format(_base)
+    gen_xml_video_pack += custom_target(
+      _name,
+      input : ['gen_pack_header.py', f],
+      output : _name,
+      command : [prog_python, '@INPUT@', '--engines=video'],
+      capture : true,
+      depend_files: gen_pack_header_deps
+    )
+  endif
 endforeach
 
 genX_cl_included_symbols = [
@@ -199,7 +178,7 @@ idep_genxml = declare_dependency(
 
 gen_xml_test_files = ['../decoder/tests/gentest.xml']
 
-foreach f : gen_xml_files + gen_xml_rt_files + gen_xml_hasvk_files + gen_xml_test_files
+foreach f : gen_xml_files + gen_xml_rt_files + gen_xml_test_files
   test(
     'genxml sort @0@'.format(f),
     prog_python,

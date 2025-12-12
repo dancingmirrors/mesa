@@ -1,5 +1,5 @@
 /*
- * Copyright © 2021 Red Hat
+ * Copyright © 2025 dancingmirrors@icloud.com
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the "Software"),
@@ -27,18 +27,11 @@
 #include <string.h>
 #include <inttypes.h>
 #include "genxml/gen_macros.h"
-#include "genxml/hasvk_genX_pack.h"
-#include "genxml/hasvk_genX_video_pack.h"
+#include "genxml/genX_pack.h"
 
 #ifdef HAVE_VDPAU
 #include "anv_video_vdpau_bridge.h"
 #endif
-
-/* Native H.264 decode implementation has been removed.
- * The VDPAU bridge is now the only supported path for video decode on hasvk.
- * VDPAU is used via libvdpau-va-gl which provides a simpler interface than
- * direct VA-API and handles the complex slice header parsing internally.
- */
 
 void
 genX(CmdBeginVideoCodingKHR) (VkCommandBuffer commandBuffer,
@@ -92,7 +85,7 @@ genX(CmdDecodeVideoKHR) (VkCommandBuffer commandBuffer,
    ANV_FROM_HANDLE(anv_cmd_buffer, cmd_buffer, commandBuffer);
 
 #ifdef HAVE_VDPAU
-   /* VDPAU bridge is always used for hasvk video decode */
+   /* VDPAU is always used for hasvk video decode */
    anv_vdpau_decode_frame(cmd_buffer, frame_info);
 #endif
 }

@@ -33,7 +33,7 @@
 #include "common/intel_sample_positions.h"
 #include "common/intel_pixel_hash.h"
 #include "genxml/gen_macros.h"
-#include "genxml/hasvk_genX_pack.h"
+#include "genxml/genX_pack.h"
 
 #include "vk_standard_sample_locations.h"
 #include "vk_util.h"

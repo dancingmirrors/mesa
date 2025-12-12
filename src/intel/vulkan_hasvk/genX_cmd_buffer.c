@@ -35,7 +35,7 @@
 
 #include "common/intel_l3_config.h"
 #include "genxml/gen_macros.h"
-#include "genxml/hasvk_genX_pack.h"
+#include "genxml/genX_pack.h"
 #include "common/intel_guardband.h"
 #include "compiler/intel_prim.h"
 

@@ -24,7 +24,7 @@
 #include "anv_private.h"
 
 #include "genxml/gen_macros.h"
-#include "genxml/hasvk_genX_pack.h"
+#include "genxml/genX_pack.h"
 
 /**
  * This file implements some lightweight memcpy/memset operations on the GPU

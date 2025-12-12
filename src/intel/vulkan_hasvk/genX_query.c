@@ -32,7 +32,7 @@
 #include "util/os_time.h"
 
 #include "genxml/gen_macros.h"
-#include "genxml/hasvk_genX_pack.h"
+#include "genxml/genX_pack.h"
 
 /* Pipeline statistics mask - Gen7/8 only supports first 11 statistics */
 #define ANV_PIPELINE_STATISTICS_MASK 0x000007ff

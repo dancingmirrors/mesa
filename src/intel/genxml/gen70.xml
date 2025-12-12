@@ -2687,6 +2687,13 @@
     <field name="LumShift1 - double - BWD" dword="5" bits="21:16" type="uint" />
     <field name="LumShift2 - double - BWD" dword="5" bits="29:24" type="uint" />
   </instruction>
+  <instruction name="MFX_WAIT" bias="1" length="1" engine="video">
+    <field name="DWord Length" dword="0" bits="5:0" type="uint" default="0" />
+    <field name="MFX Sync Control Flag" dword="0" bits="8:8" type="bool" />
+    <field name="SubOpcode" dword="0" bits="26:16" type="uint" default="0" />
+    <field name="Command Subtype" dword="0" bits="28:27" type="uint" default="1" />
+    <field name="Command Type" dword="0" bits="31:29" type="uint" default="3" />
+  </instruction>
   <instruction name="MI_CLFLUSH" bias="2" engine="render">
     <field name="DWord Length" dword="0" bits="9:0" type="uint" default="1" />
     <field name="Use Global GTT" dword="0" bits="22:22" type="bool" />
@@ -2698,6 +2705,27 @@
     <group count="0" dword="3" size="32">
       <field name="DW Representing a Half Cache Line" dword="0" bits="31:0" type="uint" />
     </group>
+  </instruction>
+  <instruction name="MI_FLUSH_DW" bias="2" length="4" engine="blitter|video">
+    <field name="DWord Length" dword="0" bits="5:0" type="uint" default="2" />
+    <field name="Video Pipeline Cache Invalidate" dword="0" bits="7:7" type="bool" />
+    <field name="Notify Enable" dword="0" bits="8:8" type="bool" />
+    <field name="Post-Sync Operation" dword="0" bits="15:14" type="uint">
+      <value name="NoWrite" value="0" />
+      <value name="WriteImmediateData" value="1" />
+      <value name="WriteTimestamp" value="3" />
+    </field>
+    <field name="Synchronize GFDT Surface" dword="0" bits="17:17" type="bool" />
+    <field name="TLB Invalidate" dword="0" bits="18:18" type="bool" />
+    <field name="Store Data Index" dword="0" bits="21:21" type="bool" />
+    <field name="MI Command Opcode" dword="0" bits="28:23" type="uint" default="38" />
+    <field name="Command Type" dword="0" bits="31:29" type="uint" default="0" />
+    <field name="Destination Address Type" dword="1" bits="2:2" type="uint" prefix="DAT">
+      <value name="PPGTT" value="0" />
+      <value name="GGTT" value="1" />
+    </field>
+    <field name="Address" dword="1" bits="31:3" type="address" />
+    <field name="Immediate Data" dword="2" bits="63:0" type="uint" />
   </instruction>
   <instruction name="MI_LOAD_REGISTER_MEM" bias="2" length="3">
     <field name="DWord Length" dword="0" bits="7:0" type="uint" default="1" />
