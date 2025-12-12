@@ -122,7 +122,7 @@ crocus_get_name(struct pipe_screen *pscreen)
    const struct intel_device_info *devinfo = &screen->devinfo;
    static char buf[128];
 
-   snprintf(buf, sizeof(buf), "Mesa %s (crocus)", devinfo->name);
+   snprintf(buf, sizeof(buf), "Mesa %s", devinfo->name);
    return buf;
 }
 

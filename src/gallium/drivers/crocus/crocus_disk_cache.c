@@ -214,7 +214,7 @@ crocus_disk_cache_retrieve(struct crocus_context *ice,
     * return it to the caller.
     */
    struct crocus_compiled_shader *shader =
-      crocus_upload_shader(ice, (enum crocus_program_cache_id)stage, key_size, prog_key, assembly,
+      crocus_upload_shader(ice, stage, key_size, prog_key, assembly,
                            prog_data->program_size,
                            prog_data, prog_data_size, so_decls, system_values,
                            num_system_values, num_cbufs, &bt);

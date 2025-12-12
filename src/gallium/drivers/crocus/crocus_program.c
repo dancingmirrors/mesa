@@ -1068,7 +1068,7 @@ crocus_debug_recompile(struct crocus_context *ice,
                        info->label ? info->label : "");
 
    const void *old_key =
-      crocus_find_previous_compile(ice, (enum crocus_program_cache_id)info->stage, key->program_string_id);
+      crocus_find_previous_compile(ice, info->stage, key->program_string_id);
 
    elk_debug_key_recompile(c, &ice->dbg, info->stage, old_key, key);
 }

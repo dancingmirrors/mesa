@@ -1569,12 +1569,12 @@ set_blend_entry_bits(struct crocus_batch *batch, BLEND_ENTRY_GENXML *entry,
    struct elk_wm_prog_data *wm_prog_data = (void *) shader->prog_data;
    if (idx == 0 && !blend_enabled && wm_prog_data->dual_src_blend) {
       entry->ColorBufferBlendEnable = 1;
-      entry->ColorBlendFunction = (int)PIPE_BLEND_ADD;
-      entry->AlphaBlendFunction = (int)PIPE_BLEND_ADD;
-      entry->SourceBlendFactor = (int)PIPE_BLENDFACTOR_ONE;
-      entry->SourceAlphaBlendFactor = (int)PIPE_BLENDFACTOR_ONE;
-      entry->DestinationBlendFactor = (int)PIPE_BLENDFACTOR_ZERO;
-      entry->DestinationAlphaBlendFactor = (int)PIPE_BLENDFACTOR_ZERO;
+      entry->ColorBlendFunction = PIPE_BLEND_ADD;
+      entry->AlphaBlendFunction = PIPE_BLEND_ADD;
+      entry->SourceBlendFactor = PIPE_BLENDFACTOR_ONE;
+      entry->SourceAlphaBlendFactor = PIPE_BLENDFACTOR_ONE;
+      entry->DestinationBlendFactor = PIPE_BLENDFACTOR_ZERO;
+      entry->DestinationAlphaBlendFactor = PIPE_BLENDFACTOR_ZERO;
    }
 #endif
    return independent_alpha_blend;
@@ -4975,8 +4975,8 @@ emit_null_fb_surface(struct crocus_batch *batch,
    layer = 0;
 
    if (cso->nr_cbufs == 0 && ice->state.fb_zsbuf) {
-      width = MAX2(((struct crocus_surface*)ice->state.fb_zsbuf)->surf.logical_level0_px.width, 1);
-      height = MAX2(((struct crocus_surface*)ice->state.fb_zsbuf)->surf.logical_level0_px.height, 1);
+      width = ((struct crocus_surface*)ice->state.fb_zsbuf)->surf.logical_level0_px.width;
+      height = ((struct crocus_surface*)ice->state.fb_zsbuf)->surf.logical_level0_px.height;
       level = cso->zsbuf.level;
       layer = cso->zsbuf.first_layer;
    }

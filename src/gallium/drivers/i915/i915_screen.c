@@ -103,7 +103,7 @@ i915_get_name(struct pipe_screen *screen)
       break;
    }
 
-   snprintf(buffer, sizeof(buffer), "Mesa Intel(R) %s (i915)", chipset);
+   snprintf(buffer, sizeof(buffer), "i915 (chipset: %s)", chipset);
    return buffer;
 }
 
