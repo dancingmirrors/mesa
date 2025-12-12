@@ -44,6 +44,29 @@ sysconfdir = get_option('prefix') / get_option('sysconfdir')
 # This ensures libva searches for i965_drv_video.so in the correct location
 driverdir = get_option('prefix') / get_option('libdir') / 'dri'
 
+# Automatically derive architecture-specific include directory for multilib builds
+# The libva headers contain architecture-specific types (uintptr_t, unsigned long)
+# that differ between 32-bit and 64-bit builds, so they must be installed separately
+libdir_name = get_option('libdir')
+includedir_name = get_option('includedir')
+
+# If libdir is non-standard (e.g., 'lib32', 'lib64') and includedir is still default,
+# automatically derive a matching includedir to avoid header conflicts
+if libdir_name != 'lib' and includedir_name == 'include'
+  # Extract suffix from libdir (e.g., '32' from 'lib32', '64' from 'lib64')
+  # and apply it to includedir. Only apply for known multilib patterns.
+  # The check libdir_name != 'lib' ensures substring(3) is safe.
+  if libdir_name.startswith('lib')
+    libdir_suffix = libdir_name.substring(3)
+    # Only auto-detect for common multilib suffixes: '32', '64', 'x32'
+    # This prevents incorrect behavior for paths like 'libexec'
+    if libdir_suffix in ['32', '64', 'x32']
+      includedir_name = 'include' + libdir_suffix
+      message('Auto-detected multilib build: using includedir=@0@ for libdir=@1@'.format(includedir_name, libdir_name))
+    endif
+  endif
+endif
+
 configinc = include_directories('.')
 
 # Find dependencies
@@ -170,14 +193,16 @@ libva_sym_arg = '-Wl,-version-script,' + meson.current_source_dir() / libva_sym
 
 libva_link_args = []
 libva_link_depends = []
-if cc.links('void vaCreateSurfaces_0_32_0(void) {} void vaCreateSurfaces() {}', 
+if cc.links('void vaCreateSurfaces_0_32_0(void) {} void vaCreateSurfaces() {}',
             name: '-Wl,--version-script', args: ['-shared', libva_sym_arg])
   libva_link_args = libva_sym_arg
   libva_link_depends = files(libva_sym)
 endif
 
 # Install headers
-install_headers(libva_headers, version_file, subdir : 'va')
+# Use architecture-specific includedir to avoid conflicts in multilib builds
+install_headers(libva_headers, version_file,
+                install_dir : get_option('prefix') / includedir_name / 'va')
 
 # Build core libva library
 libva_hasvk = shared_library(
@@ -238,7 +263,8 @@ if WITH_DRM
   # Add common c_args to drm library
   libva_drm_c_args += libva_c_args
 
-  install_headers(libva_drm_headers, subdir : 'va')
+  install_headers(libva_drm_headers,
+                  install_dir : get_option('prefix') / includedir_name / 'va')
 
   libva_drm_hasvk = shared_library(
     'va-drm',
@@ -287,7 +313,8 @@ if WITH_X11
     'va/x11/va_nvctrl.h',
   )
 
-  install_headers(libva_x11_headers, subdir : 'va')
+  install_headers(libva_x11_headers,
+                  install_dir : get_option('prefix') / includedir_name / 'va')
 
   libva_x11_deps = [
     dep_libdrm_for_libva,
@@ -336,7 +363,8 @@ if WITH_GLX
     'va/glx/va_glx_private.h',
   )
 
-  install_headers(libva_glx_headers, subdir : 'va')
+  install_headers(libva_glx_headers,
+                  install_dir : get_option('prefix') / includedir_name / 'va')
 
   libva_glx_deps = [gl_dep_for_libva, libva_x11_hasvk_dep]
 
@@ -401,7 +429,8 @@ if WITH_WAYLAND
       command : [wl_scanner_for_libva, 'client-header', '@INPUT@', '@OUTPUT@'])
   endforeach
 
-  install_headers(libva_wayland_headers, subdir : 'va')
+  install_headers(libva_wayland_headers,
+                  install_dir : get_option('prefix') / includedir_name / 'va')
 
   libva_wayland_deps = [dep_libdrm_for_libva, wayland_dep_for_libva, libva_hasvk_dep]
 
@@ -431,12 +460,30 @@ install_data(
 )
 
 # Create pkg-config file for bundled libva
+# For multilib builds, we need to ensure the .pc file points to the correct include directory
+# We can't override 'includedir' directly (it's reserved), so we set the install location
+# and Meson should handle the rest. However, to be safe, we'll also add extra_cflags.
+pkg_vars = ['driverdir=' + driverdir]
+
+# Add custom include path for multilib builds via Cflags
+pkg_extra_cflags = []
+if includedir_name != 'include'
+  # Add the custom include directory to Cflags
+  pkg_extra_cflags = ['-I${prefix}/' + includedir_name]
+endif
+
+# Determine pkg-config installation directory for multilib
+# Install .pc files to libdir/pkgconfig to avoid conflicts
+pkg_install_dir = get_option('prefix') / get_option('libdir') / 'pkgconfig'
+
 pkg.generate(
   libva_hasvk,
   name : 'libva',
   description : 'Userspace Video Acceleration (VA) API (Mesa hasvk bundled version)',
   version : libva_version,
-  variables : ['driverdir=' + driverdir],
+  variables : pkg_vars,
+  extra_cflags : pkg_extra_cflags,
+  install_dir : pkg_install_dir,
 )
 
 if WITH_DRM
@@ -445,6 +492,8 @@ if WITH_DRM
     name : 'libva-drm',
     description : 'Userspace Video Acceleration (VA) API (DRM/KMS runtime) (Mesa hasvk bundled version)',
     version : libva_version,
+    extra_cflags : pkg_extra_cflags,
+    install_dir : pkg_install_dir,
   )
 endif
 
@@ -454,6 +503,8 @@ if WITH_X11
     name : 'libva-x11',
     description : 'Userspace Video Acceleration (VA) API (X11 runtime) (Mesa hasvk bundled version)',
     version : libva_version,
+    extra_cflags : pkg_extra_cflags,
+    install_dir : pkg_install_dir,
   )
 endif
 
@@ -463,6 +514,8 @@ if WITH_GLX
     name : 'libva-glx',
     description : 'Userspace Video Acceleration (VA) API (GLX runtime) (Mesa hasvk bundled version)',
     version : libva_version,
+    extra_cflags : pkg_extra_cflags,
+    install_dir : pkg_install_dir,
   )
 endif
 
@@ -472,6 +525,8 @@ if WITH_WAYLAND
     name : 'libva-wayland',
     description : 'Userspace Video Acceleration (VA) API (Wayland runtime) (Mesa hasvk bundled version)',
     version : libva_version,
+    extra_cflags : pkg_extra_cflags,
+    install_dir : pkg_install_dir,
   )
 endif
 
