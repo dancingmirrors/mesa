@@ -15,5 +15,3 @@ vdpau = shared_library('vdpau',
     version : '1.0.0',
     install : true,
 )
-
-install_data('vdpau_wrapper.cfg', install_dir : get_option('sysconfdir'))

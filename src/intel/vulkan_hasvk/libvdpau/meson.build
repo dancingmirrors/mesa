@@ -83,12 +83,6 @@ install_headers(
   subdir : 'vdpau',
 )
 
-# Install configuration file
-install_data(
-  'src/vdpau_wrapper.cfg',
-  install_dir : libvdpau_sysconfdir,
-)
-
 # Install license file
 install_data(
   'COPYING',
