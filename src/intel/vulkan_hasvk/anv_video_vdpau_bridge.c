@@ -95,12 +95,9 @@
 #define HASVK_MAX_FRAMES_PER_SUBMIT 0
 #endif
 
-/* Maximum surface cache size for video decode.
- * This is sufficient for H.264 decode with multiple reference frames while
- * reducing memory pressure and HDD thrashing during initial cache population.
- */
+/* Maximum surface cache size for video decode. */
 #ifndef HASVK_MAX_SURFACE_CACHE_SIZE
-#define HASVK_MAX_SURFACE_CACHE_SIZE 16
+#define HASVK_MAX_SURFACE_CACHE_SIZE 32
 #endif
 
 /**
