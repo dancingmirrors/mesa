@@ -1394,8 +1394,22 @@ anv_bo_pool_alloc(struct anv_bo_pool *pool, uint32_t size,
                                          0 /* explicit_address */ ,
                                          4096,
                                          &bo);
-   if (result != VK_SUCCESS)
-      return result;
+   if (result != VK_SUCCESS) {
+      /* Allocation failed - try trimming the cache and retry. */
+      anv_bo_pool_trim(pool);
+
+      result = anv_device_alloc_bo(pool->device,
+                                    pool->name,
+                                    pow2_size,
+                                    ANV_BO_ALLOC_MAPPED |
+                                    ANV_BO_ALLOC_SNOOPED |
+                                    ANV_BO_ALLOC_CAPTURE,
+                                    0 /* explicit_address */ ,
+                                    4096,
+                                    &bo);
+      if (result != VK_SUCCESS)
+         return result;
+   }
 
    /* We want it to look like it came from this pool */
    VG(VALGRIND_FREELIKE_BLOCK(bo->map, 0));
@@ -1408,10 +1422,11 @@ anv_bo_pool_alloc(struct anv_bo_pool *pool, uint32_t size,
 
 /* Threshold above which BOs are immediately released instead of cached.
  * This helps reduce memory pressure for applications that allocate large
- * transient buffers. Set to 2MB which is a reasonable threshold for
- * batch buffers and similar allocations.
+ * transient buffers. Reduced to 1MB to be more aggressive about releasing
+ * memory, especially during shader cache population and video decoding
+ * scenarios where memory pressure can cause HDD thrashing.
  */
-#define ANV_BO_POOL_CACHE_THRESHOLD (2 * 1024 * 1024)
+#define ANV_BO_POOL_CACHE_THRESHOLD (1 * 1024 * 1024)
 
 void
 anv_bo_pool_free(struct anv_bo_pool *pool, struct anv_bo *bo)

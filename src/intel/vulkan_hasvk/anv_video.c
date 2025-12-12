@@ -86,6 +86,12 @@ anv_DestroyVideoSessionKHR(VkDevice _device,
     */
    vk_common_DeviceWaitIdle(_device);
 
+   /* Trim cached BOs after waiting to reclaim memory. Video sessions can
+    * allocate significant memory, so this helps reduce memory pressure
+    * especially on integrated graphics with limited RAM.
+    */
+   anv_bo_pool_trim(&device->batch_bo_pool);
+
 #ifdef HAVE_VDPAU
    /* Destroy VDPAU bridge session if it was created */
    if (vid->vdpau_session) {

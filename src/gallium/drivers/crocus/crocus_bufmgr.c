@@ -692,7 +692,12 @@ cleanup_bo_cache(struct crocus_bufmgr *bufmgr, time_t time)
       struct bo_cache_bucket *bucket = &bufmgr->cache_bucket[i];
 
       list_for_each_entry_safe(struct crocus_bo, bo, &bucket->head, head) {
-         if (time - bo->free_time <= 1)
+         /* Cleanup buffers immediately (same second) for more aggressive
+          * memory management. This helps prevent memory pressure on integrated
+          * graphics, especially during shader cache population and video
+          * switching. Still provides benefit for rapid reuse within same second.
+          */
+         if (time == bo->free_time)
             break;
 
          list_del(&bo->head);
