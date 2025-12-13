@@ -44,28 +44,21 @@ sysconfdir = get_option('prefix') / get_option('sysconfdir')
 # This ensures libva searches for i965_drv_video.so in the correct location
 driverdir = get_option('prefix') / get_option('libdir') / 'dri'
 
-# Automatically derive architecture-specific include directory for multilib builds
+# Determine architecture suffix for multilib header installation
 # The libva headers contain architecture-specific types (uintptr_t, unsigned long)
-# that differ between 32-bit and 64-bit builds, so they must be installed separately
-libdir_name = get_option('libdir')
-includedir_name = get_option('includedir')
-
-# If libdir is non-standard (e.g., 'lib32', 'lib64') and includedir is still default,
-# automatically derive a matching includedir to avoid header conflicts
-if libdir_name != 'lib' and includedir_name == 'include'
-  # Extract suffix from libdir (e.g., '32' from 'lib32', '64' from 'lib64')
-  # and apply it to includedir. Only apply for known multilib patterns.
-  # The check libdir_name != 'lib' ensures substring(3) is safe.
-  if libdir_name.startswith('lib')
-    libdir_suffix = libdir_name.substring(3)
-    # Only auto-detect for common multilib suffixes: '32', '64', 'x32'
-    # This prevents incorrect behavior for paths like 'libexec'
-    if libdir_suffix in ['32', '64', 'x32']
-      includedir_name = 'include' + libdir_suffix
-      message('Auto-detected multilib build: using includedir=@0@ for libdir=@1@'.format(includedir_name, libdir_name))
-    endif
-  endif
+# that differ between 32-bit and 64-bit builds. To support multilib installations,
+# we install architecture-specific headers with a suffix (e.g., va-32.h, va-64.h)
+# and provide architecture-neutral wrapper headers that include the correct version.
+pointer_size = cc.sizeof('void*')
+if pointer_size == 8
+  arch_suffix = '-64'
+elif pointer_size == 4
+  arch_suffix = '-32'
+else
+  error('Unsupported pointer size: @0@'.format(pointer_size))
 endif
+
+message('Building libva for @0@-bit architecture (arch_suffix=@1@)'.format(pointer_size * 8, arch_suffix))
 
 configinc = include_directories('.')
 
@@ -152,10 +145,6 @@ libva_sources = files(
 )
 
 libva_headers = files(
-  'va/va.h',
-  'va/va_backend.h',
-  'va/va_backend_prot.h',
-  'va/va_backend_vpp.h',
   'va/va_compat.h',
   'va/va_dec_hevc.h',
   'va/va_dec_jpeg.h',
@@ -181,6 +170,15 @@ libva_headers = files(
   'va/va_vpp.h',
 )
 
+# Headers with architecture-specific types that need multilib wrappers
+# These headers will be installed with architecture suffix (e.g., va-64.h)
+libva_headers_arch_specific = files(
+  'va/va.h',
+  'va/va_backend.h',
+  'va/va_backend_prot.h',
+  'va/va_backend_vpp.h',
+)
+
 libva_headers_priv = files(
   'va/sysdeps.h',
   'va/va_internal.h',
@@ -200,14 +198,118 @@ if cc.links('void vaCreateSurfaces_0_32_0(void) {} void vaCreateSurfaces() {}',
 endif
 
 # Install headers
-# Use architecture-specific includedir to avoid conflicts in multilib builds
+# Architecture-neutral headers (no pointer-size-dependent types)
 install_headers(libva_headers, version_file,
-                install_dir : get_option('prefix') / includedir_name / 'va')
+                install_dir : get_option('prefix') / get_option('includedir') / 'va')
+
+# Install architecture-specific headers with suffix
+# Note: Using configure_file with copy:true for compatibility with older Meson versions
+# that don't support install_headers(rename:)
+
+# Generate both 32-bit and 64-bit versions of each arch-specific header
+# va.h
+va_h_32 = configure_file(
+  input : 'va/va.h',
+  output : 'va-32.h',
+  copy : true)
+va_h_64 = configure_file(
+  input : 'va/va.h',
+  output : 'va-64.h',
+  copy : true)
+install_headers(va_h_32, va_h_64,
+                install_dir : get_option('prefix') / get_option('includedir') / 'va')
+
+# va_backend.h
+va_backend_h_32 = configure_file(
+  input : 'va/va_backend.h',
+  output : 'va_backend-32.h',
+  copy : true)
+va_backend_h_64 = configure_file(
+  input : 'va/va_backend.h',
+  output : 'va_backend-64.h',
+  copy : true)
+install_headers(va_backend_h_32, va_backend_h_64,
+                install_dir : get_option('prefix') / get_option('includedir') / 'va')
+
+# va_backend_prot.h
+va_backend_prot_h_32 = configure_file(
+  input : 'va/va_backend_prot.h',
+  output : 'va_backend_prot-32.h',
+  copy : true)
+va_backend_prot_h_64 = configure_file(
+  input : 'va/va_backend_prot.h',
+  output : 'va_backend_prot-64.h',
+  copy : true)
+install_headers(va_backend_prot_h_32, va_backend_prot_h_64,
+                install_dir : get_option('prefix') / get_option('includedir') / 'va')
+
+# va_backend_vpp.h
+va_backend_vpp_h_32 = configure_file(
+  input : 'va/va_backend_vpp.h',
+  output : 'va_backend_vpp-32.h',
+  copy : true)
+va_backend_vpp_h_64 = configure_file(
+  input : 'va/va_backend_vpp.h',
+  output : 'va_backend_vpp-64.h',
+  copy : true)
+install_headers(va_backend_vpp_h_32, va_backend_vpp_h_64,
+                install_dir : get_option('prefix') / get_option('includedir') / 'va')
+
+# Install wrapper headers (without .wrapper suffix)
+# Note: Using configure_file with copy:true for compatibility
+# va.h wrapper
+va_h_wrapper = configure_file(
+  input : 'va/va.h.wrapper',
+  output : 'va.h',
+  copy : true)
+install_headers(va_h_wrapper,
+                install_dir : get_option('prefix') / get_option('includedir') / 'va')
+# va_backend.h wrapper
+va_backend_h_wrapper = configure_file(
+  input : 'va/va_backend.h.wrapper',
+  output : 'va_backend.h',
+  copy : true)
+install_headers(va_backend_h_wrapper,
+                install_dir : get_option('prefix') / get_option('includedir') / 'va')
+# va_backend_prot.h wrapper
+va_backend_prot_h_wrapper = configure_file(
+  input : 'va/va_backend_prot.h.wrapper',
+  output : 'va_backend_prot.h',
+  copy : true)
+install_headers(va_backend_prot_h_wrapper,
+                install_dir : get_option('prefix') / get_option('includedir') / 'va')
+# va_backend_vpp.h wrapper
+va_backend_vpp_h_wrapper = configure_file(
+  input : 'va/va_backend_vpp.h.wrapper',
+  output : 'va_backend_vpp.h',
+  copy : true)
+install_headers(va_backend_vpp_h_wrapper,
+                install_dir : get_option('prefix') / get_option('includedir') / 'va')
+
+# Collect all generated headers for build-time use
+libva_generated_headers = [
+  va_h_32,
+  va_h_64,
+  va_backend_h_32,
+  va_backend_h_64,
+  va_backend_prot_h_32,
+  va_backend_prot_h_64,
+  va_backend_vpp_h_32,
+  va_backend_vpp_h_64,
+  va_h_wrapper,
+  va_backend_h_wrapper,
+  va_backend_prot_h_wrapper,
+  va_backend_vpp_h_wrapper,
+]
+
+# Create an include directory that points to the build directory where generated headers are
+# This ensures our generated headers are found before any system-installed libva headers
+libva_build_inc = include_directories('.')
 
 # Build core libva library
 libva_hasvk = shared_library(
   'va',
-  sources : [libva_sources, libva_headers, libva_headers_priv, version_file],
+  sources : [libva_sources, libva_headers, libva_headers_arch_specific, libva_headers_priv, version_file, libva_generated_headers],
   soversion : host_machine.system() == 'windows' ? '' : libva_lt_current.to_string(),
   version : libva_lt_version,
   c_args : libva_c_args + [
@@ -226,7 +328,17 @@ libva_hasvk = shared_library(
 
 libva_hasvk_dep = declare_dependency(
   link_with : libva_hasvk,
-  include_directories : [configinc, include_directories('va')],
+  # Include build directory first so generated headers take priority over system headers
+  # This is critical to ensure our bundled headers are used instead of any system-installed libva
+  include_directories : [
+    libva_build_inc,            # Build directory for generated headers (highest priority)
+    configinc,                  # Source directory  
+    include_directories('va')   # va source subdirectory
+  ],
+  sources : libva_generated_headers,
+  # Add explicit -I flag for the build directory to override system paths
+  # This is necessary because angle bracket includes (<va/header.h>) search system paths first
+  compile_args : ['-I' + meson.current_build_dir()],
   dependencies : [libva_dl_dep],
 )
 
@@ -264,7 +376,7 @@ if WITH_DRM
   libva_drm_c_args += libva_c_args
 
   install_headers(libva_drm_headers,
-                  install_dir : get_option('prefix') / includedir_name / 'va')
+                  install_dir : get_option('prefix') / get_option('includedir') / 'va')
 
   libva_drm_hasvk = shared_library(
     'va-drm',
@@ -314,7 +426,7 @@ if WITH_X11
   )
 
   install_headers(libva_x11_headers,
-                  install_dir : get_option('prefix') / includedir_name / 'va')
+                  install_dir : get_option('prefix') / get_option('includedir') / 'va')
 
   libva_x11_deps = [
     dep_libdrm_for_libva,
@@ -364,7 +476,7 @@ if WITH_GLX
   )
 
   install_headers(libva_glx_headers,
-                  install_dir : get_option('prefix') / includedir_name / 'va')
+                  install_dir : get_option('prefix') / get_option('includedir') / 'va')
 
   libva_glx_deps = [gl_dep_for_libva, libva_x11_hasvk_dep]
 
@@ -430,7 +542,7 @@ if WITH_WAYLAND
   endforeach
 
   install_headers(libva_wayland_headers,
-                  install_dir : get_option('prefix') / includedir_name / 'va')
+                  install_dir : get_option('prefix') / get_option('includedir') / 'va')
 
   libva_wayland_deps = [dep_libdrm_for_libva, wayland_dep_for_libva, libva_hasvk_dep]
 
@@ -460,17 +572,10 @@ install_data(
 )
 
 # Create pkg-config file for bundled libva
-# For multilib builds, we need to ensure the .pc file points to the correct include directory
-# We can't override 'includedir' directly (it's reserved), so we set the install location
-# and Meson should handle the rest. However, to be safe, we'll also add extra_cflags.
+# The headers are now installed in the standard include directory
+# with architecture-specific versions (e.g., va-32.h, va-64.h) and
+# architecture-neutral wrapper headers that include the correct version.
 pkg_vars = ['driverdir=' + driverdir]
-
-# Add custom include path for multilib builds via Cflags
-pkg_extra_cflags = []
-if includedir_name != 'include'
-  # Add the custom include directory to Cflags
-  pkg_extra_cflags = ['-I${prefix}/' + includedir_name]
-endif
 
 # Determine pkg-config installation directory for multilib
 # Install .pc files to libdir/pkgconfig to avoid conflicts
@@ -482,7 +587,6 @@ pkg.generate(
   description : 'Userspace Video Acceleration (VA) API (Mesa hasvk bundled version)',
   version : libva_version,
   variables : pkg_vars,
-  extra_cflags : pkg_extra_cflags,
   install_dir : pkg_install_dir,
 )
 
@@ -492,7 +596,6 @@ if WITH_DRM
     name : 'libva-drm',
     description : 'Userspace Video Acceleration (VA) API (DRM/KMS runtime) (Mesa hasvk bundled version)',
     version : libva_version,
-    extra_cflags : pkg_extra_cflags,
     install_dir : pkg_install_dir,
   )
 endif
@@ -503,7 +606,6 @@ if WITH_X11
     name : 'libva-x11',
     description : 'Userspace Video Acceleration (VA) API (X11 runtime) (Mesa hasvk bundled version)',
     version : libva_version,
-    extra_cflags : pkg_extra_cflags,
     install_dir : pkg_install_dir,
   )
 endif
@@ -514,7 +616,6 @@ if WITH_GLX
     name : 'libva-glx',
     description : 'Userspace Video Acceleration (VA) API (GLX runtime) (Mesa hasvk bundled version)',
     version : libva_version,
-    extra_cflags : pkg_extra_cflags,
     install_dir : pkg_install_dir,
   )
 endif
@@ -525,7 +626,6 @@ if WITH_WAYLAND
     name : 'libva-wayland',
     description : 'Userspace Video Acceleration (VA) API (Wayland runtime) (Mesa hasvk bundled version)',
     version : libva_version,
-    extra_cflags : pkg_extra_cflags,
     install_dir : pkg_install_dir,
   )
 endif
