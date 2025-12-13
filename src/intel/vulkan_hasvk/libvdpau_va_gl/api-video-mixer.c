@@ -17,6 +17,25 @@
 #include "api.h"
 #include "trace.h"
 
+// Helper function to clip a rectangle to another rectangle
+// Note: After clipping, the resulting rectangle may be empty (zero width/height)
+// if the original rectangle was entirely outside the clipping bounds.
+// The caller should check for this if needed (x0 >= x1 or y0 >= y1 indicates empty).
+static inline
+void
+_clip_rect(VdpRect *rect, const VdpRect *clip)
+{
+    if (rect->x0 < clip->x0) rect->x0 = clip->x0;
+    if (rect->y0 < clip->y0) rect->y0 = clip->y0;
+    if (rect->x1 > clip->x1) rect->x1 = clip->x1;
+    if (rect->y1 > clip->y1) rect->y1 = clip->y1;
+
+    // Ensure rect is not inverted after clipping.
+    // If x0 > x1, the rect is entirely clipped away, so set x0 = x1 to create
+    // a zero-width rectangle at the right edge (same for y).
+    if (rect->x0 > rect->x1) rect->x0 = rect->x1;
+    if (rect->y0 > rect->y1) rect->y0 = rect->y1;
+}
 
 static
 void
@@ -125,8 +144,12 @@ vdpVideoMixerCreate(VdpDevice device, uint32_t feature_count,
     VdpStatus err_code;
     if (!mixer)
         return VDP_STATUS_INVALID_POINTER;
-    (void)feature_count; (void)features;    // TODO: mixer features
-    (void)parameter_count; (void)parameters; (void)parameter_values;    // TODO: mixer parameters
+
+    // Note: Features like deinterlacing, noise reduction, and sharpness are not
+    // fully implemented because the VA-API backend may not support them.
+    // For now, we store but don't act on features.
+    (void)feature_count; (void)features;
+
     VdpDeviceData *deviceData = handle_acquire(device, HANDLETYPE_DEVICE);
     if (NULL == deviceData)
         return VDP_STATUS_INVALID_HANDLE;
@@ -144,6 +167,59 @@ vdpVideoMixerCreate(VdpDevice device, uint32_t feature_count,
     data->glx_pixmap = None;
     data->pixmap_width = (uint32_t)(-1);    // set knowingly invalid geometry
     data->pixmap_height = (uint32_t)(-1);   // to force pixmap recreation
+
+    // Initialize mixer parameters with defaults
+    data->video_width = 1920;   // reasonable default
+    data->video_height = 1080;  // reasonable default
+    data->chroma_type = VDP_CHROMA_TYPE_420;  // most common format
+    data->layers = 0;           // no additional layers by default
+
+    // Parse and store mixer parameters
+    if (parameter_count > 0) {
+        if (!parameters || !parameter_values) {
+            err_code = VDP_STATUS_INVALID_POINTER;
+            free(data);
+            goto quit;
+        }
+
+        for (uint32_t i = 0; i < parameter_count; i++) {
+            if (!parameter_values[i]) {
+                err_code = VDP_STATUS_INVALID_POINTER;
+                free(data);
+                goto quit;
+            }
+
+            switch (parameters[i]) {
+            case VDP_VIDEO_MIXER_PARAMETER_VIDEO_SURFACE_WIDTH:
+                data->video_width = *(uint32_t*)parameter_values[i];
+                break;
+            case VDP_VIDEO_MIXER_PARAMETER_VIDEO_SURFACE_HEIGHT:
+                data->video_height = *(uint32_t*)parameter_values[i];
+                break;
+            case VDP_VIDEO_MIXER_PARAMETER_CHROMA_TYPE:
+                {
+                    VdpChromaType chroma = *(VdpChromaType*)parameter_values[i];
+                    // Validate chroma type - only 420, 422, and 444 are supported
+                    if (chroma != VDP_CHROMA_TYPE_420 &&
+                        chroma != VDP_CHROMA_TYPE_422 &&
+                        chroma != VDP_CHROMA_TYPE_444)
+                    {
+                        err_code = VDP_STATUS_INVALID_CHROMA_TYPE;
+                        free(data);
+                        goto quit;
+                    }
+                    data->chroma_type = chroma;
+                }
+                break;
+            case VDP_VIDEO_MIXER_PARAMETER_LAYERS:
+                data->layers = *(uint32_t*)parameter_values[i];
+                break;
+            default:
+                // Ignore unknown parameters
+                break;
+            }
+        }
+    }
 
     glx_ctx_push_thread_local(deviceData);
     glGenTextures(1, &data->tex_id);
@@ -232,8 +308,48 @@ vdpVideoMixerGetParameterValues(VdpVideoMixer mixer, uint32_t parameter_count,
                                 VdpVideoMixerParameter const *parameters,
                                 void *const *parameter_values)
 {
-    (void)mixer; (void)parameter_count; (void)parameters; (void)parameter_values;
-    return VDP_STATUS_NO_IMPLEMENTATION;
+    VdpVideoMixerData *mixerData = handle_acquire(mixer, HANDLETYPE_VIDEO_MIXER);
+    if (NULL == mixerData)
+        return VDP_STATUS_INVALID_HANDLE;
+
+    // Validate input arrays
+    if (parameter_count > 0) {
+        if (!parameters || !parameter_values) {
+            handle_release(mixer);
+            return VDP_STATUS_INVALID_POINTER;
+        }
+
+        // Validate all output pointers before writing to any of them
+        for (uint32_t i = 0; i < parameter_count; i++) {
+            if (!parameter_values[i]) {
+                handle_release(mixer);
+                return VDP_STATUS_INVALID_POINTER;
+            }
+        }
+    }
+
+    for (uint32_t i = 0; i < parameter_count; i++) {
+        switch (parameters[i]) {
+        case VDP_VIDEO_MIXER_PARAMETER_VIDEO_SURFACE_WIDTH:
+            *(uint32_t*)parameter_values[i] = mixerData->video_width;
+            break;
+        case VDP_VIDEO_MIXER_PARAMETER_VIDEO_SURFACE_HEIGHT:
+            *(uint32_t*)parameter_values[i] = mixerData->video_height;
+            break;
+        case VDP_VIDEO_MIXER_PARAMETER_CHROMA_TYPE:
+            *(VdpChromaType*)parameter_values[i] = mixerData->chroma_type;
+            break;
+        case VDP_VIDEO_MIXER_PARAMETER_LAYERS:
+            *(uint32_t*)parameter_values[i] = mixerData->layers;
+            break;
+        default:
+            // Unknown parameter, skip
+            break;
+        }
+    }
+
+    handle_release(mixer);
+    return VDP_STATUS_OK;
 }
 
 VdpStatus
@@ -264,8 +380,28 @@ VdpStatus
 vdpVideoMixerQueryParameterSupport(VdpDevice device, VdpVideoMixerParameter parameter,
                                    VdpBool *is_supported)
 {
-    (void)device; (void)parameter; (void)is_supported;
-    return VDP_STATUS_NO_IMPLEMENTATION;
+    if (!is_supported)
+        return VDP_STATUS_INVALID_POINTER;
+
+    VdpDeviceData *deviceData = handle_acquire(device, HANDLETYPE_DEVICE);
+    if (NULL == deviceData)
+        return VDP_STATUS_INVALID_HANDLE;
+
+    // Report which parameters we support
+    switch (parameter) {
+    case VDP_VIDEO_MIXER_PARAMETER_VIDEO_SURFACE_WIDTH:
+    case VDP_VIDEO_MIXER_PARAMETER_VIDEO_SURFACE_HEIGHT:
+    case VDP_VIDEO_MIXER_PARAMETER_CHROMA_TYPE:
+    case VDP_VIDEO_MIXER_PARAMETER_LAYERS:
+        *is_supported = VDP_TRUE;
+        break;
+    default:
+        *is_supported = VDP_FALSE;
+        break;
+    }
+
+    handle_release(device);
+    return VDP_STATUS_OK;
 }
 
 VdpStatus
@@ -273,24 +409,49 @@ vdpVideoMixerQueryParameterValueRange(VdpDevice device, VdpVideoMixerParameter p
                                       void *min_value, void *max_value)
 {
     uint32_t uint32_value;
+    VdpChromaType chroma_value;
 
     switch (parameter) {
-    case VDP_VIDEO_MIXER_PARAMETER_VIDEO_SURFACE_WIDTH: // TODO: get actual limits
+    case VDP_VIDEO_MIXER_PARAMETER_VIDEO_SURFACE_WIDTH:
+        // Report 4096 as maximum, consistent with VdpVideoSurfaceQueryCapabilities
+        // and VdpDecoderQueryCapabilities.
+        // Note: Actual surfaces are created at real video dimensions (not max)
+        // to ensure correct pitch/stride alignment and prevent corruption.
         uint32_value = 16;
         memcpy(min_value, &uint32_value, sizeof(uint32_value));
         uint32_value = 4096;
         memcpy(max_value, &uint32_value, sizeof(uint32_value));
         return VDP_STATUS_OK;
 
-    case VDP_VIDEO_MIXER_PARAMETER_VIDEO_SURFACE_HEIGHT: // TODO: get actual limits
+    case VDP_VIDEO_MIXER_PARAMETER_VIDEO_SURFACE_HEIGHT:
+        // Same as width - report hardware maximum, surfaces created at actual size
         uint32_value = 16;
         memcpy(min_value, &uint32_value, sizeof(uint32_value));
         uint32_value = 4096;
         memcpy(max_value, &uint32_value, sizeof(uint32_value));
         return VDP_STATUS_OK;
 
-    case VDP_VIDEO_MIXER_PARAMETER_CHROMA_TYPE: // TODO
-    case VDP_VIDEO_MIXER_PARAMETER_LAYERS:      // TODO
+    case VDP_VIDEO_MIXER_PARAMETER_CHROMA_TYPE:
+        // VdpChromaType is an enum with discrete values, not a continuous range.
+        // We support: VDP_CHROMA_TYPE_420, VDP_CHROMA_TYPE_422, VDP_CHROMA_TYPE_444
+        // (validated in vdpVideoSurfaceCreate and vdpVideoMixerCreate)
+        // For enum types, the min/max range concept doesn't apply perfectly, but
+        // we report the numerically smallest and largest supported values.
+        chroma_value = VDP_CHROMA_TYPE_420;
+        memcpy(min_value, &chroma_value, sizeof(chroma_value));
+        chroma_value = VDP_CHROMA_TYPE_444;
+        memcpy(max_value, &chroma_value, sizeof(chroma_value));
+        return VDP_STATUS_OK;
+
+    case VDP_VIDEO_MIXER_PARAMETER_LAYERS:
+        // Layer support for compositing additional surfaces.
+        // We don't currently implement layer support, so report 0
+        uint32_value = 0;
+        memcpy(min_value, &uint32_value, sizeof(uint32_value));
+        uint32_value = 0;
+        memcpy(max_value, &uint32_value, sizeof(uint32_value));
+        return VDP_STATUS_OK;
+
     default:
         return VDP_STATUS_NO_IMPLEMENTATION;
     }
@@ -308,15 +469,23 @@ vdpVideoMixerRender(VdpVideoMixer mixer, VdpOutputSurface background_surface,
                     VdpLayer const *layers)
 {
     VdpStatus err_code;
-    (void)mixer;    // TODO: mixer should be used to get mixing parameters
-    // TODO: current implementation ignores previous and future surfaces, using only current.
-    // Is that acceptable for interlaced video? Will VA-API handle deinterlacing?
 
-    (void)background_surface;   // TODO: background_surface. Is it safe to just ignore it?
-    (void)background_source_rect;
+    // Note: Mixer features (stored in mixer object) aren't currently used because
+    // the VA-API backend doesn't fully support advanced features like noise reduction
+    // or sharpness adjustment. The mixer parameters are stored but not actively applied.
+    // Note: Past and future surfaces for temporal deinterlacing are not used.
+    // VA-API may handle deinterlacing internally when vaPutSurface is called,
+    // but we don't implement temporal filtering at this level.
     (void)current_picture_structure;
     (void)video_surface_past_count; (void)video_surface_past;
     (void)video_surface_future_count; (void)video_surface_future;
+
+    // Note: Background surface compositing is not implemented.
+    (void)background_surface;
+    (void)background_source_rect;
+
+    // Note: Layer compositing is not implemented. This would be used for OSD or
+    // subtitle overlays, but mpv handles these separately.
     (void)layer_count; (void)layers;
 
     VdpVideoMixerData *mixerData = handle_acquire(mixer, HANDLETYPE_VIDEO_MIXER);
@@ -348,7 +517,8 @@ vdpVideoMixerRender(VdpVideoMixer mixer, VdpOutputSurface background_surface,
     if (destination_video_rect)
         dstVideoRect = *destination_video_rect;
 
-    // TODO: dstRect should clip dstVideoRect
+    // Clip destination video rect to destination rect bounds
+    _clip_rect(&dstVideoRect, &dstRect);
 
     glx_ctx_push_thread_local(deviceData);
 

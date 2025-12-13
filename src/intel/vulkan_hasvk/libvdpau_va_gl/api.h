@@ -77,6 +77,12 @@ typedef struct {
     Pixmap          pixmap;             ///< target pixmap for vaPutSurface
     GLXPixmap       glx_pixmap;         ///< associated glx pixmap for texture-from-pixmap
     GLuint          tex_id;             ///< texture for texture-from-pixmap
+
+    // Mixer parameters (stored during creation)
+    uint32_t        video_width;        ///< video surface width parameter
+    uint32_t        video_height;       ///< video surface height parameter
+    VdpChromaType   chroma_type;        ///< chroma type parameter
+    uint32_t        layers;             ///< number of layers parameter
 } VdpVideoMixerData;
 
 /** @brief VdpOutputSurface object parameters */
