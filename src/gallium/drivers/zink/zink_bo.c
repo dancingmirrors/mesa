@@ -299,13 +299,23 @@ bo_create_internal(struct zink_screen *screen,
 
    VkResult ret = VKSCR(AllocateMemory)(screen->dev, &mai, NULL, &bo->mem);
    if (!zink_screen_handle_vkresult(screen, ret)) {
-      mesa_loge("zink: couldn't allocate memory: heap=%u size=%" PRIu64, heap, size);
-      if (zink_debug & ZINK_DEBUG_MEM) {
-         zink_debug_mem_print_stats(screen);
-         /* abort with mem debug to allow debugging */
-         abort();
+      /* Try to reclaim memory from buffer managers and retry allocation.
+       * Retry even if cleanup didn't free anything, as it may help with fragmentation.
+       */
+      if (ret == VK_ERROR_OUT_OF_DEVICE_MEMORY) {
+         clean_up_buffer_managers(screen);
+         ret = VKSCR(AllocateMemory)(screen->dev, &mai, NULL, &bo->mem);
       }
-      goto fail;
+
+      if (!zink_screen_handle_vkresult(screen, ret)) {
+         mesa_loge("zink: couldn't allocate memory: heap=%u size=%" PRIu64, heap, size);
+         if (zink_debug & ZINK_DEBUG_MEM) {
+            zink_debug_mem_print_stats(screen);
+            /* abort with mem debug to allow debugging */
+            abort();
+         }
+         goto fail;
+      }
    }
 
    VkImportMemoryHostPointerInfoEXT *hpi = vk_find_struct(&mai, IMPORT_MEMORY_HOST_POINTER_INFO_EXT);
