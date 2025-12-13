@@ -1606,8 +1606,10 @@ zink_destroy_screen(struct pipe_screen *pscreen)
    if (screen->fence)
       VKSCR(DestroyFence)(screen->dev, screen->fence, NULL);
 
-   if (util_queue_is_initialized(&screen->flush_queue))
+   if (util_queue_is_initialized(&screen->flush_queue)) {
+      util_queue_finish(&screen->flush_queue);
       util_queue_destroy(&screen->flush_queue);
+   }
 
    while (util_dynarray_contains(&screen->semaphores, VkSemaphore))
       VKSCR(DestroySemaphore)(screen->dev, util_dynarray_pop(&screen->semaphores, VkSemaphore), NULL);

@@ -2922,6 +2922,16 @@ anv_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
 
    struct anv_physical_device *pdevice = device->physical;
 
+   if (INTEL_DEBUG(DEBUG_PERF))
+      fprintf(stderr, "anv_DestroyDevice: Starting device destruction\n");
+
+   /* Wait for all pending operations to complete before destroying. */
+   if (INTEL_DEBUG(DEBUG_PERF))
+      fprintf(stderr, "anv_DestroyDevice: Waiting for device idle\n");
+   vk_common_DeviceWaitIdle(_device);
+   if (INTEL_DEBUG(DEBUG_PERF))
+      fprintf(stderr, "anv_DestroyDevice: Device idle complete\n");
+
    anv_device_utrace_finish(device);
 
    anv_device_finish_blorp(device);
@@ -2961,12 +2971,14 @@ anv_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
       util_vma_heap_finish(&device->vma_lo);
    }
 
-   pthread_mutex_destroy(&device->vdpau_mutex);
-   pthread_mutex_destroy(&device->mutex);
-
+   /* Finish queues first to flush any pending VDPAU operations */
+   if (INTEL_DEBUG(DEBUG_PERF))
+      fprintf(stderr, "anv_DestroyDevice: Finishing queues\n");
    for (uint32_t i = 0; i < device->queue_count; i++)
       anv_queue_finish(&device->queues[i]);
    vk_free(&device->vk.alloc, device->queues);
+   if (INTEL_DEBUG(DEBUG_PERF))
+      fprintf(stderr, "anv_DestroyDevice: Queues finished\n");
 
    intel_gem_destroy_context(device->fd, device->context_id);
 
@@ -2978,19 +2990,11 @@ anv_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
       }
    }
 
-   /* Cleanup VDPAU resources if initialized */
+    /* We intentionally do not call vdp_device_destroy() here to avoid a potential deadlock. */
 #ifdef HAVE_VDPAU
    if (device->vdp_device != (uint32_t)-1) {
-      /* Get device destroy function and call it */
-      VdpDeviceDestroy *vdp_device_destroy = NULL;
-      if (device->vdp_get_proc_address) {
-         typedef VdpStatus (*GetProcAddress)(uint32_t, uint32_t, void**);
-         GetProcAddress get_proc = (GetProcAddress)device->vdp_get_proc_address;
-         get_proc(device->vdp_device, VDP_FUNC_ID_DEVICE_DESTROY, (void**)&vdp_device_destroy);
-         if (vdp_device_destroy) {
-            vdp_device_destroy(device->vdp_device);
-         }
-      }
+      if (INTEL_DEBUG(DEBUG_PERF))
+         fprintf(stderr, "anv_DestroyDevice: Skipping VDPAU device destruction (will be cleaned up by OS)\n");
       device->vdp_device = (uint32_t)-1;
    }
 
@@ -3013,6 +3017,10 @@ anv_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
       device->libX11 = NULL;
    }
 #endif
+
+   /* Destroy mutexes after all resources that might use them */
+   pthread_mutex_destroy(&device->vdpau_mutex);
+   pthread_mutex_destroy(&device->mutex);
 
    close(device->fd);
 

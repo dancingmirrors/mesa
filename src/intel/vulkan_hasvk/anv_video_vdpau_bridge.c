@@ -1743,7 +1743,11 @@ anv_vdpau_execute_deferred_decodes(struct anv_device *device,
     * 2. libvdpau-va-gl has internal state that can race
     * 3. VA-API (used by libvdpau-va-gl) serializes operations internally anyway
     */
+   if (INTEL_DEBUG(DEBUG_PERF))
+      fprintf(stderr, "anv_vdpau_execute_deferred_decodes: Acquiring vdpau_mutex (frames=%u)\n", frames_to_process);
    pthread_mutex_lock(&device->vdpau_mutex);
+   if (INTEL_DEBUG(DEBUG_PERF))
+      fprintf(stderr, "anv_vdpau_execute_deferred_decodes: Acquired vdpau_mutex\n");
 
    /* Phase 1: Submit decode operations to VA-API
     * This allows VA-API to pipeline multiple decodes on the GPU instead of
@@ -1789,10 +1793,16 @@ anv_vdpau_execute_deferred_decodes(struct anv_device *device,
     * operates on different surfaces/images. This is critical for 4K video
     * performance where the copy operation is expensive.
     */
+   if (INTEL_DEBUG(DEBUG_PERF))
+      fprintf(stderr, "anv_vdpau_execute_deferred_decodes: Releasing vdpau_mutex\n");
    pthread_mutex_unlock(&device->vdpau_mutex);
+   if (INTEL_DEBUG(DEBUG_PERF))
+      fprintf(stderr, "anv_vdpau_execute_deferred_decodes: Released vdpau_mutex, starting copy phase\n");
 
    /* Early exit if decode submission failed */
    if (result != VK_SUCCESS) {
+      if (INTEL_DEBUG(DEBUG_PERF))
+         fprintf(stderr, "anv_vdpau_execute_deferred_decodes: Early exit due to decode error\n");
       goto cleanup;
    }
 
@@ -1885,6 +1895,9 @@ cleanup:
                              ANV_PIPE_TEXTURE_CACHE_INVALIDATE_BIT |
                              ANV_PIPE_DATA_CACHE_FLUSH_BIT,
                              "VDPAU decode batch cache coherency");
+
+   if (INTEL_DEBUG(DEBUG_PERF))
+      fprintf(stderr, "anv_vdpau_execute_deferred_decodes: Completed successfully\n");
 
    return result;
 }

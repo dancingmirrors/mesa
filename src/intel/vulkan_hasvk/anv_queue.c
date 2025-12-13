@@ -80,18 +80,27 @@ anv_QueueWaitIdle(VkQueue _queue)
    VK_FROM_HANDLE(anv_queue, queue, _queue);
    struct anv_device *device = queue->device;
 
+   if (INTEL_DEBUG(DEBUG_PERF))
+      fprintf(stderr, "anv_QueueWaitIdle: Starting wait on queue %p\n", (void*)queue);
+
    if (vk_device_is_lost(&device->vk))
       return VK_ERROR_DEVICE_LOST;
 
     /* Flush any pending work in the queue */
+   if (INTEL_DEBUG(DEBUG_PERF))
+      fprintf(stderr, "anv_QueueWaitIdle: Flushing device\n");
    VkResult result = vk_device_flush(&device->vk);
    if (result != VK_SUCCESS)
       return result;
 
    /* Now we wait */
+   if (INTEL_DEBUG(DEBUG_PERF))
+      fprintf(stderr, "anv_QueueWaitIdle: Calling vk_common_QueueWaitIdle\n");
    result = vk_common_QueueWaitIdle(_queue);
    if (result != VK_SUCCESS)
       return result;
+   if (INTEL_DEBUG(DEBUG_PERF))
+      fprintf(stderr, "anv_QueueWaitIdle: Wait completed successfully\n");
 
    /* Check device status after waiting */
    VkResult device_status = vk_device_check_status(&device->vk);
