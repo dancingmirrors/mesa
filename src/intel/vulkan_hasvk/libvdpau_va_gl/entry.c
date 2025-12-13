@@ -66,14 +66,6 @@ initialize_quirks(void)
     global.quirks.log_stride = 0;
     global.quirks.disable_compositor_check = 0;
 
-    /* Check INTEL_DEBUG environment variable for hasvk flag */
-    const char *intel_debug = getenv("INTEL_DEBUG");
-    if (intel_debug && strstr(intel_debug, "hasvk")) {
-        /* Enable stride and slice order logging when INTEL_DEBUG contains hasvk */
-        global.quirks.log_stride = 1;
-        global.quirks.log_slice_order = 1;
-    }
-
     const char *value = getenv("VDPAU_QUIRKS");
     if (!value)
         return;

@@ -222,18 +222,6 @@ anv_GetPhysicalDeviceVideoFormatPropertiesKHR(VkPhysicalDevice physicalDevice,
       }
    }
 
-   if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-      fprintf(stderr, "hasvk Video: GetPhysicalDeviceVideoFormatPropertiesKHR called\n");
-      fprintf(stderr, "  profile_list = %p\n", (void*)profile_list);
-      if (profile_list) {
-         fprintf(stderr, "  profileCount = %u\n", profile_list->profileCount);
-         fprintf(stderr, "  pProfiles = %p\n", (void*)profile_list->pProfiles);
-      }
-      fprintf(stderr, "  is_h264_decode = %s\n", is_h264_decode ? "true" : "false");
-      fprintf(stderr, "  returning imageTiling = %s\n",
-              is_h264_decode ? "LINEAR" : "OPTIMAL");
-   }
-
    pVideoFormatProperties[0].sType =
       VK_STRUCTURE_TYPE_VIDEO_FORMAT_PROPERTIES_KHR;
    pVideoFormatProperties[0].pNext = NULL;

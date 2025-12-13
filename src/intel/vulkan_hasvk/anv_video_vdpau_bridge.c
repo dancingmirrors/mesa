@@ -584,14 +584,6 @@ anv_vdpau_add_surface_mapping(struct anv_vdpau_session *session,
    /* Destroy the LRU surface before replacing it */
    if (session->surface_map[lru_index].vdp_surface != VDP_INVALID_HANDLE &&
        session->vdp_video_surface_destroy) {
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "hasvk Video: Surface cache full (%u/%u), evicting LRU surface %u "
-                 "(frame %"PRIu64" -> %"PRIu64", age=%"PRIu64" frames)\n",
-                 session->surface_map_size, session->surface_map_capacity,
-                 session->surface_map[lru_index].vdp_surface,
-                 oldest_frame, session->frame_counter,
-                 session->frame_counter - oldest_frame);
-      }
       session->vdp_video_surface_destroy(session->surface_map[lru_index].vdp_surface);
    }
 
@@ -651,9 +643,6 @@ anv_vdpau_evict_old_surfaces(struct anv_vdpau_session *session,
    if (session->surface_map_size > 0 &&
        alloc_size / sizeof(uint64_t) != session->surface_map_size) {
       /* Integer overflow detected */
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "hasvk Video: Integer overflow in surface eviction allocation!\n");
-      }
       return;
    }
 
@@ -662,10 +651,6 @@ anv_vdpau_evict_old_surfaces(struct anv_vdpau_session *session,
       /* Memory allocation failed - can't evict surfaces properly.
        * Log error and return since we can't free memory without sorting.
        */
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "hasvk Video: Failed to allocate memory for surface eviction "
-                 "(needed %zu bytes). Cannot free GPU memory!\n", alloc_size);
-      }
       return;
    }
 
@@ -703,12 +688,6 @@ anv_vdpau_evict_old_surfaces(struct anv_vdpau_session *session,
    }
    free(sorted_frames);
 
-   if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-      fprintf(stderr, "hasvk Video: Memory pressure detected! Aggressively evicting old surfaces\n");
-      fprintf(stderr, "  Current cache size: %u, target: %u, threshold frame: %"PRIu64"\n",
-              session->surface_map_size, keep_count, eviction_threshold);
-   }
-
    /* Evict all surfaces older than the threshold */
    uint32_t evicted_count = 0;
    for (uint32_t i = 0; i < session->surface_map_size; ) {
@@ -716,11 +695,6 @@ anv_vdpau_evict_old_surfaces(struct anv_vdpau_session *session,
          /* Destroy this surface */
          if (session->surface_map[i].vdp_surface != VDP_INVALID_HANDLE &&
              session->vdp_video_surface_destroy) {
-            if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-               fprintf(stderr, "  Evicting surface %u (age: %"PRIu64" frames)\n",
-                       session->surface_map[i].vdp_surface,
-                       session->frame_counter - session->surface_map[i].last_used_frame);
-            }
             session->vdp_video_surface_destroy(session->surface_map[i].vdp_surface);
             evicted_count++;
          }
@@ -734,11 +708,6 @@ anv_vdpau_evict_old_surfaces(struct anv_vdpau_session *session,
       } else {
          i++;
       }
-   }
-
-   if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-      fprintf(stderr, "hasvk Video: Evicted %u surfaces, new cache size: %u\n",
-              evicted_count, session->surface_map_size);
    }
 }
 
@@ -928,16 +897,6 @@ anv_vdpau_copy_surface_to_image_dmabuf(struct anv_device *device,
       return anv_vdpau_copy_surface_to_image(device, session, surface, image);
    }
 
-   if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-      fprintf(stderr, "hasvk Video DMA-buf: Pitch comparison\n");
-      fprintf(stderr, "  Y plane:  src_pitch=%u  dst_pitch=%u  width=%u\n",
-              pitches[0], y_surface->isl.row_pitch_B, width);
-      fprintf(stderr, "  UV plane: src_pitch=%u  dst_pitch=%u  width=%u\n",
-              pitches[1], uv_surface->isl.row_pitch_B, width);
-      fprintf(stderr, "  Y tiling: %u  UV tiling: %u\n",
-              y_surface->isl.tiling, uv_surface->isl.tiling);
-   }
-
    /* Calculate destination addresses in the target image */
    uint64_t y_offset = dst_binding->address.offset + y_surface->memory_range.offset;
    uint64_t uv_offset = dst_binding->address.offset + uv_surface->memory_range.offset;
@@ -1061,15 +1020,6 @@ anv_vdpau_copy_surface_to_image_dmabuf(struct anv_device *device,
           * a specific pattern (128x32 tiles). Copying only the width would
           * break the tile structure and cause corruption.
           */
-         if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-            fprintf(stderr, "hasvk Video DMA-buf: Using direct tiled-to-tiled copy (pitch match, GTT cached)\n");
-            fprintf(stderr, "  Image dimensions: %ux%u\n",
-                    image->vk.extent.width, image->vk.extent.height);
-            fprintf(stderr, "  Y surface: pitch=%u, allocated=%"PRIu64" bytes\n",
-                    y_surface->isl.row_pitch_B, y_surface->memory_range.size);
-            fprintf(stderr, "  UV surface: pitch=%u, allocated=%"PRIu64" bytes\n",
-                    uv_surface->isl.row_pitch_B, uv_surface->memory_range.size);
-         }
 
          /* For Y-tiled surfaces, we must copy the FULL allocated surface size
           * (memory_range.size), not just pitch × height. ISL allocates surfaces
@@ -1089,20 +1039,9 @@ anv_vdpau_copy_surface_to_image_dmabuf(struct anv_device *device,
          size_t y_copy_size = y_surface->memory_range.size;
          size_t uv_copy_size = uv_surface->memory_range.size;
 
-         if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-            fprintf(stderr, "  Y copy: %zu bytes (full allocated surface)\n", y_copy_size);
-            fprintf(stderr, "  UV copy: %zu bytes (full allocated surface)\n", uv_copy_size);
-         }
-
          /* Direct bulk copy - fastest path for matching pitch/tiling */
          memcpy(dst_y, src_y, y_copy_size);
          memcpy(dst_uv, src_uv, uv_copy_size);
-
-         if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-            fprintf(stderr, "hasvk Video DMA-buf: Direct tiled copy completed\n");
-            fprintf(stderr, "  Y: %zu bytes copied\n", y_copy_size);
-            fprintf(stderr, "  UV: %zu bytes copied\n", uv_copy_size);
-         }
       } else {
          /* SLOW PATH: Pitch mismatch - use tiled->linear->tiled conversion
           * This handles cases where VA-API and Vulkan use different pitches
@@ -1796,12 +1735,6 @@ anv_vdpau_execute_deferred_decodes(struct anv_device *device,
       /* Queue overflow - drop oldest frames, keep newest ones */
       frames_to_process = max_frames;
       skip_count = total_decode_count - frames_to_process;
-
-      if (unlikely(INTEL_DEBUG(DEBUG_HASVK))) {
-         fprintf(stderr, "hasvk Video: Frame drop - queue overflow! "
-                 "Total=%u, Processing=%u, Dropping=%u oldest frames\n",
-                 total_decode_count, frames_to_process, skip_count);
-      }
    }
 
    /* Acquire VDPAU mutex to serialize decode operations across all sessions.
