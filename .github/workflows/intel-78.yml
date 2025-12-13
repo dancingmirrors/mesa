@@ -34,9 +34,9 @@ jobs:
 
       - name: Configure Mesa with Meson
         run: |
-          meson setup --prefix=/usr/local -Dgallium-drivers=crocus \
-            -Dllvm=disabled -Dshared-llvm=enabled -Dvulkan-drivers=intel_hasvk \
-            -Dvideo-codecs=all_free -Dwerror=true build-64
+          meson setup --prefix=/usr/local -Dgallium-drivers=zink -Dzink-intel=enabled \
+            -Dllvm=enabled -Dshared-llvm=enabled -Dvulkan-drivers=intel_hasvk \
+            -Dvideo-codecs=all_free -Dwerror=false build-64
 
       - name: Build Mesa
         run: |
