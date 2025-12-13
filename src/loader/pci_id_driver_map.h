@@ -54,9 +54,14 @@ static const struct {
    int num_chips_ids;
    bool (*predicate)(int fd, const char *driver);
 } driver_map[] = {
+#ifdef USE_ZINK_FOR_INTEL
+   /* When zink-intel is enabled, use zink for all Intel GPUs */
+   { 0x8086, "zink", NULL, -1 },
+#else
    { 0x8086, "i915", i915_chip_ids, ARRAY_SIZE(i915_chip_ids) },
    { 0x8086, "crocus", crocus_chip_ids, ARRAY_SIZE(crocus_chip_ids) },
    { 0x8086, "iris", NULL, -1, iris_predicate },
+#endif
    { 0x1002, "r300", r300_chip_ids, ARRAY_SIZE(r300_chip_ids) },
    { 0x1002, "r600", r600_chip_ids, ARRAY_SIZE(r600_chip_ids) },
    { 0x1002, "radeonsi", NULL, -1 },

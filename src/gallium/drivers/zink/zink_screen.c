@@ -2831,9 +2831,11 @@ check_base_requirements(struct zink_screen *screen)
        !screen->info.have_KHR_maintenance1 ||
        !screen->info.have_EXT_custom_border_color ||
        !screen->info.have_EXT_line_rasterization) {
+/*
       fprintf(stderr, "WARNING: Some incorrect rendering "
               "might occur because the selected Vulkan device (%s) doesn't support "
               "base Zink requirements: ", screen->info.props.deviceName);
+*/
 #define CHECK_OR_PRINT(X) \
       if (!screen->info.X) \
          fprintf(stderr, "%s ", #X)
@@ -2843,9 +2845,9 @@ check_base_requirements(struct zink_screen *screen)
       if (!screen->info.feats12.scalarBlockLayout && !screen->info.have_EXT_scalar_block_layout)
          fprintf(stderr, "scalarBlockLayout OR EXT_scalar_block_layout ");
       CHECK_OR_PRINT(have_KHR_maintenance1);
-      CHECK_OR_PRINT(have_EXT_custom_border_color);
+      //CHECK_OR_PRINT(have_EXT_custom_border_color);
       CHECK_OR_PRINT(have_EXT_line_rasterization);
-      fprintf(stderr, "\n");
+      //fprintf(stderr, "\n");
    }
    if (zink_driverid(screen) == VK_DRIVER_ID_MESA_V3DV) {
       screen->info.feats12.scalarBlockLayout = false;

@@ -714,6 +714,14 @@ option(
 )
 
 option(
+  'zink-intel',
+  type : 'feature',
+  value : 'auto',
+  description : 'Use Zink as the GL/EGL provider for Intel GPUs instead of ' +
+                'native drivers on x86/x86_64 architectures.'
+)
+
+option(
   'video-codecs',
   type : 'array',
   value : ['all_free'],

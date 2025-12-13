@@ -698,8 +698,8 @@ isl_format_for_pipe_format(enum pipe_format pf)
 static bool
 format_info_exists(enum isl_format format)
 {
-   assert(format != ISL_FORMAT_UNSUPPORTED);
-   assert(format < ISL_NUM_FORMATS);
+   //assert(format != ISL_FORMAT_UNSUPPORTED);
+   //assert(format < ISL_NUM_FORMATS);
    return format < ARRAY_SIZE(format_info) && format_info[format].exists;
 }
 

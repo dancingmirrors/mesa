@@ -198,6 +198,13 @@ endif
 
 with_amdgpu_virtio = get_option('amdgpu-virtio')
 
+# Handle zink-intel option
+with_zink_intel = get_option('zink-intel') \
+  .disable_if(not ['x86', 'x86_64'].contains(host_machine.cpu_family()),
+              error_message : 'zink-intel is only supported on x86 and x86_64 architectures') \
+  .require(gallium_drivers.contains('zink'),
+           error_message : 'zink-intel requires zink to be in gallium-drivers')
+
 with_gallium_radeonsi = gallium_drivers.contains('radeonsi')
 with_gallium_r300 = gallium_drivers.contains('r300')
 with_gallium_r600 = gallium_drivers.contains('r600')
@@ -224,6 +231,12 @@ with_gallium_ethosu = gallium_drivers.contains('ethosu')
 foreach gallium_driver : gallium_drivers
   pre_args += '-DHAVE_@0@'.format(gallium_driver.to_upper())
 endforeach
+
+# Add define for zink-intel if enabled
+if with_zink_intel.enabled()
+  pre_args += '-DUSE_ZINK_FOR_INTEL'
+endif
+
 draw_with_llvm = with_llvm.allowed() and get_option('draw-use-llvm')
 with_llvm = with_llvm \
   .enable_if(with_gallium_i915, error_message : 'i915 Gallium driver requires LLVM for vertex shaders') \
@@ -247,7 +260,7 @@ with_gallium_kmsro = system_has_kms_drm and [
   with_gallium_panfrost,
   with_gallium_v3d,
   with_gallium_vc4,
-  with_gallium_zink,
+  with_gallium_zink and not with_zink_intel.enabled(),
 ].contains(true)
 
 _vulkan_drivers = get_option('vulkan-drivers')
