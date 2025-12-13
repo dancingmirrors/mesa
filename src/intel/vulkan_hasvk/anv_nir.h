@@ -21,8 +21,6 @@
  * IN THE SOFTWARE.
  */
 
-/* *INDENT-OFF* */
-
 #ifndef ANV_NIR_H
 #define ANV_NIR_H
 
@@ -30,73 +28,64 @@
 #include "anv_private.h"
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
 
-   bool anv_nir_lower_multiview(nir_shader * shader, uint32_t view_mask);
+bool anv_nir_lower_multiview(nir_shader *shader, uint32_t view_mask);
 
-   bool anv_nir_lower_ycbcr_textures(nir_shader * shader,
-                                     const struct anv_pipeline_layout
-                                     *layout);
+bool anv_nir_lower_ycbcr_textures(nir_shader *shader,
+                                  const struct anv_pipeline_layout *layout);
 
-   static inline nir_address_format
-      anv_nir_ssbo_addr_format(const struct anv_physical_device *pdevice,
-                               enum elk_robustness_flags robust_flags)
-   {
-      if (pdevice->has_a64_buffer_access) {
-         if (robust_flags & ELK_ROBUSTNESS_SSBO)
-            return nir_address_format_64bit_bounded_global;
-         else
-            return nir_address_format_64bit_global_32bit_offset;
-      }
+static inline nir_address_format
+anv_nir_ssbo_addr_format(const struct anv_physical_device *pdevice,
+                         enum elk_robustness_flags robust_flags)
+{
+   if (pdevice->has_a64_buffer_access) {
+      if (robust_flags & ELK_ROBUSTNESS_SSBO)
+         return nir_address_format_64bit_bounded_global;
       else
-      {
-         return nir_address_format_32bit_index_offset;
-      }
+         return nir_address_format_64bit_global_32bit_offset;
+   } else {
+      return nir_address_format_32bit_index_offset;
    }
+}
 
-   static inline nir_address_format
-      anv_nir_ubo_addr_format(const struct anv_physical_device *pdevice,
-                              enum elk_robustness_flags robust_flags)
-   {
-      if (pdevice->has_a64_buffer_access) {
-         if (robust_flags & ELK_ROBUSTNESS_UBO)
-            return nir_address_format_64bit_bounded_global;
-         else
-            return nir_address_format_64bit_global_32bit_offset;
-      }
-      else {
-         return nir_address_format_32bit_index_offset;
-      }
+static inline nir_address_format
+anv_nir_ubo_addr_format(const struct anv_physical_device *pdevice,
+                        enum elk_robustness_flags robust_flags)
+{
+   if (pdevice->has_a64_buffer_access) {
+      if (robust_flags & ELK_ROBUSTNESS_UBO)
+         return nir_address_format_64bit_bounded_global;
+      else
+         return nir_address_format_64bit_global_32bit_offset;
+   } else {
+      return nir_address_format_32bit_index_offset;
    }
+}
 
-   bool anv_nir_lower_ubo_loads(nir_shader * shader);
+bool anv_nir_lower_ubo_loads(nir_shader *shader);
 
-   bool anv_nir_apply_pipeline_layout(nir_shader * shader,
-                                      const struct anv_physical_device
-                                      *pdevice,
-                                      enum elk_robustness_flags robust_flags,
-                                      const struct anv_pipeline_layout
-                                      *layout,
-                                      struct anv_pipeline_bind_map *map);
+bool anv_nir_apply_pipeline_layout(nir_shader *shader,
+                                   const struct anv_physical_device *pdevice,
+                                   enum elk_robustness_flags robust_flags,
+                                   const struct anv_pipeline_layout *layout,
+                                   struct anv_pipeline_bind_map *map);
 
-   bool anv_nir_compute_push_layout(nir_shader * nir,
-                                    const struct anv_physical_device *pdevice,
-                                    enum elk_robustness_flags robust_flags,
-                                    struct elk_stage_prog_data *prog_data,
-                                    struct anv_pipeline_bind_map *map,
-                                    void *mem_ctx);
+bool anv_nir_compute_push_layout(nir_shader *nir,
+                                 const struct anv_physical_device *pdevice,
+                                 enum elk_robustness_flags robust_flags,
+                                 struct elk_stage_prog_data *prog_data,
+                                 struct anv_pipeline_bind_map *map,
+                                 void *mem_ctx);
 
-   void anv_nir_validate_push_layout(struct elk_stage_prog_data *prog_data,
-                                     struct anv_pipeline_bind_map *map);
+void anv_nir_validate_push_layout(struct elk_stage_prog_data *prog_data,
+                                  struct anv_pipeline_bind_map *map);
 
-   bool anv_nir_add_base_work_group_id(nir_shader * shader);
+bool anv_nir_add_base_work_group_id(nir_shader *shader);
 
 #ifdef __cplusplus
 }
 #endif
 
-
-/* *INDENT-ON* */
 #endif /* ANV_NIR_H */

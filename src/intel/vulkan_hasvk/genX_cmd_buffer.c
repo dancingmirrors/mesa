@@ -43,7 +43,7 @@
 
 #include "ds/intel_tracepoints.h"
 
-/* *INDENT-OFF* */
+
 /* We reserve :
  *    - GPR 14 for secondary command buffer returns
  *    - GPR 15 for conditional rendering
@@ -6221,4 +6221,4 @@ void genX(cmd_capture_data)(struct anv_batch *batch,
    mi_builder_init(&b, device->info, batch);
    mi_memcpy(&b, dst_addr, src_addr, size_B);
 }
-/* *INDENT-ON* */
+

@@ -35,20 +35,17 @@ static bool
 anv_shader_bin_serialize(struct vk_pipeline_cache_object *object,
                          struct blob *blob);
 
-struct vk_pipeline_cache_object *anv_shader_bin_deserialize(struct
-                                                            vk_pipeline_cache
-                                                            *cache,
-                                                            const void
-                                                            *key_data,
-                                                            size_t key_size,
-                                                            struct blob_reader
-                                                            *blob);
+struct vk_pipeline_cache_object *
+anv_shader_bin_deserialize(struct vk_pipeline_cache *cache,
+                           const void *key_data, size_t key_size,
+                           struct blob_reader *blob);
 
 static void
 anv_shader_bin_destroy(struct vk_device *_device,
                        struct vk_pipeline_cache_object *object)
 {
-   struct anv_device *device = container_of(_device, struct anv_device, vk);
+   struct anv_device *device =
+      container_of(_device, struct anv_device, vk);
    struct anv_shader_bin *shader =
       container_of(object, struct anv_shader_bin, base);
 
@@ -75,28 +72,27 @@ anv_shader_bin_create(struct anv_device *device,
                       const void *kernel_data, uint32_t kernel_size,
                       const struct elk_stage_prog_data *prog_data_in,
                       uint32_t prog_data_size,
-                      const struct elk_compile_stats *stats,
-                      uint32_t num_stats, const nir_xfb_info *xfb_info_in,
+                      const struct elk_compile_stats *stats, uint32_t num_stats,
+                      const nir_xfb_info *xfb_info_in,
                       const struct anv_pipeline_bind_map *bind_map)
 {
    VK_MULTIALLOC(ma);
    VK_MULTIALLOC_DECL(&ma, struct anv_shader_bin, shader, 1);
    VK_MULTIALLOC_DECL_SIZE(&ma, void, obj_key_data, key_size);
    VK_MULTIALLOC_DECL_SIZE(&ma, struct elk_stage_prog_data, prog_data,
-                           prog_data_size);
+                                prog_data_size);
    VK_MULTIALLOC_DECL(&ma, struct intel_shader_reloc, prog_data_relocs,
-                      prog_data_in->num_relocs);
-   VK_MULTIALLOC_DECL(&ma, uint32_t, prog_data_param,
-                      prog_data_in->nr_params);
+                           prog_data_in->num_relocs);
+   VK_MULTIALLOC_DECL(&ma, uint32_t, prog_data_param, prog_data_in->nr_params);
 
    VK_MULTIALLOC_DECL_SIZE(&ma, nir_xfb_info, xfb_info,
-                           xfb_info_in == NULL ? 0 :
-                           nir_xfb_info_size(xfb_info_in->output_count));
+                                xfb_info_in == NULL ? 0 :
+                                nir_xfb_info_size(xfb_info_in->output_count));
 
    VK_MULTIALLOC_DECL(&ma, struct anv_pipeline_binding, surface_to_descriptor,
-                      bind_map->surface_count);
+                           bind_map->surface_count);
    VK_MULTIALLOC_DECL(&ma, struct anv_pipeline_binding, sampler_to_descriptor,
-                      bind_map->sampler_count);
+                           bind_map->sampler_count);
 
    if (!vk_multialloc_alloc(&ma, &device->vk.alloc,
                             VK_SYSTEM_ALLOCATION_SCOPE_DEVICE))
@@ -114,7 +110,8 @@ anv_shader_bin_create(struct anv_device *device,
    shader->kernel_size = kernel_size;
 
    uint64_t shader_data_addr = INSTRUCTION_STATE_POOL_MIN_ADDRESS +
-      shader->kernel.offset + prog_data_in->const_data_offset;
+                               shader->kernel.offset +
+                               prog_data_in->const_data_offset;
 
    int rv_count = 0;
    struct intel_shader_reloc_value reloc_values[5];
@@ -153,8 +150,7 @@ anv_shader_bin_create(struct anv_device *device,
       typed_memcpy(xfb_info->outputs, xfb_info_in->outputs,
                    xfb_info_in->output_count);
       shader->xfb_info = xfb_info;
-   }
-   else {
+   } else {
       shader->xfb_info = NULL;
    }
 
@@ -196,8 +192,7 @@ anv_shader_bin_serialize(struct vk_pipeline_cache_object *object,
          nir_xfb_info_size(shader->xfb_info->output_count);
       blob_write_uint32(blob, xfb_info_size);
       blob_write_bytes(blob, shader->xfb_info, xfb_info_size);
-   }
-   else {
+   } else {
       blob_write_uint32(blob, 0);
    }
 
@@ -244,7 +239,7 @@ anv_shader_bin_deserialize(struct vk_pipeline_cache *cache,
           MIN2(sizeof(prog_data), prog_data_size));
    prog_data.base.relocs =
       blob_read_bytes(blob, prog_data.base.num_relocs *
-                      sizeof(prog_data.base.relocs[0]));
+                            sizeof(prog_data.base.relocs[0]));
 
    uint32_t num_stats = blob_read_uint32(blob);
    const struct elk_compile_stats *stats =
@@ -256,32 +251,28 @@ anv_shader_bin_deserialize(struct vk_pipeline_cache *cache,
       xfb_info = blob_read_bytes(blob, xfb_size);
 
    struct anv_pipeline_bind_map bind_map;
-   blob_copy_bytes(blob, bind_map.surface_sha1,
-                   sizeof(bind_map.surface_sha1));
-   blob_copy_bytes(blob, bind_map.sampler_sha1,
-                   sizeof(bind_map.sampler_sha1));
+   blob_copy_bytes(blob, bind_map.surface_sha1, sizeof(bind_map.surface_sha1));
+   blob_copy_bytes(blob, bind_map.sampler_sha1, sizeof(bind_map.sampler_sha1));
    blob_copy_bytes(blob, bind_map.push_sha1, sizeof(bind_map.push_sha1));
    bind_map.surface_count = blob_read_uint32(blob);
    bind_map.sampler_count = blob_read_uint32(blob);
    bind_map.surface_to_descriptor = (void *)
       blob_read_bytes(blob, bind_map.surface_count *
-                      sizeof(*bind_map.surface_to_descriptor));
+                            sizeof(*bind_map.surface_to_descriptor));
    bind_map.sampler_to_descriptor = (void *)
       blob_read_bytes(blob, bind_map.sampler_count *
-                      sizeof(*bind_map.sampler_to_descriptor));
+                            sizeof(*bind_map.sampler_to_descriptor));
    blob_copy_bytes(blob, bind_map.push_ranges, sizeof(bind_map.push_ranges));
 
    if (blob->overrun)
       return NULL;
 
-   struct anv_shader_bin *shader = anv_shader_bin_create(device, stage,
-                                                         key_data, key_size,
-                                                         kernel_data,
-                                                         kernel_size,
-                                                         &prog_data.base,
-                                                         prog_data_size,
-                                                         stats, num_stats,
-                                                         xfb_info, &bind_map);
+   struct anv_shader_bin *shader =
+      anv_shader_bin_create(device, stage,
+                            key_data, key_size,
+                            kernel_data, kernel_size,
+                            &prog_data.base, prog_data_size,
+                            stats, num_stats, xfb_info, &bind_map);
    if (shader == NULL)
       return NULL;
 
@@ -304,7 +295,7 @@ anv_device_search_for_kernel(struct anv_device *device,
                                       &anv_shader_bin_ops, &cache_hit);
    if (user_cache_hit != NULL) {
       *user_cache_hit = object != NULL && cache_hit &&
-         cache != device->default_pipeline_cache;
+                        cache != device->default_pipeline_cache;
    }
    if (object == NULL)
       return NULL;
@@ -329,14 +320,13 @@ anv_device_upload_kernel(struct anv_device *device,
    if (cache == NULL)
       cache = device->default_pipeline_cache;
 
-   struct anv_shader_bin *shader = anv_shader_bin_create(device, stage,
-                                                         key_data, key_size,
-                                                         kernel_data,
-                                                         kernel_size,
-                                                         prog_data,
-                                                         prog_data_size,
-                                                         stats, num_stats,
-                                                         xfb_info, bind_map);
+   struct anv_shader_bin *shader =
+      anv_shader_bin_create(device, stage,
+                            key_data, key_size,
+                            kernel_data, kernel_size,
+                            prog_data, prog_data_size,
+                            stats, num_stats,
+                            xfb_info, bind_map);
    if (shader == NULL)
       return NULL;
 

@@ -45,7 +45,7 @@ anv_gem_close(struct anv_device *device, uint32_t gem_handle)
    close(gem_handle);
 }
 
-void *
+void*
 anv_gem_mmap(struct anv_device *device, uint32_t gem_handle,
              uint64_t offset, uint64_t size, uint32_t flags)
 {
@@ -78,8 +78,7 @@ anv_gem_userptr(struct anv_device *device, void *mem, size_t size)
 }
 
 int
-anv_gem_wait(struct anv_device *device, uint32_t gem_handle,
-             int64_t *timeout_ns)
+anv_gem_wait(struct anv_device *device, uint32_t gem_handle, int64_t *timeout_ns)
 {
    return 0;
 }
@@ -112,8 +111,7 @@ anv_gem_set_caching(struct anv_device *device, uint32_t gem_handle,
 }
 
 int
-anv_gem_set_context_param(int fd, uint32_t context, uint32_t param,
-                          uint64_t value)
+anv_gem_set_context_param(int fd, uint32_t context, uint32_t param, uint64_t value)
 {
    UNREACHABLE("Unused");
 }

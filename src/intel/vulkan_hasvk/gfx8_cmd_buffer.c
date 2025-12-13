@@ -32,7 +32,6 @@
 #include "genxml/gen_macros.h"
 #include "genxml/genX_pack.h"
 
-/* *INDENT-OFF* */
 void
 genX(cmd_buffer_enable_pma_fix)(struct anv_cmd_buffer *cmd_buffer, bool enable)
 {
@@ -448,4 +447,3 @@ genX(cmd_buffer_flush_dynamic_state)(struct anv_cmd_buffer *cmd_buffer)
    vk_dynamic_graphics_state_clear_dirty(&cmd_buffer->vk.dynamic_graphics_state);
    cmd_buffer->state.gfx.dirty = 0;
 }
-/* *INDENT-ON* */

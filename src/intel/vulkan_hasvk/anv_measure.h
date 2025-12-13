@@ -21,8 +21,6 @@
  * USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-/* *INDENT-OFF* */
-
 #ifndef ANV_MEASURE_H
 #define ANV_MEASURE_H
 
@@ -38,7 +36,8 @@ void anv_measure_reset(struct anv_cmd_buffer *cmd_buffer);
 
 void _anv_measure_snapshot(struct anv_cmd_buffer *cmd_buffer,
                            enum intel_measure_snapshot_type type,
-                           const char *event_name, uint32_t count);
+                           const char *event_name,
+                           uint32_t count);
 
 /* ends snapshots before command buffer submission */
 void _anv_measure_endcommandbuffer(struct anv_cmd_buffer *cmd_buffer);
@@ -80,6 +79,4 @@ _anv_measure_add_secondary(struct anv_cmd_buffer *primary,
    if (unlikely(primary->measure)) \
       _anv_measure_add_secondary(primary, secondary)
 
-
-/* *INDENT-ON* */
-#endif /* ANV_MEASURE_H */
+#endif   /* ANV_MEASURE_H */

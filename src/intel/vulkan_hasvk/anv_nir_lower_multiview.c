@@ -37,8 +37,7 @@
  * views and use gl_InstanceId % view_count to compute the actual ViewIndex.
  */
 
-struct lower_multiview_state
-{
+struct lower_multiview_state {
    nir_builder builder;
 
    uint32_t view_mask;
@@ -56,7 +55,8 @@ build_instance_id(struct lower_multiview_state *state)
    if (state->instance_id == NULL) {
       nir_builder *b = &state->builder;
 
-      b->cursor = nir_after_def(state->instance_id_with_views);
+      b->cursor =
+         nir_after_def(state->instance_id_with_views);
 
       /* We use instancing for implementing multiview.  The actual instance id
        * is given by dividing instance_id by the number of views in this
@@ -64,7 +64,7 @@ build_instance_id(struct lower_multiview_state *state)
        */
       state->instance_id =
          nir_idiv(b, state->instance_id_with_views,
-                  nir_imm_int(b, util_bitcount(state->view_mask)));
+                     nir_imm_int(b, util_bitcount(state->view_mask)));
    }
 
    return state->instance_id;
@@ -78,14 +78,14 @@ build_view_index(struct lower_multiview_state *state)
    if (state->view_index == NULL) {
       nir_builder *b = &state->builder;
 
-      b->cursor = nir_after_def(state->instance_id_with_views);
+      b->cursor =
+         nir_after_def(state->instance_id_with_views);
 
       assert(state->view_mask != 0);
       if (util_bitcount(state->view_mask) == 1) {
          /* Set the view index directly. */
          state->view_index = nir_imm_int(b, ffs(state->view_mask) - 1);
-      }
-      else if (state->builder.shader->info.stage == MESA_SHADER_VERTEX) {
+      } else if (state->builder.shader->info.stage == MESA_SHADER_VERTEX) {
          /* We only support 16 viewports */
          assert((state->view_mask & 0xffff0000) == 0);
 
@@ -93,14 +93,14 @@ build_view_index(struct lower_multiview_state *state)
           * id is given by instance_id % view_count.  We then have to convert
           * that to an actual view id.
           */
-         nir_def *compacted = nir_umod_imm(b, state->instance_id_with_views,
-                                           util_bitcount(state->view_mask));
+         nir_def *compacted =
+            nir_umod_imm(b, state->instance_id_with_views,
+                            util_bitcount(state->view_mask));
 
          if (util_is_power_of_two_or_zero(state->view_mask + 1)) {
             /* If we have a full view mask, then compacted is what we want */
             state->view_index = compacted;
-         }
-         else {
+         } else {
             /* Now we define a map from compacted view index to the actual
              * view index that's based on the view_mask.  The map is given by
              * 16 nibbles, each of which is a value from 0 to 15.
@@ -109,7 +109,7 @@ build_view_index(struct lower_multiview_state *state)
             uint32_t i = 0;
             u_foreach_bit(bit, state->view_mask) {
                assert(bit < 16);
-               remap |= (uint64_t) bit << (i++ * 4);
+               remap |= (uint64_t)bit << (i++ * 4);
             }
 
             nir_def *shift = nir_imul_imm(b, compacted, 4);
@@ -120,20 +120,18 @@ build_view_index(struct lower_multiview_state *state)
             nir_def *shifted;
             if (remap <= UINT32_MAX) {
                shifted = nir_ushr(b, nir_imm_int(b, remap), shift);
-            }
-            else {
+            } else {
                nir_def *shifted_low =
                   nir_ushr(b, nir_imm_int(b, remap), shift);
                nir_def *shifted_high =
                   nir_ushr(b, nir_imm_int(b, remap >> 32),
-                           nir_iadd_imm(b, shift, -32));
+                              nir_iadd_imm(b, shift, -32));
                shifted = nir_bcsel(b, nir_ilt_imm(b, shift, 32),
-                                   shifted_low, shifted_high);
+                                      shifted_low, shifted_high);
             }
             state->view_index = nir_iand_imm(b, shifted, 0xf);
          }
-      }
-      else {
+      } else {
          const struct glsl_type *type = glsl_int_type();
          if (b->shader->info.stage == MESA_SHADER_TESS_CTRL ||
              b->shader->info.stage == MESA_SHADER_GEOMETRY)
@@ -161,8 +159,7 @@ static bool
 is_load_view_index(const nir_instr *instr, const void *data)
 {
    return instr->type == nir_instr_type_intrinsic &&
-      nir_instr_as_intrinsic(instr)->intrinsic ==
-      nir_intrinsic_load_view_index;
+          nir_instr_as_intrinsic(instr)->intrinsic == nir_intrinsic_load_view_index;
 }
 
 static nir_def *
@@ -189,14 +186,12 @@ anv_nir_lower_multiview(nir_shader *shader, uint32_t view_mask)
    /* If multiview isn't enabled, just lower the ViewIndex builtin to zero. */
    if (view_mask == 0) {
       return nir_shader_lower_instructions(shader, is_load_view_index,
-                                           replace_load_view_index_with_zero,
-                                           NULL);
+                                           replace_load_view_index_with_zero, NULL);
    }
 
    if (shader->info.stage == MESA_SHADER_FRAGMENT) {
       return nir_shader_lower_instructions(shader, is_load_view_index,
-                                           replace_load_view_index_with_layer_id,
-                                           NULL);
+                                           replace_load_view_index_with_layer_id, NULL);
    }
 
    /* This pass assumes a single entrypoint */

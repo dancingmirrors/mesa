@@ -37,7 +37,6 @@
 #include "vk_log.h"
 #include "vk_render_pass.h"
 
-/* *INDENT-OFF* */
 static uint32_t
 vertex_element_comp_control(enum isl_format format, unsigned comp)
 {
@@ -1966,4 +1965,3 @@ genX(compute_pipeline_emit)(struct anv_compute_pipeline *pipeline)
                                         pipeline->interface_descriptor_data,
                                         &desc);
 }
-/* *INDENT-ON* */

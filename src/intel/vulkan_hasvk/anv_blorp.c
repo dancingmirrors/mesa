@@ -43,7 +43,7 @@ lookup_blorp_shader(struct blorp_batch *batch,
    anv_shader_bin_unref(device, bin);
 
    *kernel_out = bin->kernel.offset;
-   *(const struct elk_stage_prog_data **) prog_data_out = bin->prog_data;
+   *(const struct elk_stage_prog_data **)prog_data_out = bin->prog_data;
 
    return true;
 }
@@ -79,7 +79,7 @@ upload_blorp_shader(struct blorp_batch *batch, uint32_t stage,
    anv_shader_bin_unref(device, bin);
 
    *kernel_out = bin->kernel.offset;
-   *(const struct elk_stage_prog_data **) prog_data_out = bin->prog_data;
+   *(const struct elk_stage_prog_data **)prog_data_out = bin->prog_data;
 
    return true;
 }
@@ -87,7 +87,7 @@ upload_blorp_shader(struct blorp_batch *batch, uint32_t stage,
 void
 anv_device_init_blorp(struct anv_device *device)
 {
-   const struct blorp_config config = { };
+   const struct blorp_config config = {};
 
    blorp_init_elk(&device->blorp, device, &device->isl_dev,
                   device->physical->compiler, &config);
@@ -146,22 +146,27 @@ get_blorp_surf_for_anv_buffer(struct anv_device *device,
    *blorp_surf = (struct blorp_surf) {
       .surf = isl_surf,
       .addr = {
-               .buffer = buffer->address.bo,
-               .offset = buffer->address.offset + offset,
-               .mocs = anv_mocs(device, buffer->address.bo,
-                                is_dest ? ISL_SURF_USAGE_RENDER_TARGET_BIT
-                                : ISL_SURF_USAGE_TEXTURE_BIT),
-               },
+         .buffer = buffer->address.bo,
+         .offset = buffer->address.offset + offset,
+         .mocs = anv_mocs(device, buffer->address.bo,
+                          is_dest ? ISL_SURF_USAGE_RENDER_TARGET_BIT
+                                  : ISL_SURF_USAGE_TEXTURE_BIT),
+      },
    };
 
-   ok = isl_surf_init(&device->isl_dev, isl_surf,.dim =
-                      ISL_SURF_DIM_2D,.format = format,.width =
-                      width,.height = height,.depth = 1,.levels =
-                      1,.array_len = 1,.samples = 1,.row_pitch_B =
-                      row_pitch,.usage =
-                      is_dest ? ISL_SURF_USAGE_RENDER_TARGET_BIT :
-                      ISL_SURF_USAGE_TEXTURE_BIT,.tiling_flags =
-                      ISL_TILING_LINEAR_BIT);
+   ok = isl_surf_init(&device->isl_dev, isl_surf,
+                     .dim = ISL_SURF_DIM_2D,
+                     .format = format,
+                     .width = width,
+                     .height = height,
+                     .depth = 1,
+                     .levels = 1,
+                     .array_len = 1,
+                     .samples = 1,
+                     .row_pitch_B = row_pitch,
+                     .usage = is_dest ? ISL_SURF_USAGE_RENDER_TARGET_BIT
+                                      : ISL_SURF_USAGE_TEXTURE_BIT,
+                     .tiling_flags = ISL_TILING_LINEAR_BIT);
    assert(ok);
 }
 
@@ -207,15 +212,14 @@ get_blorp_surf_for_anv_image(const struct anv_device *device,
    *blorp_surf = (struct blorp_surf) {
       .surf = &surface->isl,
       .addr = {
-               .buffer = address.bo,
-               .offset = address.offset,
-               .mocs = anv_mocs(device, address.bo, mocs_usage),
-               },
+         .buffer = address.bo,
+         .offset = address.offset,
+         .mocs = anv_mocs(device, address.bo, mocs_usage),
+      },
    };
 
    if (aux_usage != ISL_AUX_USAGE_NONE) {
-      const struct anv_surface *aux_surface =
-         &image->planes[plane].aux_surface;
+      const struct anv_surface *aux_surface = &image->planes[plane].aux_surface;
       const struct anv_address aux_address =
          anv_image_address(image, &aux_surface->memory_range);
 
@@ -239,16 +243,13 @@ get_blorp_surf_for_anv_image(const struct anv_device *device,
       if (aspect & VK_IMAGE_ASPECT_ANY_COLOR_BIT_ANV) {
          const struct anv_address clear_color_addr =
             anv_image_get_clear_color_addr(device, image, aspect);
-         blorp_surf->clear_color_addr =
-            anv_to_blorp_address(clear_color_addr);
-      }
-      else if (aspect & VK_IMAGE_ASPECT_DEPTH_BIT) {
+         blorp_surf->clear_color_addr = anv_to_blorp_address(clear_color_addr);
+      } else if (aspect & VK_IMAGE_ASPECT_DEPTH_BIT) {
          const struct anv_address clear_color_addr =
             anv_image_get_clear_color_addr(device, image, aspect);
-         blorp_surf->clear_color_addr =
-            anv_to_blorp_address(clear_color_addr);
+         blorp_surf->clear_color_addr = anv_to_blorp_address(clear_color_addr);
          blorp_surf->clear_color = (union isl_color_value) {
-            .f32 = {ANV_HZ_FC_VAL},
+            .f32 = { ANV_HZ_FC_VAL },
          };
       }
    }
@@ -272,11 +273,10 @@ get_blorp_surf_for_anv_shadow_image(const struct anv_device *device,
    *blorp_surf = (struct blorp_surf) {
       .surf = &surface->isl,
       .addr = {
-               .buffer = address.bo,
-               .offset = address.offset,
-               .mocs =
-               anv_mocs(device, address.bo, ISL_SURF_USAGE_RENDER_TARGET_BIT),
-               },
+         .buffer = address.bo,
+         .offset = address.offset,
+         .mocs = anv_mocs(device, address.bo, ISL_SURF_USAGE_RENDER_TARGET_BIT),
+      },
    };
 
    return true;
@@ -288,7 +288,8 @@ copy_image(struct anv_cmd_buffer *cmd_buffer,
            struct anv_image *src_image,
            VkImageLayout src_image_layout,
            struct anv_image *dst_image,
-           VkImageLayout dst_image_layout, const VkImageCopy2 *region)
+           VkImageLayout dst_image_layout,
+           const VkImageCopy2 *region)
 {
    VkOffset3D srcOffset =
       vk_image_sanitize_offset(&src_image->vk, region->srcOffset);
@@ -302,8 +303,7 @@ copy_image(struct anv_cmd_buffer *cmd_buffer,
    if (dst_image->vk.image_type == VK_IMAGE_TYPE_3D) {
       dst_base_layer = region->dstOffset.z;
       layer_count = region->extent.depth;
-   }
-   else {
+   } else {
       dst_base_layer = region->dstSubresource.baseArrayLayer;
       layer_count = vk_image_subresource_layer_count(&dst_image->vk,
                                                      &region->dstSubresource);
@@ -313,8 +313,7 @@ copy_image(struct anv_cmd_buffer *cmd_buffer,
    unsigned src_base_layer;
    if (src_image->vk.image_type == VK_IMAGE_TYPE_3D) {
       src_base_layer = region->srcOffset.z;
-   }
-   else {
+   } else {
       src_base_layer = region->srcSubresource.baseArrayLayer;
       assert(layer_count ==
              vk_image_subresource_layer_count(&src_image->vk,
@@ -348,7 +347,8 @@ copy_image(struct anv_cmd_buffer *cmd_buffer,
             blorp_copy(batch, &src_surf, src_level, src_base_layer + i,
                        &dst_surf, dst_level, dst_base_layer + i,
                        srcOffset.x, srcOffset.y,
-                       dstOffset.x, dstOffset.y, extent.width, extent.height);
+                       dstOffset.x, dstOffset.y,
+                       extent.width, extent.height);
          }
 
          struct blorp_surf dst_shadow_surf;
@@ -365,8 +365,7 @@ copy_image(struct anv_cmd_buffer *cmd_buffer,
             }
          }
       }
-   }
-   else {
+   } else {
       struct blorp_surf src_surf, dst_surf;
       get_blorp_surf_for_anv_image(cmd_buffer->device, src_image, src_mask,
                                    VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
@@ -384,7 +383,8 @@ copy_image(struct anv_cmd_buffer *cmd_buffer,
          blorp_copy(batch, &src_surf, src_level, src_base_layer + i,
                     &dst_surf, dst_level, dst_base_layer + i,
                     srcOffset.x, srcOffset.y,
-                    dstOffset.x, dstOffset.y, extent.width, extent.height);
+                    dstOffset.x, dstOffset.y,
+                    extent.width, extent.height);
       }
 
       struct blorp_surf dst_shadow_surf;
@@ -395,15 +395,16 @@ copy_image(struct anv_cmd_buffer *cmd_buffer,
             blorp_copy(batch, &src_surf, src_level, src_base_layer + i,
                        &dst_shadow_surf, dst_level, dst_base_layer + i,
                        srcOffset.x, srcOffset.y,
-                       dstOffset.x, dstOffset.y, extent.width, extent.height);
+                       dstOffset.x, dstOffset.y,
+                       extent.width, extent.height);
          }
       }
    }
 }
 
-void
-anv_CmdCopyImage2(VkCommandBuffer commandBuffer,
-                  const VkCopyImageInfo2 *pCopyImageInfo)
+void anv_CmdCopyImage2(
+    VkCommandBuffer                             commandBuffer,
+    const VkCopyImageInfo2*                     pCopyImageInfo)
 {
    ANV_FROM_HANDLE(anv_cmd_buffer, cmd_buffer, commandBuffer);
    ANV_FROM_HANDLE(anv_image, src_image, pCopyImageInfo->srcImage);
@@ -427,22 +428,14 @@ isl_format_for_size(unsigned size_B)
 {
    /* Prefer 32-bit per component formats for CmdFillBuffer */
    switch (size_B) {
-   case 1:
-      return ISL_FORMAT_R8_UINT;
-   case 2:
-      return ISL_FORMAT_R16_UINT;
-   case 3:
-      return ISL_FORMAT_R8G8B8_UINT;
-   case 4:
-      return ISL_FORMAT_R32_UINT;
-   case 6:
-      return ISL_FORMAT_R16G16B16_UINT;
-   case 8:
-      return ISL_FORMAT_R32G32_UINT;
-   case 12:
-      return ISL_FORMAT_R32G32B32_UINT;
-   case 16:
-      return ISL_FORMAT_R32G32B32A32_UINT;
+   case 1:  return ISL_FORMAT_R8_UINT;
+   case 2:  return ISL_FORMAT_R16_UINT;
+   case 3:  return ISL_FORMAT_R8G8B8_UINT;
+   case 4:  return ISL_FORMAT_R32_UINT;
+   case 6:  return ISL_FORMAT_R16G16B16_UINT;
+   case 8:  return ISL_FORMAT_R32G32_UINT;
+   case 12: return ISL_FORMAT_R32G32B32_UINT;
+   case 16: return ISL_FORMAT_R32G32B32A32_UINT;
    default:
       UNREACHABLE("Unknown format size");
    }
@@ -454,24 +447,22 @@ copy_buffer_to_image(struct anv_cmd_buffer *cmd_buffer,
                      struct anv_buffer *anv_buffer,
                      struct anv_image *anv_image,
                      VkImageLayout image_layout,
-                     const VkBufferImageCopy2 *region, bool buffer_to_image)
+                     const VkBufferImageCopy2* region,
+                     bool buffer_to_image)
 {
-   struct
-   {
+   struct {
       struct blorp_surf surf;
       uint32_t level;
       VkOffset3D offset;
    } image, buffer, *src, *dst;
 
    buffer.level = 0;
-   buffer.offset = (VkOffset3D) {
-   0, 0, 0};
+   buffer.offset = (VkOffset3D) { 0, 0, 0 };
 
    if (buffer_to_image) {
       src = &buffer;
       dst = &image;
-   }
-   else {
+   } else {
       src = &image;
       dst = &buffer;
    }
@@ -569,10 +560,9 @@ copy_buffer_to_image(struct anv_cmd_buffer *cmd_buffer,
    }
 }
 
-void
-anv_CmdCopyBufferToImage2(VkCommandBuffer commandBuffer,
-                          const VkCopyBufferToImageInfo2
-                          *pCopyBufferToImageInfo)
+void anv_CmdCopyBufferToImage2(
+    VkCommandBuffer                             commandBuffer,
+    const VkCopyBufferToImageInfo2*             pCopyBufferToImageInfo)
 {
    ANV_FROM_HANDLE(anv_cmd_buffer, cmd_buffer, commandBuffer);
    ANV_FROM_HANDLE(anv_buffer, src_buffer, pCopyBufferToImageInfo->srcBuffer);
@@ -590,10 +580,9 @@ anv_CmdCopyBufferToImage2(VkCommandBuffer commandBuffer,
    anv_blorp_batch_finish(&batch);
 }
 
-void
-anv_CmdCopyImageToBuffer2(VkCommandBuffer commandBuffer,
-                          const VkCopyImageToBufferInfo2
-                          *pCopyImageToBufferInfo)
+void anv_CmdCopyImageToBuffer2(
+    VkCommandBuffer                             commandBuffer,
+    const VkCopyImageToBufferInfo2*             pCopyImageToBufferInfo)
 {
    ANV_FROM_HANDLE(anv_cmd_buffer, cmd_buffer, commandBuffer);
    ANV_FROM_HANDLE(anv_image, src_image, pCopyImageToBufferInfo->srcImage);
@@ -610,8 +599,7 @@ anv_CmdCopyImageToBuffer2(VkCommandBuffer commandBuffer,
 
    anv_blorp_batch_finish(&batch);
 
-   cmd_buffer->state.pending_pipe_bits |=
-      ANV_PIPE_RENDER_TARGET_BUFFER_WRITES;
+   cmd_buffer->state.pending_pipe_bits |= ANV_PIPE_RENDER_TARGET_BUFFER_WRITES;
 }
 
 static bool
@@ -642,7 +630,8 @@ blit_image(struct anv_cmd_buffer *cmd_buffer,
            VkImageLayout src_image_layout,
            struct anv_image *dst_image,
            VkImageLayout dst_image_layout,
-           const VkImageBlit2 *region, VkFilter filter)
+           const VkImageBlit2 *region,
+           VkFilter filter)
 {
    const VkImageSubresourceLayers *src_res = &region->srcSubresource;
    const VkImageSubresourceLayers *dst_res = &region->dstSubresource;
@@ -668,13 +657,11 @@ blit_image(struct anv_cmd_buffer *cmd_buffer,
       get_blorp_surf_for_anv_image(cmd_buffer->device,
                                    src_image, 1U << aspect_bit,
                                    VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
-                                   src_image_layout, ISL_AUX_USAGE_NONE,
-                                   &src);
-      get_blorp_surf_for_anv_image(cmd_buffer->device, dst_image,
-                                   1U << aspect_bit,
+                                   src_image_layout, ISL_AUX_USAGE_NONE, &src);
+      get_blorp_surf_for_anv_image(cmd_buffer->device,
+                                   dst_image, 1U << aspect_bit,
                                    VK_IMAGE_USAGE_TRANSFER_DST_BIT,
-                                   dst_image_layout, ISL_AUX_USAGE_NONE,
-                                   &dst);
+                                   dst_image_layout, ISL_AUX_USAGE_NONE, &dst);
 
       struct anv_format_plane src_format =
          anv_get_format_aspect(cmd_buffer->device->info, src_image->vk.format,
@@ -688,8 +675,7 @@ blit_image(struct anv_cmd_buffer *cmd_buffer,
          assert(dst_res->baseArrayLayer == 0);
          dst_start = region->dstOffsets[0].z;
          dst_end = region->dstOffsets[1].z;
-      }
-      else {
+      } else {
          dst_start = dst_res->baseArrayLayer;
          dst_end = dst_start +
             vk_image_subresource_layer_count(&dst_image->vk, dst_res);
@@ -700,8 +686,7 @@ blit_image(struct anv_cmd_buffer *cmd_buffer,
          assert(src_res->baseArrayLayer == 0);
          src_start = region->srcOffsets[0].z;
          src_end = region->srcOffsets[1].z;
-      }
-      else {
+      } else {
          src_start = src_res->baseArrayLayer;
          src_end = src_start +
             vk_image_subresource_layer_count(&src_image->vk, src_res);
@@ -709,7 +694,7 @@ blit_image(struct anv_cmd_buffer *cmd_buffer,
 
       bool flip_z = flip_coords(&src_start, &src_end, &dst_start, &dst_end);
       const unsigned num_layers = dst_end - dst_start;
-      float src_z_step = (float) (src_end - src_start) / (float) num_layers;
+      float src_z_step = (float)(src_end - src_start) / (float)num_layers;
 
       /* There is no interpolation to the pixel center during rendering, so
        * add the 0.5 offset ourselves here. */
@@ -756,9 +741,9 @@ blit_image(struct anv_cmd_buffer *cmd_buffer,
    }
 }
 
-void
-anv_CmdBlitImage2(VkCommandBuffer commandBuffer,
-                  const VkBlitImageInfo2 *pBlitImageInfo)
+void anv_CmdBlitImage2(
+    VkCommandBuffer                             commandBuffer,
+    const VkBlitImageInfo2*                     pBlitImageInfo)
 {
    ANV_FROM_HANDLE(anv_cmd_buffer, cmd_buffer, commandBuffer);
    ANV_FROM_HANDLE(anv_image, src_image, pBlitImageInfo->srcImage);
@@ -784,7 +769,8 @@ static void
 copy_buffer(struct anv_device *device,
             struct blorp_batch *batch,
             struct anv_buffer *src_buffer,
-            struct anv_buffer *dst_buffer, const VkBufferCopy2 *region)
+            struct anv_buffer *dst_buffer,
+            const VkBufferCopy2 *region)
 {
    struct blorp_address src = {
       .buffer = src_buffer->address.bo,
@@ -802,9 +788,9 @@ copy_buffer(struct anv_device *device,
    blorp_buffer_copy(batch, src, dst, region->size);
 }
 
-void
-anv_CmdCopyBuffer2(VkCommandBuffer commandBuffer,
-                   const VkCopyBufferInfo2 *pCopyBufferInfo)
+void anv_CmdCopyBuffer2(
+    VkCommandBuffer                             commandBuffer,
+    const VkCopyBufferInfo2*                    pCopyBufferInfo)
 {
    ANV_FROM_HANDLE(anv_cmd_buffer, cmd_buffer, commandBuffer);
    ANV_FROM_HANDLE(anv_buffer, src_buffer, pCopyBufferInfo->srcBuffer);
@@ -820,16 +806,16 @@ anv_CmdCopyBuffer2(VkCommandBuffer commandBuffer,
 
    anv_blorp_batch_finish(&batch);
 
-   cmd_buffer->state.pending_pipe_bits |=
-      ANV_PIPE_RENDER_TARGET_BUFFER_WRITES;
+   cmd_buffer->state.pending_pipe_bits |= ANV_PIPE_RENDER_TARGET_BUFFER_WRITES;
 }
 
 
-void
-anv_CmdUpdateBuffer(VkCommandBuffer commandBuffer,
-                    VkBuffer dstBuffer,
-                    VkDeviceSize dstOffset,
-                    VkDeviceSize dataSize, const void *pData)
+void anv_CmdUpdateBuffer(
+    VkCommandBuffer                             commandBuffer,
+    VkBuffer                                    dstBuffer,
+    VkDeviceSize                                dstOffset,
+    VkDeviceSize                                dataSize,
+    const void*                                 pData)
 {
    ANV_FROM_HANDLE(anv_cmd_buffer, cmd_buffer, commandBuffer);
    ANV_FROM_HANDLE(anv_buffer, dst_buffer, dstBuffer);
@@ -877,20 +863,20 @@ anv_CmdUpdateBuffer(VkCommandBuffer commandBuffer,
 
       dataSize -= copy_size;
       dstOffset += copy_size;
-      pData = (void *) pData + copy_size;
+      pData = (void *)pData + copy_size;
    }
 
    anv_blorp_batch_finish(&batch);
 
-   cmd_buffer->state.pending_pipe_bits |=
-      ANV_PIPE_RENDER_TARGET_BUFFER_WRITES;
+   cmd_buffer->state.pending_pipe_bits |= ANV_PIPE_RENDER_TARGET_BUFFER_WRITES;
 }
 
-void
-anv_CmdFillBuffer(VkCommandBuffer commandBuffer,
-                  VkBuffer dstBuffer,
-                  VkDeviceSize dstOffset,
-                  VkDeviceSize fillSize, uint32_t data)
+void anv_CmdFillBuffer(
+    VkCommandBuffer                             commandBuffer,
+    VkBuffer                                    dstBuffer,
+    VkDeviceSize                                dstOffset,
+    VkDeviceSize                                fillSize,
+    uint32_t                                    data)
 {
    ANV_FROM_HANDLE(anv_cmd_buffer, cmd_buffer, commandBuffer);
    ANV_FROM_HANDLE(anv_buffer, dst_buffer, dstBuffer);
@@ -911,17 +897,17 @@ anv_CmdFillBuffer(VkCommandBuffer commandBuffer,
    fillSize &= ~3ull;
 
    union isl_color_value color = {
-      .u32 = {data, data, data, data},
+      .u32 = { data, data, data, data },
    };
 
    struct isl_surf isl_surf;
    struct blorp_surf surf = {
       .addr = {
-               .buffer = dst_buffer->address.bo,
-               .offset = dst_buffer->address.offset + dstOffset,
-               .mocs = anv_mocs(cmd_buffer->device, dst_buffer->address.bo,
-                                ISL_SURF_USAGE_RENDER_TARGET_BIT),
-               },
+         .buffer = dst_buffer->address.bo,
+         .offset = dst_buffer->address.offset + dstOffset,
+         .mocs = anv_mocs(cmd_buffer->device, dst_buffer->address.bo,
+                          ISL_SURF_USAGE_RENDER_TARGET_BIT),
+      },
       .surf = &isl_surf,
    };
 
@@ -933,7 +919,7 @@ anv_CmdFillBuffer(VkCommandBuffer commandBuffer,
                   isl_surf.logical_level0_px.a, 0, 0,
                   isl_surf.logical_level0_px.w,
                   isl_surf.logical_level0_px.h,
-                  color, 0 /* color_write_disable */ );
+                  color, 0 /* color_write_disable */);
 
       fillSize -= isl_surf.size_B;
       surf.addr.offset += isl_surf.size_B;
@@ -941,17 +927,16 @@ anv_CmdFillBuffer(VkCommandBuffer commandBuffer,
 
    anv_blorp_batch_finish(&batch);
 
-   cmd_buffer->state.pending_pipe_bits |=
-      ANV_PIPE_RENDER_TARGET_BUFFER_WRITES;
+   cmd_buffer->state.pending_pipe_bits |= ANV_PIPE_RENDER_TARGET_BUFFER_WRITES;
 }
 
-void
-anv_CmdClearColorImage(VkCommandBuffer commandBuffer,
-                       VkImage _image,
-                       VkImageLayout imageLayout,
-                       const VkClearColorValue *pColor,
-                       uint32_t rangeCount,
-                       const VkImageSubresourceRange *pRanges)
+void anv_CmdClearColorImage(
+    VkCommandBuffer                             commandBuffer,
+    VkImage                                     _image,
+    VkImageLayout                               imageLayout,
+    const VkClearColorValue*                    pColor,
+    uint32_t                                    rangeCount,
+    const VkImageSubresourceRange*              pRanges)
 {
    ANV_FROM_HANDLE(anv_cmd_buffer, cmd_buffer, commandBuffer);
    ANV_FROM_HANDLE(anv_image, image, _image);
@@ -984,8 +969,7 @@ anv_CmdClearColorImage(VkCommandBuffer commandBuffer,
       for (uint32_t i = 0; i < level_count; i++) {
          const unsigned level = pRanges[r].baseMipLevel + i;
          const unsigned level_width = u_minify(image->vk.extent.width, level);
-         const unsigned level_height =
-            u_minify(image->vk.extent.height, level);
+         const unsigned level_height = u_minify(image->vk.extent.height, level);
 
          if (image->vk.image_type == VK_IMAGE_TYPE_3D) {
             base_layer = 0;
@@ -1001,20 +985,20 @@ anv_CmdClearColorImage(VkCommandBuffer commandBuffer,
                      src_format.isl_format, src_format.swizzle,
                      level, base_layer, layer_count,
                      0, 0, level_width, level_height,
-                     vk_to_isl_color(*pColor), 0 /* color_write_disable */ );
+                     vk_to_isl_color(*pColor), 0 /* color_write_disable */);
       }
    }
 
    anv_blorp_batch_finish(&batch);
 }
 
-void
-anv_CmdClearDepthStencilImage(VkCommandBuffer commandBuffer,
-                              VkImage image_h,
-                              VkImageLayout imageLayout,
-                              const VkClearDepthStencilValue *pDepthStencil,
-                              uint32_t rangeCount,
-                              const VkImageSubresourceRange *pRanges)
+void anv_CmdClearDepthStencilImage(
+    VkCommandBuffer                             commandBuffer,
+    VkImage                                     image_h,
+    VkImageLayout                               imageLayout,
+    const VkClearDepthStencilValue*             pDepthStencil,
+    uint32_t                                    rangeCount,
+    const VkImageSubresourceRange*              pRanges)
 {
    ANV_FROM_HANDLE(anv_cmd_buffer, cmd_buffer, commandBuffer);
    ANV_FROM_HANDLE(anv_image, image, image_h);
@@ -1029,8 +1013,7 @@ anv_CmdClearDepthStencilImage(VkCommandBuffer commandBuffer,
                                    image, VK_IMAGE_ASPECT_DEPTH_BIT,
                                    VK_IMAGE_USAGE_TRANSFER_DST_BIT,
                                    imageLayout, ISL_AUX_USAGE_NONE, &depth);
-   }
-   else {
+   } else {
       memset(&depth, 0, sizeof(depth));
    }
 
@@ -1045,8 +1028,7 @@ anv_CmdClearDepthStencilImage(VkCommandBuffer commandBuffer,
          get_blorp_surf_for_anv_shadow_image(cmd_buffer->device, image,
                                              VK_IMAGE_ASPECT_STENCIL_BIT,
                                              &stencil_shadow);
-   }
-   else {
+   } else {
       memset(&stencil, 0, sizeof(stencil));
    }
 
@@ -1055,8 +1037,7 @@ anv_CmdClearDepthStencilImage(VkCommandBuffer commandBuffer,
          continue;
 
       bool clear_depth = pRanges[r].aspectMask & VK_IMAGE_ASPECT_DEPTH_BIT;
-      bool clear_stencil =
-         pRanges[r].aspectMask & VK_IMAGE_ASPECT_STENCIL_BIT;
+      bool clear_stencil = pRanges[r].aspectMask & VK_IMAGE_ASPECT_STENCIL_BIT;
 
       unsigned base_layer = pRanges[r].baseArrayLayer;
       uint32_t layer_count =
@@ -1067,8 +1048,7 @@ anv_CmdClearDepthStencilImage(VkCommandBuffer commandBuffer,
       for (uint32_t i = 0; i < level_count; i++) {
          const unsigned level = pRanges[r].baseMipLevel + i;
          const unsigned level_width = u_minify(image->vk.extent.width, level);
-         const unsigned level_height =
-            u_minify(image->vk.extent.height, level);
+         const unsigned level_height = u_minify(image->vk.extent.height, level);
 
          if (image->vk.image_type == VK_IMAGE_TYPE_3D)
             layer_count = u_minify(image->vk.extent.depth, level);
@@ -1082,13 +1062,13 @@ anv_CmdClearDepthStencilImage(VkCommandBuffer commandBuffer,
 
          if (clear_stencil && has_stencil_shadow) {
             union isl_color_value stencil_color = {
-               .u32 = {pDepthStencil->stencil,},
+               .u32 = { pDepthStencil->stencil, },
             };
             blorp_clear(&batch, &stencil_shadow,
                         ISL_FORMAT_R8_UINT, ISL_SWIZZLE_IDENTITY,
                         level, base_layer, layer_count,
                         0, 0, level_width, level_height,
-                        stencil_color, 0 /* color_write_disable */ );
+                        stencil_color, 0 /* color_write_disable */);
          }
       }
    }
@@ -1197,9 +1177,8 @@ clear_color_attachment(struct anv_cmd_buffer *cmd_buffer,
                               pRects[r].baseArrayLayer,
                               pRects[r].layerCount,
                               offset.x, offset.y,
-                              offset.x + extent.width,
-                              offset.y + extent.height, true, clear_color,
-                              false, 0.0f, 0, 0);
+                              offset.x + extent.width, offset.y + extent.height,
+                              true, clear_color, false, 0.0f, 0, 0);
    }
 }
 
@@ -1209,7 +1188,7 @@ clear_depth_stencil_attachment(struct anv_cmd_buffer *cmd_buffer,
                                const VkClearAttachment *attachment,
                                uint32_t rectCount, const VkClearRect *pRects)
 {
-   static const union isl_color_value color_value = {.u32 = {0,} };
+   static const union isl_color_value color_value = { .u32 = { 0, } };
    struct anv_cmd_graphics_state *gfx = &cmd_buffer->state.gfx;
    const struct anv_attachment *d_att = &gfx->depth_att;
    const struct anv_attachment *s_att = &gfx->stencil_att;
@@ -1229,9 +1208,10 @@ clear_depth_stencil_attachment(struct anv_cmd_buffer *cmd_buffer,
    }
 
    uint32_t binding_table;
-   VkResult result = binding_table_for_surface_state(cmd_buffer,
-                                                     gfx->null_surface_state,
-                                                     &binding_table);
+   VkResult result =
+      binding_table_for_surface_state(cmd_buffer,
+                                      gfx->null_surface_state,
+                                      &binding_table);
    if (result != VK_SUCCESS)
       return;
 
@@ -1241,13 +1221,16 @@ clear_depth_stencil_attachment(struct anv_cmd_buffer *cmd_buffer,
          for (uint32_t r = 0; r < rectCount; ++r) {
             const VkOffset2D offset = pRects[r].rect.offset;
             const VkExtent2D extent = pRects[r].rect.extent;
-            VkClearDepthStencilValue value =
-               attachment->clearValue.depthStencil;
-            blorp_clear_attachments(batch, binding_table, depth_format,
-                                    gfx->samples, view_idx, 1, offset.x,
-                                    offset.y, offset.x + extent.width,
-                                    offset.y + extent.height, false,
-                                    color_value, clear_depth, value.depth,
+            VkClearDepthStencilValue value = attachment->clearValue.depthStencil;
+            blorp_clear_attachments(batch, binding_table,
+                                    depth_format,
+                                    gfx->samples,
+                                    view_idx, 1,
+                                    offset.x, offset.y,
+                                    offset.x + extent.width,
+                                    offset.y + extent.height,
+                                    false, color_value,
+                                    clear_depth, value.depth,
                                     clear_stencil ? 0xff : 0, value.stencil);
          }
       }
@@ -1265,18 +1248,19 @@ clear_depth_stencil_attachment(struct anv_cmd_buffer *cmd_buffer,
                               pRects[r].baseArrayLayer,
                               pRects[r].layerCount,
                               offset.x, offset.y,
-                              offset.x + extent.width,
-                              offset.y + extent.height, false, color_value,
+                              offset.x + extent.width, offset.y + extent.height,
+                              false, color_value,
                               clear_depth, value.depth,
                               clear_stencil ? 0xff : 0, value.stencil);
    }
 }
 
-void
-anv_CmdClearAttachments(VkCommandBuffer commandBuffer,
-                        uint32_t attachmentCount,
-                        const VkClearAttachment *pAttachments,
-                        uint32_t rectCount, const VkClearRect *pRects)
+void anv_CmdClearAttachments(
+    VkCommandBuffer                             commandBuffer,
+    uint32_t                                    attachmentCount,
+    const VkClearAttachment*                    pAttachments,
+    uint32_t                                    rectCount,
+    const VkClearRect*                          pRects)
 {
    ANV_FROM_HANDLE(anv_cmd_buffer, cmd_buffer, commandBuffer);
 
@@ -1295,11 +1279,12 @@ anv_CmdClearAttachments(VkCommandBuffer commandBuffer,
       if (pAttachments[a].aspectMask & VK_IMAGE_ASPECT_ANY_COLOR_BIT_ANV) {
          assert(pAttachments[a].aspectMask == VK_IMAGE_ASPECT_COLOR_BIT);
          clear_color_attachment(cmd_buffer, &batch,
-                                &pAttachments[a], rectCount, pRects);
-      }
-      else {
+                                &pAttachments[a],
+                                rectCount, pRects);
+      } else {
          clear_depth_stencil_attachment(cmd_buffer, &batch,
-                                        &pAttachments[a], rectCount, pRects);
+                                        &pAttachments[a],
+                                        rectCount, pRects);
       }
    }
 
@@ -1320,7 +1305,8 @@ anv_image_msaa_resolve(struct anv_cmd_buffer *cmd_buffer,
                        uint32_t src_x, uint32_t src_y,
                        uint32_t dst_x, uint32_t dst_y,
                        uint32_t width, uint32_t height,
-                       uint32_t layer_count, enum blorp_filter filter)
+                       uint32_t layer_count,
+                       enum blorp_filter filter)
 {
    struct blorp_batch batch;
    anv_blorp_batch_init(cmd_buffer, &batch, 0);
@@ -1339,10 +1325,9 @@ anv_image_msaa_resolve(struct anv_cmd_buffer *cmd_buffer,
                                 ANV_IMAGE_LAYOUT_EXPLICIT_AUX,
                                 src_aux_usage, &src_surf);
    if (src_aux_usage == ISL_AUX_USAGE_MCS) {
-      src_surf.clear_color_addr =
-         anv_to_blorp_address(anv_image_get_clear_color_addr
-                              (cmd_buffer->device, src_image,
-                               VK_IMAGE_ASPECT_COLOR_BIT));
+      src_surf.clear_color_addr = anv_to_blorp_address(
+         anv_image_get_clear_color_addr(cmd_buffer->device, src_image,
+                                        VK_IMAGE_ASPECT_COLOR_BIT));
    }
    get_blorp_surf_for_anv_image(cmd_buffer->device, dst_image, aspect,
                                 VK_IMAGE_USAGE_TRANSFER_DST_BIT,
@@ -1360,8 +1345,7 @@ anv_image_msaa_resolve(struct anv_cmd_buffer *cmd_buffer,
           (src_surf.surf->usage & ISL_SURF_USAGE_STENCIL_BIT) ||
           isl_format_has_int_channel(src_surf.surf->format)) {
          filter = BLORP_FILTER_SAMPLE_0;
-      }
-      else {
+      } else {
          filter = BLORP_FILTER_AVERAGE;
       }
    }
@@ -1446,8 +1430,7 @@ anv_attachment_msaa_resolve(struct anv_cmd_buffer *cmd_buffer,
                              render_area.extent.width,
                              render_area.extent.height,
                              gfx->layer_count, filter);
-   }
-   else {
+   } else {
       uint32_t res_view_mask = gfx->view_mask;
       while (res_view_mask) {
          int i = u_bit_scan(&res_view_mask);
@@ -1463,7 +1446,8 @@ anv_attachment_msaa_resolve(struct anv_cmd_buffer *cmd_buffer,
                                 render_area.offset.x, render_area.offset.y,
                                 render_area.offset.x, render_area.offset.y,
                                 render_area.extent.width,
-                                render_area.extent.height, 1, filter);
+                                render_area.extent.height,
+                                1, filter);
       }
    }
 }
@@ -1473,19 +1457,15 @@ resolve_image(struct anv_cmd_buffer *cmd_buffer,
               struct anv_image *src_image,
               VkImageLayout src_image_layout,
               struct anv_image *dst_image,
-              VkImageLayout dst_image_layout, const VkImageResolve2 *region)
+              VkImageLayout dst_image_layout,
+              const VkImageResolve2 *region)
 {
-   assert(region->srcSubresource.aspectMask ==
-          region->dstSubresource.aspectMask);
-   assert(vk_image_subresource_layer_count
-          (&src_image->vk,
-           &region->srcSubresource) ==
-          vk_image_subresource_layer_count(&dst_image->vk,
-                                           &region->dstSubresource));
+   assert(region->srcSubresource.aspectMask == region->dstSubresource.aspectMask);
+   assert(vk_image_subresource_layer_count(&src_image->vk, &region->srcSubresource) ==
+          vk_image_subresource_layer_count(&dst_image->vk, &region->dstSubresource));
 
    const uint32_t layer_count =
-      vk_image_subresource_layer_count(&dst_image->vk,
-                                       &region->dstSubresource);
+      vk_image_subresource_layer_count(&dst_image->vk, &region->dstSubresource);
 
    anv_foreach_image_aspect_bit(aspect_bit, src_image,
                                 region->srcSubresource.aspectMask) {
@@ -1518,9 +1498,9 @@ resolve_image(struct anv_cmd_buffer *cmd_buffer,
    }
 }
 
-void
-anv_CmdResolveImage2(VkCommandBuffer commandBuffer,
-                     const VkResolveImageInfo2 *pResolveImageInfo)
+void anv_CmdResolveImage2(
+    VkCommandBuffer                             commandBuffer,
+    const VkResolveImageInfo2*                  pResolveImageInfo)
 {
    ANV_FROM_HANDLE(anv_cmd_buffer, cmd_buffer, commandBuffer);
    ANV_FROM_HANDLE(anv_image, src_image, pResolveImageInfo->srcImage);
@@ -1547,8 +1527,7 @@ anv_image_copy_to_shadow(struct anv_cmd_buffer *cmd_buffer,
                          * and don't want blorp to overwrite depth/stencil
                          * state
                          */
-                        cmd_buffer->state.gfx.
-                        samples ? BLORP_BATCH_NO_EMIT_DEPTH_STENCIL : 0);
+                        cmd_buffer->state.gfx.samples ? BLORP_BATCH_NO_EMIT_DEPTH_STENCIL : 0);
 
    /* We don't know who touched the main surface last so flush a bunch of
     * caches to ensure we get good data.
@@ -1603,9 +1582,8 @@ anv_image_clear_color(struct anv_cmd_buffer *cmd_buffer,
                       VkImageAspectFlagBits aspect,
                       enum isl_aux_usage aux_usage,
                       enum isl_format format, struct isl_swizzle swizzle,
-                      uint32_t level, uint32_t base_layer,
-                      uint32_t layer_count, VkRect2D area,
-                      union isl_color_value clear_color)
+                      uint32_t level, uint32_t base_layer, uint32_t layer_count,
+                      VkRect2D area, union isl_color_value clear_color)
 {
    assert(image->vk.aspects == VK_IMAGE_ASPECT_COLOR_BIT);
 
@@ -1628,7 +1606,7 @@ anv_image_clear_color(struct anv_cmd_buffer *cmd_buffer,
                area.offset.x, area.offset.y,
                area.offset.x + area.extent.width,
                area.offset.y + area.extent.height,
-               clear_color, 0 /* color_write_disable */ );
+               clear_color, 0 /* color_write_disable */);
 
    anv_blorp_batch_finish(&batch);
 }
@@ -1650,7 +1628,7 @@ anv_image_clear_depth_stencil(struct anv_cmd_buffer *cmd_buffer,
    anv_blorp_batch_init(cmd_buffer, &batch, 0);
    assert((batch.flags & BLORP_BATCH_USE_COMPUTE) == 0);
 
-   struct blorp_surf depth = { };
+   struct blorp_surf depth = {};
    if (aspects & VK_IMAGE_ASPECT_DEPTH_BIT) {
       get_blorp_surf_for_anv_image(cmd_buffer->device,
                                    image, VK_IMAGE_ASPECT_DEPTH_BIT,
@@ -1658,7 +1636,7 @@ anv_image_clear_depth_stencil(struct anv_cmd_buffer *cmd_buffer,
                                    depth_aux_usage, &depth);
    }
 
-   struct blorp_surf stencil = { };
+   struct blorp_surf stencil = {};
    if (aspects & VK_IMAGE_ASPECT_STENCIL_BIT) {
       const uint32_t plane =
          anv_image_aspect_to_plane(image, VK_IMAGE_ASPECT_STENCIL_BIT);
@@ -1684,8 +1662,8 @@ anv_image_clear_depth_stencil(struct anv_cmd_buffer *cmd_buffer,
                              area.offset.y + area.extent.height,
                              aspects & VK_IMAGE_ASPECT_DEPTH_BIT,
                              depth_value,
-                             (aspects & VK_IMAGE_ASPECT_STENCIL_BIT) ? 0xff :
-                             0, stencil_value);
+                             (aspects & VK_IMAGE_ASPECT_STENCIL_BIT) ? 0xff : 0,
+                             stencil_value);
 
    /* Blorp may choose to clear stencil using RGBA32_UINT for better
     * performance.  If it does this, we need to flush it out of the render
@@ -1693,7 +1671,8 @@ anv_image_clear_depth_stencil(struct anv_cmd_buffer *cmd_buffer,
     */
    anv_add_pending_pipe_bits(cmd_buffer,
                              ANV_PIPE_RENDER_TARGET_CACHE_FLUSH_BIT |
-                             ANV_PIPE_END_OF_PIPE_SYNC_BIT, "after clear DS");
+                             ANV_PIPE_END_OF_PIPE_SYNC_BIT,
+                             "after clear DS");
 
    struct blorp_surf stencil_shadow;
    if ((aspects & VK_IMAGE_ASPECT_STENCIL_BIT) &&
@@ -1701,7 +1680,7 @@ anv_image_clear_depth_stencil(struct anv_cmd_buffer *cmd_buffer,
                                            VK_IMAGE_ASPECT_STENCIL_BIT,
                                            &stencil_shadow)) {
       union isl_color_value stencil_color = {
-         .u32 = {stencil_value},
+         .u32 = { stencil_value },
       };
       blorp_clear(&batch, &stencil_shadow,
                   ISL_FORMAT_R8_UINT, ISL_SWIZZLE_IDENTITY,
@@ -1709,7 +1688,7 @@ anv_image_clear_depth_stencil(struct anv_cmd_buffer *cmd_buffer,
                   area.offset.x, area.offset.y,
                   area.offset.x + area.extent.width,
                   area.offset.y + area.extent.height,
-                  stencil_color, 0 /* color_write_disable */ );
+                  stencil_color, 0 /* color_write_disable */);
    }
 
    anv_blorp_batch_finish(&batch);
@@ -1723,8 +1702,7 @@ anv_image_hiz_op(struct anv_cmd_buffer *cmd_buffer,
                  enum isl_aux_op hiz_op)
 {
    assert(aspect == VK_IMAGE_ASPECT_DEPTH_BIT);
-   assert(base_layer + layer_count <=
-          anv_image_aux_layers(image, aspect, level));
+   assert(base_layer + layer_count <= anv_image_aux_layers(image, aspect, level));
    const uint32_t plane = anv_image_aspect_to_plane(image, aspect);
    assert(plane == 0);
 
@@ -1758,7 +1736,7 @@ anv_image_hiz_clear(struct anv_cmd_buffer *cmd_buffer,
    anv_blorp_batch_init(cmd_buffer, &batch, 0);
    assert((batch.flags & BLORP_BATCH_USE_COMPUTE) == 0);
 
-   struct blorp_surf depth = { };
+   struct blorp_surf depth = {};
    if (aspects & VK_IMAGE_ASPECT_DEPTH_BIT) {
       const uint32_t plane =
          anv_image_aspect_to_plane(image, VK_IMAGE_ASPECT_DEPTH_BIT);
@@ -1770,7 +1748,7 @@ anv_image_hiz_clear(struct anv_cmd_buffer *cmd_buffer,
                                    image->planes[plane].aux_usage, &depth);
    }
 
-   struct blorp_surf stencil = { };
+   struct blorp_surf stencil = {};
    if (aspects & VK_IMAGE_ASPECT_STENCIL_BIT) {
       const uint32_t plane =
          anv_image_aspect_to_plane(image, VK_IMAGE_ASPECT_STENCIL_BIT);
@@ -1797,7 +1775,8 @@ anv_image_hiz_clear(struct anv_cmd_buffer *cmd_buffer,
     */
    anv_add_pending_pipe_bits(cmd_buffer,
                              ANV_PIPE_DEPTH_CACHE_FLUSH_BIT |
-                             ANV_PIPE_DEPTH_STALL_BIT, "before clear hiz");
+                             ANV_PIPE_DEPTH_STALL_BIT,
+                             "before clear hiz");
 
    blorp_hiz_clear_depth_stencil(&batch, &depth, &stencil,
                                  level, base_layer, layer_count,
@@ -1829,7 +1808,8 @@ anv_image_hiz_clear(struct anv_cmd_buffer *cmd_buffer,
     */
    anv_add_pending_pipe_bits(cmd_buffer,
                              ANV_PIPE_DEPTH_CACHE_FLUSH_BIT |
-                             ANV_PIPE_DEPTH_STALL_BIT, "after clear hiz");
+                             ANV_PIPE_DEPTH_STALL_BIT,
+                             "after clear hiz");
 }
 
 void
@@ -1945,7 +1925,8 @@ anv_image_ccs_op(struct anv_cmd_buffer *cmd_buffer,
    struct blorp_surf surf;
    get_blorp_surf_for_anv_image(cmd_buffer->device, image, aspect,
                                 0, ANV_IMAGE_LAYOUT_EXPLICIT_AUX,
-                                image->planes[plane].aux_usage, &surf);
+                                image->planes[plane].aux_usage,
+                                &surf);
 
    uint32_t level_width = u_minify(surf.surf->logical_level0_px.w, level);
    uint32_t level_height = u_minify(surf.surf->logical_level0_px.h, level);

@@ -33,7 +33,6 @@
 #include "genxml/gen_macros.h"
 #include "genxml/genX_pack.h"
 
-/* *INDENT-OFF* */
 static uint32_t
 get_depth_format(struct anv_cmd_buffer *cmd_buffer)
 {
@@ -321,4 +320,3 @@ genX(cmd_buffer_enable_pma_fix)(struct anv_cmd_buffer *cmd_buffer,
 {
    /* The NP PMA fix doesn't exist on gfx7 */
 }
-/* *INDENT-ON* */

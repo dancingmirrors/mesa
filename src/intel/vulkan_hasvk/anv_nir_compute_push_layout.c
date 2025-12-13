@@ -33,7 +33,8 @@ anv_nir_compute_push_layout(nir_shader *nir,
                             const struct anv_physical_device *pdevice,
                             enum elk_robustness_flags robust_flags,
                             struct elk_stage_prog_data *prog_data,
-                            struct anv_pipeline_bind_map *map, void *mem_ctx)
+                            struct anv_pipeline_bind_map *map,
+                            void *mem_ctx)
 {
    const struct elk_compiler *compiler = pdevice->compiler;
    memset(map->push_ranges, 0, sizeof(map->push_ranges));
@@ -54,13 +55,13 @@ anv_nir_compute_push_layout(nir_shader *nir,
                   has_const_ubo = true;
                break;
 
-            case nir_intrinsic_load_push_constant:{
-                  unsigned base = nir_intrinsic_base(intrin);
-                  unsigned range = nir_intrinsic_range(intrin);
-                  push_start = MIN2(push_start, base);
-                  push_end = MAX2(push_end, base + range);
-                  break;
-               }
+            case nir_intrinsic_load_push_constant: {
+               unsigned base = nir_intrinsic_base(intrin);
+               unsigned range = nir_intrinsic_range(intrin);
+               push_start = MIN2(push_start, base);
+               push_end = MAX2(push_end, base + range);
+               break;
+            }
 
             default:
                break;
@@ -84,8 +85,7 @@ anv_nir_compute_push_layout(nir_shader *nir,
        */
       const uint32_t push_reg_mask_start =
          offsetof(struct anv_push_constants, push_reg_mask[nir->info.stage]);
-      const uint32_t push_reg_mask_end =
-         push_reg_mask_start + sizeof(uint64_t);
+      const uint32_t push_reg_mask_end = push_reg_mask_start + sizeof(uint64_t);
       push_start = MIN2(push_start, push_reg_mask_start);
       push_end = MAX2(push_end, push_reg_mask_end);
    }
@@ -111,8 +111,7 @@ anv_nir_compute_push_layout(nir_shader *nir,
    /* For vec4 our push data size needs to be aligned to a vec4 and for
     * scalar, it needs to be aligned to a DWORD.
     */
-   const unsigned alignment =
-      compiler->scalar_stage[nir->info.stage] ? 4 : 16;
+   const unsigned alignment = compiler->scalar_stage[nir->info.stage] ? 4 : 16;
    nir->num_uniforms = align(push_end - push_start, alignment);
    prog_data->nr_params = nir->num_uniforms / 4;
    prog_data->param = rzalloc_array(mem_ctx, uint32_t, prog_data->nr_params);
@@ -132,20 +131,20 @@ anv_nir_compute_push_layout(nir_shader *nir,
 
                nir_intrinsic_instr *intrin = nir_instr_as_intrinsic(instr);
                switch (intrin->intrinsic) {
-               case nir_intrinsic_load_push_constant:{
-                     /* With bindless shaders we load uniforms with SEND
-                      * messages. All the push constants are located after the
-                      * RT_DISPATCH_GLOBALS. We just need to add the offset to
-                      * the address right after RT_DISPATCH_GLOBALS (see
-                      * elk_nir_lower_rt_intrinsics.c).
-                      */
-                     unsigned base_offset = push_start;
-                     intrin->intrinsic = nir_intrinsic_load_uniform;
-                     nir_intrinsic_set_base(intrin,
-                                            nir_intrinsic_base(intrin) -
-                                            base_offset);
-                     break;
-                  }
+               case nir_intrinsic_load_push_constant: {
+                  /* With bindless shaders we load uniforms with SEND
+                   * messages. All the push constants are located after the
+                   * RT_DISPATCH_GLOBALS. We just need to add the offset to
+                   * the address right after RT_DISPATCH_GLOBALS (see
+                   * elk_nir_lower_rt_intrinsics.c).
+                   */
+                  unsigned base_offset = push_start;
+                  intrin->intrinsic = nir_intrinsic_load_uniform;
+                  nir_intrinsic_set_base(intrin,
+                                         nir_intrinsic_base(intrin) -
+                                         base_offset);
+                  break;
+               }
 
                default:
                   break;
@@ -168,8 +167,7 @@ anv_nir_compute_push_layout(nir_shader *nir,
 
       unsigned total_push_regs = push_constant_range.length;
       for (unsigned i = 0; i < 4; i++) {
-         if (total_push_regs + prog_data->ubo_ranges[i].length >
-             max_push_regs)
+         if (total_push_regs + prog_data->ubo_ranges[i].length > max_push_regs)
             prog_data->ubo_ranges[i].length = max_push_regs - total_push_regs;
          total_push_regs += prog_data->ubo_ranges[i].length;
       }
@@ -182,8 +180,7 @@ anv_nir_compute_push_layout(nir_shader *nir,
 
       if (robust_flags & ELK_ROBUSTNESS_UBO) {
          const uint32_t push_reg_mask_offset =
-            offsetof(struct anv_push_constants,
-                     push_reg_mask[nir->info.stage]);
+            offsetof(struct anv_push_constants, push_reg_mask[nir->info.stage]);
          assert(push_reg_mask_offset >= push_start);
          prog_data->push_reg_mask_param =
             (push_reg_mask_offset - push_start) / 4;
@@ -213,15 +210,15 @@ anv_nir_compute_push_layout(nir_shader *nir,
          };
 
          /* We only bother to shader-zero pushed client UBOs */
-         if (binding->set < MAX_SETS && (robust_flags & ELK_ROBUSTNESS_UBO)) {
+         if (binding->set < MAX_SETS &&
+             (robust_flags & ELK_ROBUSTNESS_UBO)) {
             prog_data->zero_push_reg |= BITFIELD64_RANGE(range_start_reg,
                                                          ubo_range->length);
          }
 
          range_start_reg += ubo_range->length;
       }
-   }
-   else {
+   } else {
       /* For Ivy Bridge, the push constants packets have a different
        * rule that would require us to iterate in the other direction
        * and possibly mess around with dynamic state base address.
@@ -238,7 +235,8 @@ anv_nir_compute_push_layout(nir_shader *nir,
     * mapping has changed and not just a no-op pipeline change.
     */
    _mesa_sha1_compute(map->push_ranges,
-                      sizeof(map->push_ranges), map->push_sha1);
+                      sizeof(map->push_ranges),
+                      map->push_sha1);
    return false;
 }
 

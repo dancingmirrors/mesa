@@ -21,7 +21,7 @@
  * IN THE SOFTWARE.
  */
 
-/* *INDENT-OFF* */
+
 
 #ifndef ANV_VIDEO_VDPAU_BRIDGE_H
 #define ANV_VIDEO_VDPAU_BRIDGE_H
@@ -338,5 +338,5 @@ VkResult
 anv_vdpau_execute_deferred_decodes(struct anv_device *device,
                                    struct anv_cmd_buffer *cmd_buffer);
 
-/* *INDENT-ON* */
+
 #endif /* ANV_VIDEO_VDPAU_BRIDGE_H */
