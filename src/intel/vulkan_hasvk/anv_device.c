@@ -1320,21 +1320,12 @@ static uint64_t
 anv_compute_sys_heap_size(struct anv_physical_device *device,
                           uint64_t available_ram)
 {
-   /* We want to leave some padding for things we allocate in the driver,
-    * so don't go over 3/4 of the GTT either.
+   /* hasvk only supports integrated GPUs that don't have local memory.
+    * In this case GTT is just a mapping window and not a constraint on how
+    * much system RAM we can use for HOST_VISIBLE allocations. We also don't
+    * need to apply a 2GB address space limit since the heap size represents
+    * available system RAM, not GTT address space.
     */
-   available_ram = MIN2(available_ram, device->gtt_size * 3 / 4);
-
-   if (available_ram > (2ull << 30) && !device->supports_48bit_addresses) {
-      /* When running with an overridden PCI ID, we may get a GTT size from
-       * the kernel that is greater than 2 GiB but the execbuf check for 48bit
-       * address support can still fail.  Just clamp the address space size to
-       * 2 GiB if we don't have 48-bit support.
-       */
-      mesa_logw("%s:%d: The kernel reported a GTT size larger than 2 GiB but "
-                "not support for 48-bit addresses", __FILE__, __LINE__);
-      available_ram = 2ull << 30;
-   }
 
    return available_ram;
 }
@@ -1344,8 +1335,21 @@ anv_init_meminfo(struct anv_physical_device *device, int fd)
 {
    const struct intel_device_info *devinfo = &device->info;
 
-   device->sys.size =
-      anv_compute_sys_heap_size(device, devinfo->mem.sram.mappable.size);
+   /* hasvk only supports integrated GPUs (gen 7-8), so we use total system
+    * RAM instead of GTT aperture size for HOST_VISIBLE allocations. The GTT
+    * aperture size (~1.6GB) is much smaller than available system RAM and
+    * causes OOM issues during video decode and other large allocation scenarios.
+    */
+   uint64_t available_ram = devinfo->mem.sram.mappable.size;
+   uint64_t total_ram;
+   if (os_get_total_physical_memory(&total_ram)) {
+      available_ram = total_ram;
+   } else {
+      /* Fall back to GTT aperture size if we can't get system RAM */
+      mesa_logw("Failed to query total physical memory, falling back to GTT size - this may limit memory for large allocations");
+   }
+
+   device->sys.size = anv_compute_sys_heap_size(device, available_ram);
    device->sys.available = devinfo->mem.sram.mappable.free;
 
    return VK_SUCCESS;
