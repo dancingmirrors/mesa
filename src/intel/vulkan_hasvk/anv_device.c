@@ -1350,7 +1350,15 @@ anv_init_meminfo(struct anv_physical_device *device, int fd)
    }
 
    device->sys.size = anv_compute_sys_heap_size(device, available_ram);
-   device->sys.available = devinfo->mem.sram.mappable.free;
+
+   /* Also use available system RAM for budget tracking, not GTT free space */
+   uint64_t available_system_ram;
+   if (os_get_available_system_memory(&available_system_ram)) {
+      device->sys.available = available_system_ram;
+   } else {
+      /* Fall back to GTT free space if we can't get available system RAM */
+      device->sys.available = devinfo->mem.sram.mappable.free;
+   }
 
    return VK_SUCCESS;
 }
@@ -1361,8 +1369,15 @@ anv_update_meminfo(struct anv_physical_device *device, int fd)
    if (!intel_device_info_update_memory_info(&device->info, fd))
       return;
 
-   const struct intel_device_info *devinfo = &device->info;
-   device->sys.available = devinfo->mem.sram.mappable.free;
+   /* Use available system RAM for budget tracking, not GTT free space */
+   uint64_t available_system_ram;
+   if (os_get_available_system_memory(&available_system_ram)) {
+      device->sys.available = available_system_ram;
+   } else {
+      /* Fall back to GTT free space if we can't get available system RAM */
+      const struct intel_device_info *devinfo = &device->info;
+      device->sys.available = devinfo->mem.sram.mappable.free;
+   }
 }
 
 static VkResult
