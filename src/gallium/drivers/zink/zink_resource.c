@@ -152,11 +152,11 @@ zink_debug_mem_print_stats(struct zink_screen *screen)
    util_dynarray_foreach(&dyn, struct zink_debug_mem_entry *, entryp)
    {
       struct zink_debug_mem_entry *debug_bos = *entryp;
-      mesa_logi("%30s: %4d bos, %lld kb\n", debug_bos->name, debug_bos->count,
+      mesa_logi("%30s: %4d bos, %lld kb", debug_bos->name, debug_bos->count,
                 (long long) (debug_bos->size / 1024));
    }
 
-   mesa_logi("submitted %d bos (%d MB)\n", count, DIV_ROUND_UP(size, 1024));
+   mesa_logi("submitted %d bos (%d MB)", count, DIV_ROUND_UP(size, 1024));
 
    util_dynarray_fini(&dyn);
 
@@ -955,7 +955,6 @@ allocate_bo(struct zink_screen *screen, const struct pipe_resource *templ,
    mai.pNext = NULL;
    mai.allocationSize = reqs->size;
    enum zink_heap heap = zink_heap_from_domain_flags(alloc_info->flags, alloc_info->aflags);
-   mesa_logi("zink: allocate_bo flags=0x%x heap=%d size=%"PRIu64, alloc_info->flags, heap, reqs->size);
    if (templ->flags & PIPE_RESOURCE_FLAG_MAP_COHERENT) {
       if (!(vk_domain_from_heap(heap) & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT))
          heap = zink_heap_from_domain_flags(alloc_info->flags & ~VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, alloc_info->aflags);
@@ -1465,7 +1464,6 @@ create_image(struct zink_screen *screen, struct zink_resource_object *obj,
        */
       if (!screen->resizable_bar && reqs.size > ZINK_LARGE_ALLOCATION_THRESHOLD) {
          alloc_info->flags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-         mesa_logi("zink: Using HOST_VISIBLE for large image: size=%"PRIu64" resizable_bar=%d", reqs.size, screen->resizable_bar);
       } else {
          alloc_info->flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
       }
