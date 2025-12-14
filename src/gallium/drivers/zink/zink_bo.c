@@ -297,6 +297,14 @@ bo_create_internal(struct zink_screen *screen,
       return NULL;
    }
 
+   /* For large allocations on integrated GPUs (no resizable BAR), proactively
+    * reclaim memory before allocation to reduce OOM during video decode workloads.
+    * Video decode creates many large textures faster than they can be freed.
+    */
+   if (!screen->resizable_bar && size > ZINK_LARGE_ALLOCATION_THRESHOLD) {
+      clean_up_buffer_managers(screen);
+   }
+
    VkResult ret = VKSCR(AllocateMemory)(screen->dev, &mai, NULL, &bo->mem);
    if (!zink_screen_handle_vkresult(screen, ret)) {
       /* Try to reclaim memory from buffer managers and retry allocation.

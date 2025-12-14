@@ -29,6 +29,15 @@
 #include "zink_types.h"
 #include "zink_batch.h"
 
+/* Threshold for memory management optimizations on integrated GPUs.
+ * Used for:
+ * 1. Proactive buffer cache cleanup before large allocations (zink_bo.c)
+ * 2. Allocation strategy: use HOST_VISIBLE instead of DEVICE_LOCAL for large images (zink_resource.c)
+ * Video decode workloads allocate large textures (e.g., 1920x1080 RGBA = ~8.3MB)
+ * faster than they can be freed. Using this threshold helps prevent OOM.
+ */
+#define ZINK_LARGE_ALLOCATION_THRESHOLD (1024 * 1024)
+
 #define VK_VIS_VRAM (VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)
 #define VK_STAGING_RAM (VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_CACHED_BIT)
 #define VK_LAZY_VRAM (VK_MEMORY_PROPERTY_LAZILY_ALLOCATED_BIT | VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)

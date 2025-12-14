@@ -955,6 +955,7 @@ allocate_bo(struct zink_screen *screen, const struct pipe_resource *templ,
    mai.pNext = NULL;
    mai.allocationSize = reqs->size;
    enum zink_heap heap = zink_heap_from_domain_flags(alloc_info->flags, alloc_info->aflags);
+   mesa_logi("zink: allocate_bo flags=0x%x heap=%d size=%"PRIu64, alloc_info->flags, heap, reqs->size);
    if (templ->flags & PIPE_RESOURCE_FLAG_MAP_COHERENT) {
       if (!(vk_domain_from_heap(heap) & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT))
          heap = zink_heap_from_domain_flags(alloc_info->flags & ~VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, alloc_info->aflags);
@@ -1454,8 +1455,21 @@ create_image(struct zink_screen *screen, struct zink_resource_object *obj,
    alloc_info->need_dedicated = get_image_memory_requirement(screen, obj, num_planes, &reqs);
    if (templ->usage == PIPE_USAGE_STAGING && ici.tiling == VK_IMAGE_TILING_LINEAR)
       alloc_info->flags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
-   else
-      alloc_info->flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+   else {
+      /* On integrated GPUs (no resizable BAR), prefer HOST_VISIBLE memory for large images
+       * to avoid exhausting limited DEVICE_LOCAL (GTT) memory. On these systems, DEVICE_LOCAL
+       * points to a small GTT aperture (~1.7GB on Ivy Bridge) rather than system RAM.
+       * This is critical for video decode which allocates many large textures rapidly
+       * (e.g., 1920x1080 RGBA = ~8.3MB per frame).
+       * Note: Discrete GPUs have resizable BAR and large VRAM, so they use DEVICE_LOCAL.
+       */
+      if (!screen->resizable_bar && reqs.size > ZINK_LARGE_ALLOCATION_THRESHOLD) {
+         alloc_info->flags = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+         mesa_logi("zink: Using HOST_VISIBLE for large image: size=%"PRIu64" resizable_bar=%d", reqs.size, screen->resizable_bar);
+      } else {
+         alloc_info->flags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+      }
+   }
 
    obj->vkflags = ici.flags;
    obj->vkusage = ici.usage;

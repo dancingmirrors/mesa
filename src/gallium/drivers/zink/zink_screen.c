@@ -3496,9 +3496,17 @@ zink_internal_create_screen(const struct pipe_screen_config *config, int64_t dev
       uint64_t biggest_vram = 0;
       for (unsigned i = 0; i < screen->heap_count[ZINK_HEAP_DEVICE_LOCAL]; i++)
          biggest_vram = MAX2(biggest_vram, screen->info.mem_props.memoryHeaps[screen->info.mem_props.memoryTypes[screen->heap_map[ZINK_HEAP_DEVICE_LOCAL][i]].heapIndex].size);
-      /* determine if vis vram is roughly equal to total vram */
-      if (biggest_vis_vram > biggest_vram * 0.9)
+      /* determine if vis vram is roughly equal to total vram
+       * Integrated GPUs don't have resizable BAR - they use system RAM, so vis_vram == vram.
+       * Only set resizable_bar=true for discrete GPUs with large visible VRAM.
+       */
+      bool is_integrated = screen->info.props.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU;
+      if (!is_integrated && biggest_vis_vram > biggest_vram * 0.9) {
          screen->resizable_bar = true;
+         mesa_logi("zink: Detected resizable BAR: vis_vram=%"PRIu64" vram=%"PRIu64, biggest_vis_vram, biggest_vram);
+      } else {
+         mesa_logi("zink: No resizable BAR (integrated=%d): vis_vram=%"PRIu64" vram=%"PRIu64, is_integrated, biggest_vis_vram, biggest_vram);
+      }
       if (biggest_vis_vram >= 8ULL * 1024ULL * 1024ULL * 1024ULL)
          screen->always_cached_upload = true;
    }
