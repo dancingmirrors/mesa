@@ -1071,14 +1071,24 @@ allocate_bo(struct zink_screen *screen, const struct pipe_resource *templ,
          obj->bo = zink_bo(zink_bo_create(screen, reqs->size, alignment, heap, mai.pNext ? ZINK_ALLOC_NO_SUBALLOC : 0, mai.memoryTypeIndex, mai.pNext));
       }
 
-      if (obj->bo || heap != ZINK_HEAP_DEVICE_LOCAL_VISIBLE)
+      if (obj->bo)
          break;
 
-      /* demote BAR allocations to a different heap on failure to avoid oom */
-      if (templ->flags & PIPE_RESOURCE_FLAG_MAP_COHERENT || templ->usage == PIPE_USAGE_DYNAMIC)
-          heap = ZINK_HEAP_HOST_VISIBLE_COHERENT;
-      else
-          heap = ZINK_HEAP_DEVICE_LOCAL;
+      if (heap == ZINK_HEAP_DEVICE_LOCAL_VISIBLE) {
+         /* demote BAR allocations to a different heap on failure to avoid oom */
+         if (templ->flags & PIPE_RESOURCE_FLAG_MAP_COHERENT || templ->usage == PIPE_USAGE_DYNAMIC)
+             heap = ZINK_HEAP_HOST_VISIBLE_COHERENT;
+         else
+             heap = ZINK_HEAP_DEVICE_LOCAL;
+      } else if (heap == ZINK_HEAP_DEVICE_LOCAL && !screen->resizable_bar) {
+         /* On integrated GPUs without resizable BAR, DEVICE_LOCAL heap may point to
+          * limited GTT aperture (~1.7GB on Gen7) instead of system RAM. Fallback to
+          * host-visible memory to properly use system RAM and avoid exhausting GTT.
+          */
+         heap = ZINK_HEAP_HOST_VISIBLE_COHERENT;
+      } else {
+         break;
+      }
    };
 
    return obj->bo ? roc_success : roc_fail_and_cleanup_object;
