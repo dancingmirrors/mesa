@@ -147,6 +147,7 @@ vdpVideoSurfaceDestroy(VdpVideoSurface surface)
 
     glx_ctx_push_thread_local(deviceData);
     glDeleteTextures(1, &videoSurfData->tex_id);
+    glDeleteFramebuffers(1, &videoSurfData->fbo_id);
     GLenum gl_error = glGetError();
     glx_ctx_pop();
 
