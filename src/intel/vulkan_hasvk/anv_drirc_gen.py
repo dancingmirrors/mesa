@@ -8,6 +8,7 @@ import sys
 VALID_COMMON_VK_OPTIONS = {
     "force_vk_devicename",
     "vk_lower_terminate_to_discard",
+    "heap_memory_percent",
 }
 
 def declare_options():
@@ -57,6 +58,7 @@ def declare_options():
         drirc_gen.DrircSection("Debugging", debug_options, c_name="debug"),
         drirc_gen.DrircSection("Performance", performance_options, c_name="performance"),
         drirc_gen.DrircSection("Quality", quality_options, c_name="quality"),
+        drirc_gen.DrircSection("Misc", misc_options, c_name="misc"),
     ]
 
 

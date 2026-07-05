@@ -1308,38 +1308,27 @@ get_properties(const struct anv_physical_device *pdevice,
    }
 }
 
-static uint64_t
-anv_compute_sys_heap_size(struct anv_physical_device *device,
-                          uint64_t available_ram)
-{
-   /* We want to leave some padding for things we allocate in the driver,
-    * so don't go over 3/4 of the GTT either.
-    */
-   available_ram = MIN2(available_ram, device->gtt_size * 3 / 4);
-
-   if (available_ram > (2ull << 30) && !device->supports_48bit_addresses) {
-      /* When running with an overridden PCI ID, we may get a GTT size from
-       * the kernel that is greater than 2 GiB but the execbuf check for 48bit
-       * address support can still fail.  Just clamp the address space size to
-       * 2 GiB if we don't have 48-bit support.
-       */
-      mesa_logw("%s:%d: The kernel reported a GTT size larger than 2 GiB but "
-                "not support for 48-bit addresses",
-                __FILE__, __LINE__);
-      available_ram = 2ull << 30;
-   }
-
-   return available_ram;
-}
-
 static VkResult MUST_CHECK
 anv_init_meminfo(struct anv_physical_device *device, int fd)
 {
    const struct intel_device_info *devinfo = &device->info;
 
-   device->sys.size =
-      anv_compute_sys_heap_size(device, devinfo->mem.sram.mappable.size);
-   device->sys.available = devinfo->mem.sram.mappable.free;
+   float percent = device->instance->drirc.misc.heap_memory_percent;
+   uint64_t heap_size = os_get_gpu_heap_size(percent, &percent);
+   if (heap_size == 0) {
+      mesa_logw("Failed to query total physical memory! "
+                "Falling back to GTT size.");
+      heap_size = devinfo->mem.sram.mappable.size;
+   }
+
+   device->sys.size = heap_size;
+
+   uint64_t available_system_ram;
+   if (os_get_available_system_memory(&available_system_ram)) {
+      device->sys.available = available_system_ram;
+   } else {
+      device->sys.available = devinfo->mem.sram.mappable.free;
+   }
 
    return VK_SUCCESS;
 }
@@ -1350,8 +1339,13 @@ anv_update_meminfo(struct anv_physical_device *device, int fd)
    if (!intel_device_info_update_memory_info(&device->info, fd))
       return;
 
-   const struct intel_device_info *devinfo = &device->info;
-   device->sys.available = devinfo->mem.sram.mappable.free;
+   uint64_t available_system_ram;
+   if (os_get_available_system_memory(&available_system_ram)) {
+      device->sys.available = available_system_ram;
+   } else {
+      const struct intel_device_info *devinfo = &device->info;
+      device->sys.available = devinfo->mem.sram.mappable.free;
+   }
 }
 
 static VkResult
