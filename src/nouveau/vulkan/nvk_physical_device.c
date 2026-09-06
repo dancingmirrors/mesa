@@ -158,6 +158,7 @@ nvk_get_device_extensions(const struct nvk_instance *instance,
       .KHR_incremental_present = true,
 #endif
       .KHR_index_type_uint8 = true,
+      .KHR_internally_synchronized_queues = true,
       .KHR_line_rasterization = true,
       .KHR_load_store_op_none = true,
       .KHR_maintenance1 = true,
@@ -505,6 +506,9 @@ nvk_get_device_features(const struct nv_device_info *info,
 
       /* VK_KHR_copy_memory_indirect */
       .indirectMemoryCopy = true,
+
+      /* VK_KHR_internally_synchronized_queues */
+      .internallySynchronizedQueues = true,
 
       /* VK_KHR_cooperative_matrix */
       /* TU11X can run coop matrix but the performances are abysal */
