@@ -7,6 +7,7 @@
 
 #include "nvk_private.h"
 
+#include "nvk_cmd_pool.h"
 #include "nvk_edb_bview_cache.h"
 #include "nvk_descriptor_table.h"
 #include "nvk_heap.h"
@@ -60,6 +61,8 @@ struct nvk_device {
    struct nvk_heap qmd_heap;
    struct nvk_slm_area slm;
    struct nvkmd_mem *vab_memory;
+
+   struct nvk_cmd_mem_cache cmd_mem_cache;
 
    struct u_printf_ctx printf;
 

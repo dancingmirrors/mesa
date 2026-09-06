@@ -260,6 +260,8 @@ nvk_CreateDevice(VkPhysicalDevice physicalDevice,
       vk_device_set_drm_fd(&dev->vk, nvkmd_dev_get_drm_fd(dev->nvkmd));
       dev->vk.command_buffer_ops = &nvk_cmd_buffer_ops;
 
+      nvk_cmd_mem_cache_init(&dev->cmd_mem_cache);
+
       dev->vk.get_timestamp = nvk_device_get_timestamp;
       dev->vk.copy_sync_payloads = vk_drm_syncobj_copy_payloads;
 
@@ -429,6 +431,7 @@ fail_zero_page:
 fail_upload:
    nvk_upload_queue_finish(dev, &dev->upload);
 fail_nvkmd:
+   nvk_cmd_mem_cache_finish(dev, &dev->cmd_mem_cache);
    nvkmd_dev_destroy(dev->nvkmd);
 fail_init:
    vk_device_finish(&dev->vk);
@@ -480,6 +483,7 @@ nvk_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
       nvk_descriptor_table_finish(dev, &dev->images);
       nvkmd_mem_unref(dev->zero_page);
       nvk_upload_queue_finish(dev, &dev->upload);
+      nvk_cmd_mem_cache_finish(dev, &dev->cmd_mem_cache);
       nvkmd_dev_destroy(dev->nvkmd);
    }
 
