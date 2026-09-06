@@ -509,6 +509,9 @@ nvk_get_device_features(const struct nv_device_info *info,
       /* VK_KHR_copy_memory_indirect */
       .indirectMemoryCopy = true,
 
+      /* VK_KHR_internally_synchronized_queues */
+      .internallySynchronizedQueues = true,
+
       /* VK_KHR_cooperative_matrix */
       /* TU11X can run coop matrix but the performances are abysal */
       .cooperativeMatrix = info->cls_eng3d >= TURING_A && !is_tu11x,
