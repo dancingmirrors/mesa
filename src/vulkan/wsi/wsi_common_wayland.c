@@ -471,6 +471,63 @@ wsi_wl_display_add_vk_format_modifier(struct wsi_wl_display *display,
       wsi_wl_format_add_modifier(format, modifier);
 }
 
+enum wsi_wl_format_rank {
+   WSI_WL_FMT_RANK_8BPC = 0,
+   WSI_WL_FMT_RANK_10BPC,
+   WSI_WL_FMT_RANK_16BPC,
+   WSI_WL_FMT_RANK_LOW,
+   WSI_WL_FMT_RANK_COUNT,
+};
+
+static enum wsi_wl_format_rank
+wsi_wl_format_rank(VkFormat format)
+{
+   switch (format) {
+   case VK_FORMAT_R8G8B8_UNORM:
+   case VK_FORMAT_R8G8B8_SRGB:
+   case VK_FORMAT_B8G8R8_UNORM:
+   case VK_FORMAT_B8G8R8_SRGB:
+   case VK_FORMAT_R8G8B8A8_UNORM:
+   case VK_FORMAT_R8G8B8A8_SRGB:
+   case VK_FORMAT_B8G8R8A8_UNORM:
+   case VK_FORMAT_B8G8R8A8_SRGB:
+      return WSI_WL_FMT_RANK_8BPC;
+   case VK_FORMAT_A2R10G10B10_UNORM_PACK32:
+   case VK_FORMAT_A2B10G10R10_UNORM_PACK32:
+      return WSI_WL_FMT_RANK_10BPC;
+   case VK_FORMAT_R16G16B16A16_UNORM:
+   case VK_FORMAT_R16G16B16A16_SFLOAT:
+      return WSI_WL_FMT_RANK_16BPC;
+   default:
+      return WSI_WL_FMT_RANK_LOW;
+   }
+}
+
+static const uint8_t *
+wsi_wl_format_rank_order(VkColorSpaceKHR colorspace)
+{
+   static const uint8_t sdr[WSI_WL_FMT_RANK_COUNT] = {
+      WSI_WL_FMT_RANK_8BPC,
+      WSI_WL_FMT_RANK_10BPC,
+      WSI_WL_FMT_RANK_16BPC,
+      WSI_WL_FMT_RANK_LOW,
+   };
+   static const uint8_t high_precision[WSI_WL_FMT_RANK_COUNT] = {
+      WSI_WL_FMT_RANK_16BPC,
+      WSI_WL_FMT_RANK_10BPC,
+      WSI_WL_FMT_RANK_8BPC,
+      WSI_WL_FMT_RANK_LOW,
+   };
+
+   switch (colorspace) {
+   case VK_COLOR_SPACE_SRGB_NONLINEAR_KHR:
+   case VK_COLOR_SPACE_PASS_THROUGH_EXT:
+      return sdr;
+   default:
+      return high_precision;
+   }
+}
+
 static void
 wsi_wl_display_add_drm_format_modifier(struct wsi_wl_display *display,
                                        struct u_vector *formats,
@@ -2179,19 +2236,26 @@ wsi_wl_surface_get_formats(VkIcdSurfaceBase *icd_surface,
 
    VkColorSpaceKHR *cs;
    u_vector_foreach(cs, &display.colorspaces) {
-      struct wsi_wl_format *disp_fmt;
-      u_vector_foreach(disp_fmt, &display.formats) {
-         /* Skip formats for which we can't support both alpha & opaque
-          * formats.
-          */
-         if (!(disp_fmt->flags & WSI_WL_FMT_ALPHA) ||
-            !(disp_fmt->flags & WSI_WL_FMT_OPAQUE)) {
-            continue;
-         }
+      const uint8_t *rank_order = wsi_wl_format_rank_order(*cs);
 
-         vk_outarray_append_typed(VkSurfaceFormatKHR, &out, out_fmt) {
-            out_fmt->format = disp_fmt->vk_format;
-            out_fmt->colorSpace = *cs;
+      for (unsigned i = 0; i < WSI_WL_FMT_RANK_COUNT; i++) {
+         struct wsi_wl_format *disp_fmt;
+         u_vector_foreach(disp_fmt, &display.formats) {
+            if (wsi_wl_format_rank(disp_fmt->vk_format) != rank_order[i])
+               continue;
+
+            /* Skip formats for which we can't support both alpha & opaque
+             * formats.
+             */
+            if (!(disp_fmt->flags & WSI_WL_FMT_ALPHA) ||
+               !(disp_fmt->flags & WSI_WL_FMT_OPAQUE)) {
+               continue;
+            }
+
+            vk_outarray_append_typed(VkSurfaceFormatKHR, &out, out_fmt) {
+               out_fmt->format = disp_fmt->vk_format;
+               out_fmt->colorSpace = *cs;
+            }
          }
       }
    }
@@ -2224,19 +2288,26 @@ wsi_wl_surface_get_formats2(VkIcdSurfaceBase *icd_surface,
 
    VkColorSpaceKHR *cs;
    u_vector_foreach(cs, &display.colorspaces) {
-      struct wsi_wl_format *disp_fmt;
-      u_vector_foreach(disp_fmt, &display.formats) {
-         /* Skip formats for which we can't support both alpha & opaque
-          * formats.
-          */
-         if (!(disp_fmt->flags & WSI_WL_FMT_ALPHA) ||
-            !(disp_fmt->flags & WSI_WL_FMT_OPAQUE)) {
-            continue;
-         }
+      const uint8_t *rank_order = wsi_wl_format_rank_order(*cs);
 
-         vk_outarray_append_typed(VkSurfaceFormat2KHR, &out, out_fmt) {
-            out_fmt->surfaceFormat.format = disp_fmt->vk_format;
-            out_fmt->surfaceFormat.colorSpace = *cs;
+      for (unsigned i = 0; i < WSI_WL_FMT_RANK_COUNT; i++) {
+         struct wsi_wl_format *disp_fmt;
+         u_vector_foreach(disp_fmt, &display.formats) {
+            if (wsi_wl_format_rank(disp_fmt->vk_format) != rank_order[i])
+               continue;
+
+            /* Skip formats for which we can't support both alpha & opaque
+             * formats.
+             */
+            if (!(disp_fmt->flags & WSI_WL_FMT_ALPHA) ||
+               !(disp_fmt->flags & WSI_WL_FMT_OPAQUE)) {
+               continue;
+            }
+
+            vk_outarray_append_typed(VkSurfaceFormat2KHR, &out, out_fmt) {
+               out_fmt->surfaceFormat.format = disp_fmt->vk_format;
+               out_fmt->surfaceFormat.colorSpace = *cs;
+            }
          }
       }
    }
