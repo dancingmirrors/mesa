@@ -78,6 +78,8 @@ specific to NVK:
       applies to Tegra devices.
    ``no_compression``
       Disables image compression.
+   ``no_cmd_mem_cache``
+      Disables the device-wide command buffer memory recycling cache.
 
 .. envvar:: NVK_EXPERIMENTAL
 
