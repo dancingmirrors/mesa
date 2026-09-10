@@ -1,6 +1,10 @@
 # Copyright © 2017 Intel Corporation
 # SPDX-License-Identifier: MIT
 
+intel_compiler_cpp_args = ['-Werror=vla'] + cpp.get_supported_arguments([
+  '-Wno-c99-designator',
+])
+
 libintel_compiler_nir_files = files(
   'intel_nir.h',
   'intel_nir.c',
@@ -26,7 +30,7 @@ libintel_compiler_nir = static_library(
   [libintel_compiler_nir_files],
   include_directories : [inc_include, inc_src, inc_intel],
   c_args : [no_override_init_args, soong_compat_c_args],
-  cpp_args : ['-Werror=vla'],
+  cpp_args : intel_compiler_cpp_args,
   gnu_symbol_visibility : 'hidden',
   dependencies : [idep_nir_headers, idep_mesautil, idep_intel_dev, idep_vtn, idep_mda],
   build_by_default : false,
