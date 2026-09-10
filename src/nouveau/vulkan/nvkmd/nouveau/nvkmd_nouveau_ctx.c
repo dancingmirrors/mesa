@@ -11,6 +11,8 @@
 #include "vk_drm_syncobj.h"
 #include "vk_log.h"
 
+#include <errno.h>
+#include <string.h>
 #include <xf86drm.h>
 
 static ALWAYS_INLINE VkResult
@@ -41,6 +43,34 @@ nvkmd_nouveau_ctx_add_sync(struct nvkmd_ctx *ctx,
 }
 
 static VkResult
+ctx_alloc_error(struct vk_object_base *log_obj, int err, const char *what)
+{
+   const int e = err < 0 ? -err : err;
+   VkResult result;
+
+   switch (e) {
+   case ENOSPC:
+      /* Out of channels or runlist entries. */
+      result = VK_ERROR_TOO_MANY_OBJECTS;
+      break;
+   case ENOMEM:
+      result = VK_ERROR_OUT_OF_HOST_MEMORY;
+      break;
+   case ENODEV:
+   case ENXIO:
+   case EIO:
+      result = VK_ERROR_DEVICE_LOST;
+      break;
+   default:
+      result = VK_ERROR_INITIALIZATION_FAILED;
+      break;
+   }
+
+   return vk_errorf(log_obj, result, "%s: %s (errno %d)", what,
+                    strerror(e), e);
+}
+
+static VkResult
 nvkmd_nouveau_create_exec_ctx(struct nvkmd_dev *_dev,
                               struct vk_object_base *log_obj,
                               enum nvkmd_engines engines,
@@ -67,17 +97,16 @@ nvkmd_nouveau_create_exec_ctx(struct nvkmd_dev *_dev,
    err = nouveau_ws_context_create(dev->ws_dev, (int)engines, &ctx->ws_ctx);
    if (err != 0) {
       FREE(ctx);
-      if (err == -ENOSPC)
-         return vk_error(log_obj, VK_ERROR_TOO_MANY_OBJECTS);
-      else
-         return vk_error(log_obj, VK_ERROR_OUT_OF_HOST_MEMORY);
+      return ctx_alloc_error(log_obj, err, "Failed to set up a GPU channel");
    }
 
    err = drmSyncobjCreate(dev->ws_dev->fd, 0, &ctx->syncobj);
    if (err < 0) {
+      const int syncobj_errno = errno;
       nouveau_ws_context_destroy(ctx->ws_ctx);
       FREE(ctx);
-      return vk_error(dev, VK_ERROR_OUT_OF_HOST_MEMORY);
+      return ctx_alloc_error(log_obj, -syncobj_errno,
+                             "Failed to create a syncobj");
    }
 
    ctx->max_push = dev->ws_dev->max_push;
