@@ -3691,6 +3691,27 @@ wsi_display_init_wsi(struct wsi_device *wsi_device,
    if (wsi->fd != -1 && !local_drmIsMaster(wsi->fd))
       wsi->fd = -1;
 
+   if (wsi->fd >= 0) {
+      if (drmSetClientCap(wsi->fd, DRM_CLIENT_CAP_ATOMIC, 1) != 0) {
+         wsi_display_debug("wsi_display_init_wsi: drm fd %d has no atomic "
+                           "modesetting, disabling KHR_display", wsi->fd);
+         wsi->fd = -1;
+      } else {
+         /* Drop master, so that others (vkAcquireDRMDisplayEXT, KMS-native
+          * compositors after a VT switch) can get master when they open.
+          */
+         int ret = drmDropMaster(wsi->fd);
+         if (ret != 0) {
+            /* Leave a debug note, but ignore it -- if you ask for KHR_display, and
+             * are the second client (not master), but can later acquire a master
+             * fd by whatever means (systemd-logind, whatever), that should be
+             * allowed.
+             */
+            wsi_display_debug("wsi_display_init_wsi: drm fd %d failed to drop master", wsi->fd);
+         }
+      }
+   }
+
    /* wsi->fd will get modified as part of vkAcquireDRMDisplayEXT() and
     * vkReleaseDisplay(), but we need to keep it around for the
     * device-equivalence check in vkAcquireDRMDisplayEXT.
@@ -3698,22 +3719,6 @@ wsi_display_init_wsi(struct wsi_device *wsi_device,
    wsi->device_fd = wsi->fd;
 
    wsi->syncobj_fd = wsi->fd;
-
-   if (wsi->fd >= 0) {
-      drmSetClientCap(wsi->fd, DRM_CLIENT_CAP_ATOMIC, 1);
-      /* Drop master, so that others (vkAcquireDRMDisplayEXT, KMS-native
-       * compositors after a VT switch) can get master when they open.
-       */
-      int ret = drmDropMaster(wsi->fd);
-      if (ret != 0) {
-         /* Leave a debug note, but ignore it -- if you ask for KHR_display, and
-          * are the second client (not master), but can later acquire a master
-          * fd by whatever means (systemd-logind, whatever), that should be
-          * allowed.
-          */
-         wsi_display_debug("wsi_display_init_wsi: drm fd %d failed to drop master", wsi->fd);
-      }
-   }
 
    wsi->alloc = alloc;
 
