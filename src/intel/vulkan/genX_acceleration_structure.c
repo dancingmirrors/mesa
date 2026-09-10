@@ -366,7 +366,7 @@ anv_bvh_build_bind_pipeline(VkCommandBuffer commandBuffer,
    VkPipeline pipeline;
    VkResult result = vk_get_bvh_build_pipeline_spv(&device->vk,
                                                    &device->meta_device,
-                                                   (enum anv_object_key_bvh_type)type,
+                                                   (enum vk_meta_object_key_type)type,
                                                    spirv, spirv_size, push_constant_size,
                                                    &device->accel_struct_build.build_args,
                                                    flags, &pipeline, false);
