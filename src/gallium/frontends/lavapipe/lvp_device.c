@@ -1718,10 +1718,13 @@ lvp_enumerate_physical_devices(struct vk_instance *vk_instance)
 void
 lvp_device_get_cache_uuid(void *uuid)
 {
+   static const char git_sha1[] = MESA_GIT_SHA1;
+   const char *sha1 = git_sha1 + MIN2(4, sizeof(git_sha1) - 1);
+
    memset(uuid, 'a', VK_UUID_SIZE);
-   if (MESA_GIT_SHA1[0])
+   if (sha1[0])
       /* debug build */
-      memcpy(uuid, &MESA_GIT_SHA1[4], MIN2(strlen(MESA_GIT_SHA1) - 4, VK_UUID_SIZE));
+      memcpy(uuid, sha1, MIN2(strlen(sha1), VK_UUID_SIZE));
    else
       /* release build */
       memcpy(uuid, PACKAGE_VERSION, MIN2(strlen(PACKAGE_VERSION), VK_UUID_SIZE));
