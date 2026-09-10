@@ -45,6 +45,9 @@ enum nvk_debug {
 
    /* Disable image compression */
    NVK_DEBUG_NO_COMPRESSION = 1ull << 9,
+
+   /* Disable the device-wide command buffer memory recycling cache */
+   NVK_DEBUG_NO_CMD_MEM_CACHE = 1ull << 10,
 };
 
 enum nvk_experimental {

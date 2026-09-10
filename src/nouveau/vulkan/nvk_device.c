@@ -245,6 +245,8 @@ nvk_CreateDevice(VkPhysicalDevice physicalDevice,
 
    init_dispatch_tables(dev);
 
+   nvk_cmd_mem_cache_init(&dev->cmd_mem_cache);
+
    dev->vk.shader_ops = &nvk_device_shader_ops;
    dev->vk.check_status = &nvk_device_check_status;
 
@@ -255,7 +257,7 @@ nvk_CreateDevice(VkPhysicalDevice physicalDevice,
    if (queue_count > 0) {
       result = nvkmd_pdev_create_dev(pdev->nvkmd, &pdev->vk.base, &dev->nvkmd);
       if (result != VK_SUCCESS)
-         goto fail_init;
+         goto fail_cmd_mem_cache;
 
       vk_device_set_drm_fd(&dev->vk, nvkmd_dev_get_drm_fd(dev->nvkmd));
       dev->vk.command_buffer_ops = &nvk_cmd_buffer_ops;
@@ -382,6 +384,8 @@ nvk_CreateDevice(VkPhysicalDevice physicalDevice,
    dev->vk.mem_cache = vk_pipeline_cache_create(&dev->vk, &cache_info, NULL);
    if (dev->vk.mem_cache == NULL) {
       result = VK_ERROR_OUT_OF_HOST_MEMORY;
+      if (queue_count == 0)
+         goto fail_cmd_mem_cache;
       goto fail_queues;
    }
 
@@ -430,7 +434,8 @@ fail_upload:
    nvk_upload_queue_finish(dev, &dev->upload);
 fail_nvkmd:
    nvkmd_dev_destroy(dev->nvkmd);
-fail_init:
+fail_cmd_mem_cache:
+   nvk_cmd_mem_cache_finish(dev, &dev->cmd_mem_cache);
    vk_device_finish(&dev->vk);
 fail_alloc:
    vk_free(&dev->vk.alloc, dev);
@@ -480,8 +485,12 @@ nvk_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
       nvk_descriptor_table_finish(dev, &dev->images);
       nvkmd_mem_unref(dev->zero_page);
       nvk_upload_queue_finish(dev, &dev->upload);
-      nvkmd_dev_destroy(dev->nvkmd);
    }
+
+   nvk_cmd_mem_cache_finish(dev, &dev->cmd_mem_cache);
+
+   if (dev->nvkmd)
+      nvkmd_dev_destroy(dev->nvkmd);
 
    vk_device_finish(&dev->vk);
    vk_free(&dev->vk.alloc, dev);

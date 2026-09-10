@@ -7,10 +7,18 @@
 
 #include "nvk_private.h"
 
+#include "util/simple_mtx.h"
 #include "vk_command_pool.h"
 
-#define NVK_CMD_MEM_SIZE 64*1024
+#define NVK_CMD_MEM_SIZE (64*1024)
 
+#define NVK_CMD_MEM_CACHE_MAX_SIZE (2 * 1024 * 1024)
+#define NVK_CMD_MEM_CACHE_MAX \
+   (NVK_CMD_MEM_CACHE_MAX_SIZE / NVK_CMD_MEM_SIZE)
+static_assert(NVK_CMD_MEM_CACHE_MAX == 32,
+              "cmd mem cache cap is not the 2 MiB per placement it claims");
+
+struct nvk_device;
 struct nvkmd_mem;
 
 /* Recyclable command buffer BO, used for both push buffers and upload */
@@ -30,6 +38,22 @@ struct nvk_cmd_qmd {
    /** Link in nvk_cmd_pool::free_qmd or nvk_cmd_buffer::owned_qmd */
    struct list_head link;
 };
+
+struct nvk_cmd_mem_cache {
+   simple_mtx_t mutex;
+
+   struct list_head free_mem;
+   struct list_head free_gart_mem;
+
+   uint32_t mem_count;
+   uint32_t gart_mem_count;
+};
+
+void nvk_cmd_mem_cache_init(struct nvk_cmd_mem_cache *cache);
+void nvk_cmd_mem_cache_finish(struct nvk_device *dev,
+                              struct nvk_cmd_mem_cache *cache);
+void nvk_cmd_mem_cache_evict_all(struct nvk_device *dev,
+                                 struct nvk_cmd_mem_cache *cache);
 
 struct nvk_cmd_pool {
    struct vk_command_pool vk;
