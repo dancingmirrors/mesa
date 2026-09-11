@@ -868,6 +868,21 @@ static const struct vk_pipeline_cache_object_ops pipeline_precomp_shader_cache_o
    .destroy = vk_pipeline_precomp_shader_destroy,
 };
 
+const char *
+vk_pipeline_cache_object_type_name(const struct vk_pipeline_cache_object_ops *ops)
+{
+   if (ops == &pipeline_shader_cache_ops)
+      return "pipeline shader";
+
+   if (ops == &pipeline_precomp_shader_cache_ops)
+      return "precompiled shader";
+
+   if (ops == &vk_raw_data_cache_object_ops)
+      return "raw cache data";
+
+   return "driver object";
+}
+
 struct vk_pipeline_stage {
    mesa_shader_stage stage;
 
