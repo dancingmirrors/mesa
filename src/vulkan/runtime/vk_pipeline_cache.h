@@ -311,6 +311,9 @@ vk_raw_data_cache_object_create(struct vk_device *device,
 
 extern const struct vk_pipeline_cache_object_ops vk_raw_data_cache_object_ops;
 
+const char *
+vk_pipeline_cache_object_type_name(const struct vk_pipeline_cache_object_ops *ops);
+
 #ifdef __cplusplus
 }
 #endif
