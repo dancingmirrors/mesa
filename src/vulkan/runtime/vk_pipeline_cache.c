@@ -35,6 +35,7 @@
 #include "util/u_debug.h"
 #include "util/disk_cache.h"
 #include "util/hash_table.h"
+#include "util/log.h"
 #include "util/set.h"
 
 #define vk_pipeline_cache_log(cache, ...)                                      \
@@ -672,6 +673,34 @@ vk_pipeline_cache_create(struct vk_device *device,
    return cache;
 }
 
+static void
+vk_pipeline_cache_report_leaked_objects(struct vk_pipeline_cache *cache)
+{
+   const uint32_t count = cache->object_cache->entries;
+
+   mesa_logw("%u pipeline cache object%s outlived the implicit pipeline "
+             "cache.", count, count == 1 ? "" : "s");
+
+   set_foreach(cache->object_cache, entry) {
+      struct vk_pipeline_cache_object *object = (void *)entry->key;
+
+      char key[33];
+      const uint32_t key_len = MIN2(object->key_size, (sizeof(key) - 1) / 2);
+      for (uint32_t i = 0; i < key_len; i++) {
+         snprintf(key + 2 * i, 3, "%02x",
+                  ((const uint8_t *)object->key_data)[i]);
+      }
+      key[2 * key_len] = '\0';
+
+      mesa_logw("  leaked %s: key %s%s, %u reference%s, %u bytes of data",
+                vk_pipeline_cache_object_type_name(object->ops),
+                key, key_len < object->key_size ? "..." : "",
+                p_atomic_read(&object->ref_cnt),
+                p_atomic_read(&object->ref_cnt) == 1 ? "" : "s",
+                p_atomic_read(&object->data_size));
+   }
+}
+
 void
 vk_pipeline_cache_destroy(struct vk_pipeline_cache *cache,
                           const VkAllocationCallbacks *pAllocator)
@@ -682,6 +711,9 @@ vk_pipeline_cache_destroy(struct vk_pipeline_cache *cache,
             vk_pipeline_cache_object_unref(cache->base.device, (void *)entry->key);
          }
       } else {
+         if (unlikely(cache->object_cache->entries != 0))
+            vk_pipeline_cache_report_leaked_objects(cache);
+
          assert(cache->object_cache->entries == 0);
       }
       _mesa_set_destroy(cache->object_cache, NULL);
