@@ -23,6 +23,7 @@
 #ifndef VK_PIPELINE_CACHE_H
 #define VK_PIPELINE_CACHE_H
 
+#include "compiler/shader_enums.h"
 #include "vk_object.h"
 #include "vk_util.h"
 
@@ -313,6 +314,9 @@ extern const struct vk_pipeline_cache_object_ops vk_raw_data_cache_object_ops;
 
 const char *
 vk_pipeline_cache_object_type_name(const struct vk_pipeline_cache_object_ops *ops);
+
+mesa_shader_stage
+vk_pipeline_cache_object_shader_stage(const struct vk_pipeline_cache_object *object);
 
 #ifdef __cplusplus
 }
