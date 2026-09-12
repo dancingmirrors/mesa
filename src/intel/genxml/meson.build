@@ -264,7 +264,13 @@ endforeach
 
 gen_pack_header_py = files('gen_pack_header.py')
 
+genxml_compile_args = []
+if get_option('debug') and cc.has_argument('-gno-inline-line-tables')
+  genxml_compile_args += '-gno-inline-line-tables'
+endif
+
 idep_genxml = declare_dependency(
+  compile_args : genxml_compile_args,
   include_directories : include_directories('.'),
   dependencies : idep_mesautil,
   sources : [gen_xml_pack, gen_xml_video_pack, gen_cl_xml_pack, genX_bits_h, genX_xml_h]
