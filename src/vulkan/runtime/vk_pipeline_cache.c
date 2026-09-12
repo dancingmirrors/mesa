@@ -692,8 +692,15 @@ vk_pipeline_cache_report_leaked_objects(struct vk_pipeline_cache *cache)
       }
       key[2 * key_len] = '\0';
 
-      mesa_logw("  leaked %s: key %s%s, %u reference%s, %u bytes of data",
+      const mesa_shader_stage stage =
+         vk_pipeline_cache_object_shader_stage(object);
+
+      mesa_logw("  leaked %s%s%s%s: key %s%s, %u reference%s, "
+                "%u bytes of data",
                 vk_pipeline_cache_object_type_name(object->ops),
+                stage == MESA_SHADER_NONE ? "" : " (",
+                stage == MESA_SHADER_NONE ? "" : _mesa_shader_stage_to_string(stage),
+                stage == MESA_SHADER_NONE ? "" : ")",
                 key, key_len < object->key_size ? "..." : "",
                 p_atomic_read(&object->ref_cnt),
                 p_atomic_read(&object->ref_cnt) == 1 ? "" : "s",

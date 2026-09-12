@@ -883,6 +883,15 @@ vk_pipeline_cache_object_type_name(const struct vk_pipeline_cache_object_ops *op
    return "driver object";
 }
 
+mesa_shader_stage
+vk_pipeline_cache_object_shader_stage(const struct vk_pipeline_cache_object *object)
+{
+   if (object->ops != &pipeline_shader_cache_ops)
+      return MESA_SHADER_NONE;
+
+   return container_of(object, struct vk_shader, pipeline.cache_obj)->stage;
+}
+
 struct vk_pipeline_stage {
    mesa_shader_stage stage;
 
