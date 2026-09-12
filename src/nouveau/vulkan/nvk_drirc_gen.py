@@ -40,6 +40,10 @@ def declare_options():
           c_name="override_compute_shader_version"),
 
         B("nvk_ssbo_align_4b", False, c_name="ssbo_align_4b"),
+
+        B("nvk_no_descriptor_buffer", False,
+          "Do not advertise VK_EXT_descriptor_buffer.",
+          c_name="no_descriptor_buffer"),
     ]
 
     drirc_gen.add_common_vk_options(debug_options, features_options, misc_options,
