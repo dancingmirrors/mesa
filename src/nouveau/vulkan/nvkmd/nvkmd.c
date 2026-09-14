@@ -304,23 +304,68 @@ fail_lookup:
    nvkmd_mem_unref(mem);
 }
 
+static void
+nvkmd_ctx_exec_log_push(struct nvkmd_ctx *ctx,
+                        const struct nvkmd_ctx_exec *exec)
+{
+   ctx->exec_log[ctx->exec_log_next] = *exec;
+   ctx->exec_log_next = (ctx->exec_log_next + 1) % NVKMD_CTX_EXEC_LOG_LEN;
+   if (ctx->exec_log_count < NVKMD_CTX_EXEC_LOG_LEN)
+      ctx->exec_log_count++;
+}
+
+void
+nvkmd_ctx_dump_exec_log(struct nvkmd_ctx *ctx, struct vk_object_base *log_obj)
+{
+   if (!(ctx->dev->pdev->debug_flags & NVK_DEBUG_PUSH_LOG))
+      return;
+
+   const uint32_t count = ctx->exec_log_count;
+   if (count == 0)
+      return;
+
+   fprintf(stderr, "=== last %u submit(s) on this context, newest first ===\n",
+           count);
+
+   uint32_t i = ctx->exec_log_next;
+   for (uint32_t n = 0; n < count; n++) {
+      i = (i + NVKMD_CTX_EXEC_LOG_LEN - 1) % NVKMD_CTX_EXEC_LOG_LEN;
+      fprintf(stderr, "--- submit -%u ---\n", n + 1);
+      nvkmd_ctx_exec_dump(ctx->dev, log_obj, stderr, &ctx->exec_log[i]);
+   }
+
+   fprintf(stderr, "=== end of submit log ===\n");
+
+   ctx->exec_log_count = 0;
+   ctx->exec_log_next = 0;
+}
+
 VkResult MUST_CHECK
 nvkmd_ctx_exec(struct nvkmd_ctx *ctx,
                struct vk_object_base *log_obj,
                uint32_t exec_count,
                const struct nvkmd_ctx_exec *execs)
 {
-   const bool sync = ctx->dev->pdev->debug_flags & NVK_DEBUG_PUSH_SYNC;
+   const enum nvk_debug debug_flags = ctx->dev->pdev->debug_flags;
+   const bool sync = debug_flags & NVK_DEBUG_PUSH_SYNC;
+
+   if (debug_flags & NVK_DEBUG_PUSH_LOG) {
+      for (uint32_t i = 0; i < exec_count; i++)
+         nvkmd_ctx_exec_log_push(ctx, &execs[i]);
+   }
 
    VkResult result = ctx->ops->exec(ctx, log_obj, exec_count, execs);
    if (result == VK_SUCCESS && sync)
       result = ctx->ops->sync(ctx, log_obj);
 
    if ((sync && result != VK_SUCCESS) ||
-       (ctx->dev->pdev->debug_flags & NVK_DEBUG_PUSH_DUMP)) {
+       (debug_flags & NVK_DEBUG_PUSH_DUMP)) {
       for (uint32_t i = 0; i < exec_count; i++)
          nvkmd_ctx_exec_dump(ctx->dev, log_obj, stderr, &execs[i]);
    }
+
+   if (result != VK_SUCCESS)
+      nvkmd_ctx_dump_exec_log(ctx, log_obj);
 
    return result;
 }
