@@ -15,6 +15,9 @@
 #include <inttypes.h>
 #include <sys/mman.h>
 
+/* Smallest allocation worth asking for a large page. */
+#define NVK_LARGE_PAGE_MIN_ALLOC_SIZE_B (16ULL << 20)
+
 /* Supports opaque fd only */
 const VkExternalMemoryProperties nvk_opaque_fd_mem_props = {
    .externalMemoryFeatures =
@@ -203,11 +206,31 @@ nvk_AllocateMemory(VkDevice device,
       }
    }
 
-   const enum nvkmd_mem_flags flags =
-      nvk_memory_type_flags(type, handle_types, pinned_to_vram);
+   bool large_page = false;
+   if (!pinned_to_vram && not_shared && pte_kind == 0 && tile_mode == 0 &&
+       (type->propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) &&
+       !(type->propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) &&
+       pAllocateInfo->allocationSize >= NVK_LARGE_PAGE_MIN_ALLOC_SIZE_B &&
+       pdev->nvkmd->kmd_info.has_get_vram_used) {
+      const uint64_t vram_B = pdev->info.vram_size_B;
+      const uint64_t used_B = nvkmd_pdev_get_vram_used(pdev->nvkmd);
+      const uint64_t want_B =
+         align64(pAllocateInfo->allocationSize, NVKMD_LARGE_PAGE_SIZE_B);
 
-   const uint64_t aligned_size =
-      align64(pAllocateInfo->allocationSize, alignment);
+      if (used_B < vram_B && want_B + (vram_B >> 3) <= vram_B - used_B) {
+         pinned_to_vram = true;
+         large_page = true;
+      }
+   }
+
+   enum nvkmd_mem_flags flags =
+      nvk_memory_type_flags(type, handle_types, pinned_to_vram);
+   if (large_page)
+      flags |= NVKMD_MEM_LARGE_PAGE;
+
+   uint64_t aligned_size =
+      align64(pAllocateInfo->allocationSize,
+              large_page ? NVKMD_LARGE_PAGE_SIZE_B : alignment);
 
    const bool is_import = fd_info && fd_info->handleType;
    if (is_import) {
@@ -236,6 +259,17 @@ nvk_AllocateMemory(VkDevice device,
       result = nvkmd_dev_alloc_mem(dev->nvkmd, &dev->vk.base,
                                    aligned_size, alignment, flags,
                                    &mem->mem);
+
+      if (result != VK_SUCCESS && result != VK_ERROR_OUT_OF_HOST_MEMORY &&
+          large_page) {
+         large_page = false;
+         flags = nvk_memory_type_flags(type, handle_types, false);
+         aligned_size = align64(pAllocateInfo->allocationSize, alignment);
+         result = nvkmd_dev_alloc_mem(dev->nvkmd, &dev->vk.base,
+                                      aligned_size, alignment, flags,
+                                      &mem->mem);
+      }
+
       if (result != VK_SUCCESS)
          goto fail_alloc;
    }
