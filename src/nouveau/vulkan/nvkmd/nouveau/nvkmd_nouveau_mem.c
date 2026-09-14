@@ -49,8 +49,15 @@ create_mem_or_close_bo(struct nvkmd_nouveau_dev *dev,
     * VA allocation at the end aligns the data to va_align_B.
     */
    va_align_B = MAX2(dev->base.pdev->bind_align_B, va_align_B);
+
+   const uint64_t bind_align_B = va_align_B;
+   if (mem_flags & NVKMD_MEM_LARGE_PAGE) {
+      assert(size_B % NVKMD_LARGE_PAGE_SIZE_B == 0);
+      va_align_B = MAX2(va_align_B, NVKMD_LARGE_PAGE_SIZE_B);
+   }
+
    nvkmd_mem_init(&dev->base, &mem->base, &nvkmd_nouveau_mem_ops,
-                  mem_flags, size_B, va_align_B);
+                  mem_flags, size_B, bind_align_B);
    mem->bo = bo;
 
    result = nvkmd_dev_alloc_va(&dev->base, log_obj,
