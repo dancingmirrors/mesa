@@ -56,10 +56,16 @@ enum nvkmd_mem_flags {
 
    /** This memory object has coherent CPU maps */
    NVKMD_MEM_COHERENT   = 1 << 5,
+
+   /** Give this memory object's own VA a large-page aligned address */
+   NVKMD_MEM_LARGE_PAGE = 1 << 6,
 };
 
 #define NVKMD_MEM_PLACEMENT_FLAGS \
    (NVKMD_MEM_LOCAL | NVKMD_MEM_GART | NVKMD_MEM_VRAM)
+
+/* Smallest large page the Turing and newer page tables offer */
+#define NVKMD_LARGE_PAGE_SIZE_B (1ULL << 21)
 
 enum nvkmd_mem_map_flags {
    NVKMD_MEM_MAP_RD     = 1 << 0,
