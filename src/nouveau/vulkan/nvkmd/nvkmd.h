@@ -351,9 +351,15 @@ struct nvkmd_ctx_ops {
                     struct vk_object_base *log_obj);
 };
 
+/* Number of submits NVK_DEBUG=push_log remembers per context */
+#define NVKMD_CTX_EXEC_LOG_LEN 16
+
 struct nvkmd_ctx {
    const struct nvkmd_ctx_ops *ops;
    struct nvkmd_dev *dev;
+   struct nvkmd_ctx_exec exec_log[NVKMD_CTX_EXEC_LOG_LEN];
+   uint32_t exec_log_next;
+   uint32_t exec_log_count;
 };
 
 /*
@@ -581,13 +587,28 @@ nvkmd_ctx_destroy(struct nvkmd_ctx *ctx)
    ctx->ops->destroy(ctx);
 }
 
+void nvkmd_ctx_dump_exec_log(struct nvkmd_ctx *ctx,
+                             struct vk_object_base *log_obj);
+
+static inline VkResult
+nvkmd_ctx_note_result(struct nvkmd_ctx *ctx,
+                      struct vk_object_base *log_obj,
+                      VkResult result)
+{
+   if (unlikely(result != VK_SUCCESS))
+      nvkmd_ctx_dump_exec_log(ctx, log_obj);
+
+   return result;
+}
+
 static inline VkResult MUST_CHECK
 nvkmd_ctx_wait(struct nvkmd_ctx *ctx,
                struct vk_object_base *log_obj,
                uint32_t wait_count,
                const struct vk_sync_wait *waits)
 {
-   return ctx->ops->wait(ctx, log_obj, wait_count, waits);
+   return nvkmd_ctx_note_result(ctx, log_obj,
+      ctx->ops->wait(ctx, log_obj, wait_count, waits));
 }
 
 VkResult MUST_CHECK
@@ -608,21 +629,22 @@ nvkmd_ctx_signal(struct nvkmd_ctx *ctx,
                  uint32_t signal_count,
                  const struct vk_sync_signal *signals)
 {
-   return ctx->ops->signal(ctx, log_obj, signal_count, signals);
+   return nvkmd_ctx_note_result(ctx, log_obj,
+      ctx->ops->signal(ctx, log_obj, signal_count, signals));
 }
 
 static inline VkResult MUST_CHECK
 nvkmd_ctx_flush(struct nvkmd_ctx *ctx,
                 struct vk_object_base *log_obj)
 {
-   return ctx->ops->flush(ctx, log_obj);
+   return nvkmd_ctx_note_result(ctx, log_obj, ctx->ops->flush(ctx, log_obj));
 }
 
 static inline VkResult MUST_CHECK
 nvkmd_ctx_sync(struct nvkmd_ctx *ctx,
                struct vk_object_base *log_obj)
 {
-   return ctx->ops->sync(ctx, log_obj);
+   return nvkmd_ctx_note_result(ctx, log_obj, ctx->ops->sync(ctx, log_obj));
 }
 
 #endif /* NVKMD_H */
