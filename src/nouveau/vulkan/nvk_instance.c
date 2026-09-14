@@ -10,6 +10,8 @@
 
 #include "vulkan/wsi/wsi_common.h"
 
+#include <stdio.h>
+
 #include "util/build_id.h"
 #include "util/detect_os.h"
 #include "util/mesa-blake3.h"
@@ -94,10 +96,18 @@ nvk_init_debug_flags(struct nvk_instance *instance)
       { "coherent", NVK_DEBUG_FORCE_COHERENT },
       { "no_compression", NVK_DEBUG_NO_COMPRESSION },
       { "no_cmd_mem_cache", NVK_DEBUG_NO_CMD_MEM_CACHE },
+      { "push_log", NVK_DEBUG_PUSH_LOG },
       { NULL, 0 },
    };
 
    instance->debug_flags = parse_debug_string(os_get_option("NVK_DEBUG"), flags);
+
+   if (instance->debug_flags != 0) {
+      char buf[256] = {0};
+      dump_debug_control_string(buf, sizeof(buf), flags,
+                                instance->debug_flags);
+      fprintf(stderr, "NVK_DEBUG=%s\n", buf);
+   }
 }
 
 static void
