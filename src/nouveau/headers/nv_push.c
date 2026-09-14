@@ -47,6 +47,19 @@ nv_push_validate(struct nv_push *push)
 }
 #endif
 
+static bool
+nv_device_uses_class(const struct nv_device_info *devinfo, uint16_t class_id)
+{
+   return class_id != 0 &&
+          (class_id == devinfo->cls_copy ||
+           class_id == devinfo->cls_eng2d ||
+           class_id == devinfo->cls_eng3d ||
+           class_id == devinfo->cls_m2mf ||
+           class_id == devinfo->cls_compute ||
+           class_id == devinfo->cls_gpfifo ||
+           class_id == devinfo->cls_vdec);
+}
+
 void
 vk_push_print(FILE *fp, const struct nv_push *push,
               const struct nv_device_info *devinfo)
@@ -139,14 +152,25 @@ vk_push_print(FILE *fp, const struct nv_push *push,
             break;
          }
          break;
+      default:
+         fprintf(fp, " <SEC_OP %u, no methods>\n", type);
+         count = 0;
+         break;
       }
 
       while (count--) {
+         if (!is_immd && cur >= push->end) {
+            fprintf(fp, "\t<method count runs past the end of the push>\n");
+            break;
+         }
+
          if (!is_immd)
             value = *cur;
 
          if (mthd == 0) { /* SET_OBJECT */
-            curr_subchans[subchan] = value & 0xffff;
+            const uint16_t new_class = value & 0xffff;
+            curr_subchans[subchan] =
+               nv_device_uses_class(devinfo, new_class) ? new_class : 0;
          }
          int class_id = curr_subchans[subchan];
 
@@ -155,11 +179,16 @@ vk_push_print(FILE *fp, const struct nv_push *push,
          if (class_id == 0)
             class_id = devinfo->cls_gpfifo;
 
-         if (!is_tert)
-            mthd_name = P_PARSE_NV_MTHD(class_id, mthd);
+         if (class_id == 0) {
+            fprintf(fp, "\tmthd %04x <no class bound to subch %u>\n",
+                    mthd, subchan);
+         } else {
+            if (!is_tert)
+               mthd_name = P_PARSE_NV_MTHD(class_id, mthd);
 
-         fprintf(fp, "\tmthd %04x %s\n", mthd, mthd_name);
-         P_DUMP_NV_MTHD_DATA(fp, class_id, mthd, value, "\t\t");
+            fprintf(fp, "\tmthd %04x %s\n", mthd, mthd_name);
+            P_DUMP_NV_MTHD_DATA(fp, class_id, mthd, value, "\t\t");
+         }
 
          if (!is_immd)
             cur++;
