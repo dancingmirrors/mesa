@@ -48,6 +48,9 @@ enum nvk_debug {
 
    /* Disable the device-wide command buffer memory recycling cache */
    NVK_DEBUG_NO_CMD_MEM_CACHE = 1ull << 10,
+
+   /* Keep a ring of the last few submits per context and dump it when a submit fails */
+   NVK_DEBUG_PUSH_LOG = 1ull << 11,
 };
 
 enum nvk_experimental {
