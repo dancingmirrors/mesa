@@ -18,7 +18,6 @@
 
 #include "clc597.h"
 #include "clc697.h"
-#include "clcb97.h"
 
 static bool
 drm_device_is_nouveau(const char *path)
@@ -103,12 +102,10 @@ nvkmd_nouveau_try_create_pdev(struct _drmDevice *drm_device,
       .has_alloc_tiled = nouveau_ws_device_has_tiled_bo(ws_dev),
       .has_map_fixed = true,
       .has_overmap = true,
-      /* Hopper and newer take a different path in the kernel which doesn't implement compression at all. */
-      .has_compression = ((ws_dev->nouveau_version >= 0x01000403 &&
-                           ws_dev->info.cls_eng3d >= TURING_A) ||
-                          (ws_dev->nouveau_version >= 0x01000402 &&
-                           ws_dev->info.cls_eng3d >= AMPERE_A)) &&
-                         ws_dev->info.cls_eng3d < HOPPER_A,
+      .has_compression = (ws_dev->nouveau_version >= 0x01000403 &&
+                          ws_dev->info.cls_eng3d >= TURING_A) ||
+                         (ws_dev->nouveau_version >= 0x01000402 &&
+                          ws_dev->info.cls_eng3d >= AMPERE_A),
    };
 
    /* We get this ourselves */
