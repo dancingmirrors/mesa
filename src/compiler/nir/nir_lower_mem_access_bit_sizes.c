@@ -160,6 +160,8 @@ lower_mem_load(nir_builder *b, nir_intrinsic_instr *intrin,
    const uint32_t align_mul = nir_intrinsic_align_mul(intrin);
    const uint32_t whole_align_offset = nir_intrinsic_align_offset(intrin);
    const uint32_t whole_align = nir_intrinsic_align(intrin);
+   const uint32_t base =
+      nir_intrinsic_has_base(intrin) ? nir_intrinsic_base(intrin) : 0;
    const enum gl_access_qualifier access =
       nir_intrinsic_has_access(intrin) ? nir_intrinsic_access(intrin) : 0;
    nir_src *offset_src = nir_get_io_offset_src(intrin);
@@ -208,7 +210,7 @@ lower_mem_load(nir_builder *b, nir_intrinsic_instr *intrin,
          assert(requested.bit_size >= requested.align * 8);
 
          uint64_t align_mask = requested.align - 1;
-         nir_def *chunk_offset = nir_iadd_imm(b, offset, chunk_start);
+         nir_def *chunk_offset = nir_iadd_imm(b, offset, chunk_start + base);
 
          /* TODO add support for offset_shift. */
          assert(!nir_intrinsic_has_offset_shift(intrin) ||
@@ -222,6 +224,9 @@ lower_mem_load(nir_builder *b, nir_intrinsic_instr *intrin,
             dup_mem_intrinsic(b, intrin, aligned_offset,
                               requested.align, 0, NULL,
                               requested.num_components, requested.bit_size);
+
+         if (nir_intrinsic_has_base(load))
+            nir_intrinsic_set_base(load, 0);
 
          unsigned max_pad = requested.align - chunk_align;
          unsigned requested_bytes =
@@ -321,6 +326,8 @@ lower_mem_store(nir_builder *b, nir_intrinsic_instr *intrin,
    const uint32_t align_mul = nir_intrinsic_align_mul(intrin);
    const uint32_t whole_align_offset = nir_intrinsic_align_offset(intrin);
    const uint32_t whole_align = nir_intrinsic_align(intrin);
+   const uint32_t base =
+      nir_intrinsic_has_base(intrin) ? nir_intrinsic_base(intrin) : 0;
    const enum gl_access_qualifier access =
       nir_intrinsic_has_access(intrin) ? nir_intrinsic_access(intrin) : 0;
    nir_src *offset_src = nir_get_io_offset_src(intrin);
@@ -401,7 +408,7 @@ lower_mem_store(nir_builder *b, nir_intrinsic_instr *intrin,
          /* TODO add support for offset_shift. */
          assert(!nir_intrinsic_has_offset_shift(intrin) ||
                 nir_intrinsic_offset_shift(intrin) == 0);
-         nir_def *chunk_offset = nir_iadd_imm(b, offset, chunk_start);
+         nir_def *chunk_offset = nir_iadd_imm(b, offset, chunk_start + base);
          nir_def *pad = chunk_align < 4 ? nir_iand_imm(b, chunk_offset, align_mask) : nir_imm_intN_t(b, 0, chunk_offset->bit_size);
          chunk_offset = nir_iand_imm(b, chunk_offset, ~align_mask);
 
@@ -451,12 +458,10 @@ lower_mem_store(nir_builder *b, nir_intrinsic_instr *intrin,
          case nir_intrinsic_store_shared:
             nir_shared_atomic(b, 32, chunk_offset, iand_mask,
                               .atomic_op = nir_atomic_op_iand,
-                              .access = nir_intrinsic_access(intrin),
-                              .base = nir_intrinsic_base(intrin));
+                              .access = nir_intrinsic_access(intrin));
             nir_shared_atomic(b, 32, chunk_offset, data,
                               .atomic_op = nir_atomic_op_ior,
-                              .access = nir_intrinsic_access(intrin),
-                              .base = nir_intrinsic_base(intrin));
+                              .access = nir_intrinsic_access(intrin));
             break;
          case nir_intrinsic_store_scratch: {
             nir_def *value = nir_load_scratch(b, 1, 32, chunk_offset);
