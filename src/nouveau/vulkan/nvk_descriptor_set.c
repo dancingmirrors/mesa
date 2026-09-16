@@ -167,15 +167,25 @@ get_sampled_image_view_desc(VkDescriptorType descriptor_type,
       }
 
       *plane_count = MIN2(view->plane_count, desc_count);
+
+      if (unlikely(view->planes[0].sampled.desc_index == 0)) {
+         assert(!(view->vk.usage & (VK_IMAGE_USAGE_SAMPLED_BIT |
+                                    VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT)));
+         mesa_logw_once("Image view (format %s, aspects 0x%x, usage 0x%x) has "
+                        "no sampled descriptor. Using the null descriptor "
+                        "instead.", vk_Format_to_str(view->vk.format),
+                        (unsigned)view->vk.aspects, (unsigned)view->vk.usage);
+      }
+
       for (uint8_t plane = 0; plane < *plane_count; plane++) {
-         assert(view->planes[plane].sampled.desc_index > 0);
          assert(view->planes[plane].sampled.desc_index < (1 << 20));
          desc[plane].image_index = view->planes[plane].sampled.desc_index;
       }
    }
 
-   if (descriptor_type == VK_DESCRIPTOR_TYPE_SAMPLER ||
-       descriptor_type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER) {
+   if ((descriptor_type == VK_DESCRIPTOR_TYPE_SAMPLER ||
+        descriptor_type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER) &&
+       info && info->sampler != VK_NULL_HANDLE) {
       VK_FROM_HANDLE(nvk_sampler, sampler, info->sampler);
 
       *plane_count = MIN2(MAX2(*plane_count, sampler->plane_count), desc_count);
@@ -235,7 +245,14 @@ get_storage_image_view_desc(const struct nvk_physical_device *pdev,
       assert(view->plane_count == 1);
       uint8_t plane = 0;
 
-      assert(view->planes[plane].storage.desc_index > 0);
+      /* As above, but for STORAGE usage. */
+      if (unlikely(view->planes[plane].storage.desc_index == 0)) {
+         assert(!(view->vk.usage & VK_IMAGE_USAGE_STORAGE_BIT));
+         mesa_logw_once("Image view (format %s, aspects 0x%x, usage 0x%x) has "
+                        "no storage descriptor. Using the null descriptor "
+                        "instead.", vk_Format_to_str(view->vk.format),
+                        (unsigned)view->vk.aspects, (unsigned)view->vk.usage);
+      }
       assert(view->planes[plane].storage.desc_index < (1 << 20));
 
       desc.image_index = view->planes[plane].storage.desc_index;
