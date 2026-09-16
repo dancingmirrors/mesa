@@ -37,7 +37,7 @@ nvk_CreateVideoSessionKHR(VkDevice _device,
       uint64_t max_width_in_mb = vid->vk.max_coded.width / 16;
       uint64_t max_height_in_mb = vid->vk.max_coded.height / 16;
       uint64_t coloc_size = align(align(max_height_in_mb, 2) * (max_width_in_mb * 64) - 63, 0x100);
-      coloc_size *= vid->vk.max_active_ref_pics + 1; /* Max number of references frames, plus current frame */
+      coloc_size *= MIN2(vid->vk.max_dpb_slots, 16) + 1;
       uint64_t mbhist_size  = align(max_width_in_mb * 104, 0x100);
       uint64_t history_size = align(max_width_in_mb * 0x300, 0x200);
 
@@ -126,6 +126,17 @@ nvk_BindVideoSessionMemoryKHR(VkDevice _device,
       const VkBindVideoSessionMemoryInfoKHR *info = &pBindSessionMemoryInfos[i];
       VK_FROM_HANDLE(nvk_device_memory, mem, info->memory);
 
+      if (info->memoryBindIndex >= ARRAY_SIZE(vid->mems) || mem == NULL)
+         return VK_ERROR_UNKNOWN;
+
+      if (info->memorySize < vid->mems[info->memoryBindIndex].size_B)
+         return VK_ERROR_UNKNOWN;
+   }
+
+   for (unsigned i = 0; i < videoSessionBindMemoryCount; i++) {
+      const VkBindVideoSessionMemoryInfoKHR *info = &pBindSessionMemoryInfos[i];
+      VK_FROM_HANDLE(nvk_device_memory, mem, info->memory);
+
       vid->mems[info->memoryBindIndex].addr =
          mem->mem->va->addr + info->memoryOffset;
    }
@@ -167,6 +178,9 @@ nvk_GetPhysicalDeviceVideoCapabilitiesKHR(VkPhysicalDevice physicalDevice,
       struct VkVideoDecodeH264CapabilitiesKHR *ext =
          vk_find_struct(pCapabilities->pNext,
                         VIDEO_DECODE_H264_CAPABILITIES_KHR);
+
+      if (h264_profile == NULL || ext == NULL)
+         return VK_ERROR_VIDEO_PROFILE_OPERATION_NOT_SUPPORTED_KHR;
 
       if (h264_profile->stdProfileIdc != STD_VIDEO_H264_PROFILE_IDC_BASELINE &&
           h264_profile->stdProfileIdc != STD_VIDEO_H264_PROFILE_IDC_MAIN &&

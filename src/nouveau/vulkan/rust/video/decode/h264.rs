@@ -20,6 +20,26 @@ use crate::util::vk_find_struct_const;
 use crate::video::align_u32;
 use crate::video::decode::VideoDecoder;
 
+type Result<T = ()> = std::result::Result<T, ffi::VkResult>;
+
+fn bad_input<T>() -> Result<T> {
+    Err(ffi::VK_ERROR_UNKNOWN)
+}
+
+fn to_u32<T>(v: T) -> Result<u32>
+where
+    T: TryInto<u32>,
+{
+    v.try_into().map_err(|_| ffi::VK_ERROR_UNKNOWN)
+}
+
+fn to_i32<T>(v: T) -> Result<i32>
+where
+    T: TryInto<i32>,
+{
+    v.try_into().map_err(|_| ffi::VK_ERROR_UNKNOWN)
+}
+
 /// The type of picture being decoded.
 #[derive(Debug, Default, Clone, Copy)]
 enum PictureType {
@@ -48,21 +68,23 @@ struct FrameData {
 
 fn compute_opaque_buffer_sizes(
     sps: &StdVideoH264SequenceParameterSet,
-) -> (u32, u32, u32) {
-    let pic_height_in_map_units = sps.pic_height_in_map_units_minus1 + 1;
-    let pic_width_in_mbs = sps.pic_width_in_mbs_minus1 + 1;
-    let max_num_ref_frames = sps.max_num_ref_frames + 1;
+) -> Option<(u32, u32, u32)> {
+    let pic_height_in_map_units =
+        sps.pic_height_in_map_units_minus1.checked_add(1)?;
+    let pic_width_in_mbs = sps.pic_width_in_mbs_minus1.checked_add(1)?;
 
-    let mut coloc_size = align_u32(
-        align_u32(pic_height_in_map_units, 2) * pic_width_in_mbs * 64 - 63,
+    let coloc_size = align_u32(
+        align_u32(pic_height_in_map_units, 2)?
+            .checked_mul(pic_width_in_mbs)?
+            .checked_mul(64)?
+            .checked_sub(63)?,
         0x100,
-    );
-    coloc_size *= u32::from(max_num_ref_frames);
+    )?;
 
-    let mbhist_size = align_u32(pic_width_in_mbs * 104, 0x100);
-    let history_size = align_u32(pic_width_in_mbs * 0x300, 0x200);
+    let mbhist_size = align_u32(pic_width_in_mbs.checked_mul(104)?, 0x100)?;
+    let history_size = align_u32(pic_width_in_mbs.checked_mul(0x300)?, 0x200)?;
 
-    (coloc_size, mbhist_size, history_size)
+    Some((coloc_size, mbhist_size, history_size))
 }
 
 static EOS_ARRAY: [u8; 16] = [
@@ -83,7 +105,7 @@ unsafe fn upload_bytes(
     cmd: &mut nvk_cmd_buffer,
     data: Option<(*const u8, usize)>,
     size: u32,
-) -> Result<u64, ffi::VkResult> {
+) -> Result<u64> {
     let mut ptr = std::ptr::null_mut();
     let mut addr = 0;
     unsafe {
@@ -108,11 +130,9 @@ unsafe fn upload_bytes(
 fn upload_to_the_gpu(
     cmd: &mut nvk_cmd_buffer,
     nvh264: &_nvdec_h264_pic_s,
-    slice_offsets: &[u32; 256],
-) -> Result<GpuBufferAddresses, ffi::VkResult> {
-    let pic_size: u32 = std::mem::size_of::<ffi::nvdec_h264_pic_s>()
-        .try_into()
-        .unwrap();
+    slice_offsets: &[u32],
+) -> Result<GpuBufferAddresses> {
+    let pic_size = std::mem::size_of::<ffi::nvdec_h264_pic_s>() as u32;
     let pic_gpu_addr = unsafe {
         upload_bytes(
             cmd,
@@ -124,8 +144,7 @@ fn upload_to_the_gpu(
         )
     }?;
 
-    let slice_offsets_size: u32 =
-        std::mem::size_of_val(slice_offsets).try_into().unwrap();
+    let slice_offsets_size = to_u32(std::mem::size_of_val(slice_offsets))?;
     let slice_offsets_address = unsafe {
         upload_bytes(
             cmd,
@@ -177,16 +196,18 @@ fn slot_key(res: &ffi::VkVideoPictureResourceInfoKHR) -> SlotKey {
 /// A GPU address in the form the engine's offset methods take: shifted right
 /// by 8, so the low 8 bits have to be zero for the address to survive the
 /// round trip.
-fn addr_hi(addr: u64) -> u32 {
-    assert!(addr & 0xff == 0, "address {addr:#x} is not 256B aligned");
-    (addr >> 8).try_into().unwrap()
+fn addr_hi(addr: u64) -> Result<u32> {
+    if addr & 0xff != 0 {
+        return bad_input();
+    }
+    to_u32(addr >> 8)
 }
 
 /// Address (already shifted right by 8, as the hardware expects) of the given
 /// plane and DPB array layer of an image. For "separated" DPB the layer is 0
 /// and this is just the plane base address; for "layered" DPB the layer selects
 /// the picture within the array image.
-fn plane_layer_base(img: *mut nvk_image, plane: u8, layer: u32) -> u32 {
+fn plane_layer_base(img: *mut nvk_image, plane: u8, layer: u32) -> Result<u32> {
     let base = unsafe { ffi::nvk_image_base_address(img, plane) };
     let array_stride =
         unsafe { (*img).planes[plane as usize].nil.array_stride_B };
@@ -205,24 +226,34 @@ pub(crate) struct Decoder {
     free_pic_slots: u32,
     /// The free DPB slots, as a bitmask (bit `i` set means slot `i` is free).
     free_dpb_slots: u32,
+    num_pic_slots: u32,
 }
 
 impl Decoder {
+    pub(crate) fn new(max_dpb_slots: u32) -> Self {
+        Self {
+            num_pic_slots: max_dpb_slots.min(16) + 1,
+            ..Default::default()
+        }
+    }
+
     /// Gets the ith slot from the `begin_info`. These slots are the ones the
     /// application plans to use during the `vkCmdBeginVideoCodingKHR` and
     /// `vkCmdEndVideoCodingKHR` calls.
     fn get_ith_planned_slot(
         begin_info: &VkVideoBeginCodingInfoKHR,
         i: usize,
-    ) -> (VkVideoReferenceSlotInfoKHR, SlotKey) {
-        if i >= begin_info.referenceSlotCount as usize {
-            panic!("Invalid reference slot index {i}");
+    ) -> Option<(VkVideoReferenceSlotInfoKHR, Option<SlotKey>)> {
+        if i >= begin_info.referenceSlotCount as usize
+            || begin_info.pReferenceSlots.is_null()
+        {
+            return None;
         }
 
-        let ref_slot = unsafe { *begin_info.pReferenceSlots.add(i as usize) };
-        let key = slot_key(unsafe { &*ref_slot.pPictureResource });
+        let ref_slot = unsafe { *begin_info.pReferenceSlots.add(i) };
+        let key = unsafe { ref_slot.pPictureResource.as_ref() }.map(slot_key);
 
-        (ref_slot, key)
+        Some((ref_slot, key))
     }
 
     /// Gets the ith slot for the frame currently being decoded. This is a slot
@@ -230,39 +261,52 @@ impl Decoder {
     fn get_ith_slot_for_frame(
         frame_info: &ffi::VkVideoDecodeInfoKHR,
         i: usize,
-    ) -> (VkVideoReferenceSlotInfoKHR, SlotKey) {
-        if i >= frame_info.referenceSlotCount as usize {
-            panic!("Invalid reference slot index {i}");
+    ) -> Result<(VkVideoReferenceSlotInfoKHR, SlotKey)> {
+        if i >= frame_info.referenceSlotCount as usize
+            || frame_info.pReferenceSlots.is_null()
+        {
+            return bad_input();
         }
 
         let ref_slot = unsafe { *frame_info.pReferenceSlots.add(i) };
-        let key = slot_key(unsafe { &*ref_slot.pPictureResource });
+        let res = unsafe { ref_slot.pPictureResource.as_ref() }
+            .ok_or(ffi::VK_ERROR_UNKNOWN)?;
 
-        (ref_slot, key)
+        Ok((ref_slot, slot_key(res)))
     }
 
     fn remove_invalid_slots(&mut self, begin_info: &VkVideoBeginCodingInfoKHR) {
         // Mark the pictures the application still plans to use, then sweep
         // away everything else, rather than scanning the planned slots once
         // per tracked picture.
+        let slot_count = if begin_info.pReferenceSlots.is_null() {
+            0
+        } else {
+            begin_info.referenceSlotCount
+        };
+
         let mut keep = FxHashSet::with_capacity_and_hasher(
-            begin_info.referenceSlotCount as usize,
+            slot_count as usize,
             Default::default(),
         );
 
-        for i in 0..begin_info.referenceSlotCount {
-            let (ref_slot, key) =
-                Self::get_ith_planned_slot(begin_info, i as usize);
+        for i in 0..slot_count {
+            let Some((ref_slot, key)) =
+                Self::get_ith_planned_slot(begin_info, i as usize)
+            else {
+                break;
+            };
 
             if ref_slot.slotIndex >= 0 {
-                keep.insert(key);
+                if let Some(key) = key {
+                    keep.insert(key);
+                }
             }
         }
 
         self.slots.retain(|key, _| keep.contains(key));
 
-        // i.e.: everything is free. Picture slots are 0..=16, DPB slots 0..16.
-        self.free_pic_slots = 0x1ffff;
+        self.free_pic_slots = (1u32 << self.num_pic_slots) - 1;
         self.free_dpb_slots = 0xffff;
         for frame_slot in self.slots.values() {
             if let Some(pic_idx) = frame_slot.pic_idx {
@@ -279,10 +323,8 @@ impl Decoder {
     fn find_submitted_frame<'a>(
         slots: &'a mut FxHashMap<SlotKey, FrameData>,
         key: SlotKey,
-    ) -> &'a mut FrameData {
-        slots.get_mut(&key).expect(
-            "Frame data not found. Either this picture was not submitted or invalidated.",
-        )
+    ) -> Result<&'a mut FrameData> {
+        slots.get_mut(&key).ok_or(ffi::VK_ERROR_UNKNOWN)
     }
 
     /// Get the `pic_idx` value associated with the given DPB picture. If this is
@@ -296,21 +338,24 @@ impl Decoder {
     /// without a DPB slot, and pictures whose slot index is already held by
     /// another live picture (interlaced field decoding hits this), fall back
     /// to the lowest free index.
-    fn get_pic_idx(&mut self, key: SlotKey, slot_index: i32) -> u32 {
+    fn get_pic_idx(&mut self, key: SlotKey, slot_index: i32) -> Result<u32> {
         if let Some(frame_data) = self.slots.get(&key) {
             if let Some(pic_idx) = frame_data.pic_idx {
-                return pic_idx;
+                return Ok(pic_idx);
             }
         }
 
         // Prefer the stable application DPB slot as the colMv slot. Fall back to
         // a free slot only for pictures with no DPB slot (slot_index < 0).
         let pic_idx = if slot_index >= 0
+            && slot_index < self.num_pic_slots as i32
             && self.free_pic_slots & (1 << slot_index) != 0
         {
             slot_index as u32
         } else {
-            assert!(self.free_pic_slots != 0, "Bad DPB management");
+            if self.free_pic_slots == 0 {
+                return bad_input();
+            }
             self.free_pic_slots.trailing_zeros()
         };
 
@@ -323,45 +368,65 @@ impl Decoder {
 
         self.slots.insert(key, frame_data);
 
-        pic_idx
+        Ok(pic_idx)
     }
 
     /// Get the `dpb_idx` value associated with the given DPB picture or assign
     /// one if needed. This picture *must* have been submitted already.
-    fn get_dpb_idx(&mut self, key: SlotKey) -> u32 {
-        let frame_data = Self::find_submitted_frame(&mut self.slots, key);
+    fn get_dpb_idx(&mut self, key: SlotKey) -> Result<u32> {
+        let frame_data = Self::find_submitted_frame(&mut self.slots, key)?;
 
         if let Some(dpb_idx) = frame_data.dpb_idx {
-            return dpb_idx;
-        } else {
-            assert!(self.free_dpb_slots != 0, "Bad DPB management");
-            let dpb_idx = self.free_dpb_slots.trailing_zeros();
+            return Ok(dpb_idx);
+        }
 
-            self.free_dpb_slots &= !(1 << dpb_idx);
+        if self.free_dpb_slots == 0 {
+            return bad_input();
+        }
 
-            frame_data.dpb_idx = Some(dpb_idx);
+        let dpb_idx = self.free_dpb_slots.trailing_zeros();
+        frame_data.dpb_idx = Some(dpb_idx);
+        self.free_dpb_slots &= !(1 << dpb_idx);
 
-            dpb_idx
+        Ok(dpb_idx)
+    }
+
+    fn release_slot(&mut self, key: SlotKey) {
+        match self.slots.get(&key) {
+            Some(frame_data) if frame_data.dpb_idx.is_none() => (),
+            _ => return,
+        }
+
+        if let Some(frame_data) = self.slots.remove(&key) {
+            if let Some(pic_idx) = frame_data.pic_idx {
+                self.free_pic_slots |= 1 << pic_idx;
+            }
         }
     }
 
-    fn is_field(&mut self, key: SlotKey) -> bool {
-        Self::find_submitted_frame(&mut self.slots, key)
-            .first_field_or_complementary
+    fn is_field(&mut self, key: SlotKey) -> Result<bool> {
+        Ok(Self::find_submitted_frame(&mut self.slots, key)?
+            .first_field_or_complementary)
     }
 
-    fn set_field(&mut self, key: SlotKey, is_field: bool) {
-        Self::find_submitted_frame(&mut self.slots, key)
+    fn set_field(&mut self, key: SlotKey, is_field: bool) -> Result {
+        Self::find_submitted_frame(&mut self.slots, key)?
             .first_field_or_complementary = is_field;
+        Ok(())
     }
 
-    fn get_picture_type(&mut self, key: SlotKey) -> PictureType {
-        Self::find_submitted_frame(&mut self.slots, key).picture_ty
+    fn get_picture_type(&mut self, key: SlotKey) -> Result<PictureType> {
+        Ok(Self::find_submitted_frame(&mut self.slots, key)?.picture_ty)
     }
 
-    fn set_picture_type(&mut self, key: SlotKey, picture_ty: PictureType) {
-        Self::find_submitted_frame(&mut self.slots, key).picture_ty =
+    fn set_picture_type(
+        &mut self,
+        key: SlotKey,
+        picture_ty: PictureType,
+    ) -> Result {
+        Self::find_submitted_frame(&mut self.slots, key)?.picture_ty =
             picture_ty;
+        Ok(())
     }
 
     fn set_reference_frames(
@@ -369,10 +434,10 @@ impl Decoder {
         nvh264: &mut ffi::nvdec_h264_pic_s,
         frame_info: &ffi::VkVideoDecodeInfoKHR,
         (luma_base, chroma_base): (&mut [u32; 17], &mut [u32; 17]),
-    ) {
+    ) -> Result {
         for i in 0..frame_info.referenceSlotCount as usize {
             let (vk_ref_slot, key) =
-                Decoder::get_ith_slot_for_frame(frame_info, i);
+                Decoder::get_ith_slot_for_frame(frame_info, i)?;
 
             let img = unsafe { (*key.image_view).vk.image as *mut nvk_image };
 
@@ -380,15 +445,17 @@ impl Decoder {
                 vk_ref_slot.pNext,
                 VIDEO_DECODE_H264_DPB_SLOT_INFO,
                 KHR
-            );
+            )
+            .ok_or(ffi::VK_ERROR_UNKNOWN)?;
 
-            let vk_ref_info = unsafe { *dpb_slot.pStdReferenceInfo };
+            let vk_ref_info = unsafe { dpb_slot.pStdReferenceInfo.as_ref() }
+                .ok_or(ffi::VK_ERROR_UNKNOWN)?;
 
-            let pic_idx = self.get_pic_idx(key, vk_ref_slot.slotIndex);
-            let dpb_idx = self.get_dpb_idx(key);
+            let pic_idx = self.get_pic_idx(key, vk_ref_slot.slotIndex)?;
+            let dpb_idx = self.get_dpb_idx(key)?;
 
-            let is_field = self.is_field(key);
-            let picture_ty = self.get_picture_type(key);
+            let is_field = self.is_field(key)?;
+            let picture_ty = self.get_picture_type(key)?;
 
             let marking =
                 if vk_ref_info.flags.used_for_long_term_reference() != 0 {
@@ -418,19 +485,19 @@ impl Decoder {
 
             dpb_entry.FieldOrderCnt[0] =
                 if vk_ref_info.PicOrderCnt[0] != i32::MAX {
-                    vk_ref_info.PicOrderCnt[0].try_into().unwrap()
+                    vk_ref_info.PicOrderCnt[0] as u32
                 } else {
-                    vk_ref_info.PicOrderCnt[1].try_into().unwrap()
+                    vk_ref_info.PicOrderCnt[1] as u32
                 };
 
             dpb_entry.FieldOrderCnt[1] =
                 if vk_ref_info.PicOrderCnt[1] != i32::MAX {
-                    vk_ref_info.PicOrderCnt[1].try_into().unwrap()
+                    vk_ref_info.PicOrderCnt[1] as u32
                 } else {
-                    vk_ref_info.PicOrderCnt[0].try_into().unwrap()
+                    vk_ref_info.PicOrderCnt[0] as u32
                 };
 
-            dpb_entry.FrameIdx = vk_ref_info.FrameNum.try_into().unwrap();
+            dpb_entry.FrameIdx = vk_ref_info.FrameNum.into();
 
             dpb_entry.set_is_long_term(
                 vk_ref_info.flags.used_for_long_term_reference(),
@@ -438,9 +505,12 @@ impl Decoder {
 
             dpb_entry.set_not_existing(vk_ref_info.flags.is_non_existing());
 
-            luma_base[pic_idx as usize] = plane_layer_base(img, 0, key.layer);
-            chroma_base[pic_idx as usize] = plane_layer_base(img, 1, key.layer);
+            luma_base[pic_idx as usize] = plane_layer_base(img, 0, key.layer)?;
+            chroma_base[pic_idx as usize] =
+                plane_layer_base(img, 1, key.layer)?;
         }
+
+        Ok(())
     }
 
     fn set_current_picture_slot(
@@ -449,36 +519,34 @@ impl Decoder {
         slot_index: i32,
         std_pic_info: &StdVideoDecodeH264PictureInfo,
         interlaced: bool,
-    ) -> u32 {
-        if !interlaced {
-            assert!(
-                !self.slots.contains_key(&key),
-                "This slot is in use, the application should have invalidated it"
-            );
+    ) -> Result<u32> {
+        if !interlaced && self.slots.contains_key(&key) {
+            return bad_input();
         }
 
-        let pic_idx = self.get_pic_idx(key, slot_index);
+        let pic_idx = self.get_pic_idx(key, slot_index)?;
 
         let is_field_pic = std_pic_info.flags.field_pic_flag() != 0;
         let is_complementary_field_pair =
             std_pic_info.flags.complementary_field_pair() != 0;
         let is_bottom_field = std_pic_info.flags.bottom_field_flag() != 0;
 
-        self.set_field(key, is_field_pic || is_complementary_field_pair);
+        self.set_field(key, is_field_pic || is_complementary_field_pair)?;
 
-        if is_field_pic {
+        let picture_ty = if is_field_pic {
             if is_complementary_field_pair {
-                self.set_picture_type(key, PictureType::Frame);
+                PictureType::Frame
             } else if is_bottom_field {
-                self.set_picture_type(key, PictureType::Bottom);
+                PictureType::Bottom
             } else {
-                self.set_picture_type(key, PictureType::Top);
+                PictureType::Top
             }
         } else {
-            self.set_picture_type(key, PictureType::Frame);
-        }
+            PictureType::Frame
+        };
+        self.set_picture_type(key, picture_ty)?;
 
-        pic_idx
+        Ok(pic_idx)
     }
 }
 
@@ -495,14 +563,16 @@ impl VideoDecoder for Decoder {
         &mut self,
         cmd: &mut nvk_cmd_buffer,
         frame_info: &ffi::VkVideoDecodeInfoKHR,
-    ) -> Result<(), ffi::VkResult> {
+    ) -> Result {
         let h264_pic_info = vk_find_struct_const!(
             frame_info.pNext,
             VIDEO_DECODE_H264_PICTURE_INFO,
             KHR
-        );
+        )
+        .ok_or(ffi::VK_ERROR_UNKNOWN)?;
 
-        let std_pic_info = unsafe { *h264_pic_info.pStdPictureInfo };
+        let std_pic_info = unsafe { h264_pic_info.pStdPictureInfo.as_ref() }
+            .ok_or(ffi::VK_ERROR_UNKNOWN)?;
 
         // Use the common helper so that inline session parameters
         // (VK_KHR_video_maintenance2) are honored: it falls back to the
@@ -522,12 +592,31 @@ impl VideoDecoder for Decoder {
                 &mut pps_ptr,
             );
         }
+        if sps_ptr.is_null() || pps_ptr.is_null() {
+            return Err(ffi::VK_ERROR_UNKNOWN);
+        }
+
         let sps = unsafe { *sps_ptr };
         let pps = unsafe { *pps_ptr };
 
         // I do not know why the size of the coloc buffer is not passed to the hardware.
-        let (_coloc_size, mbhist_size, history_size) =
-            compute_opaque_buffer_sizes(&sps);
+        let (coloc_size, mbhist_size, history_size) =
+            compute_opaque_buffer_sizes(&sps).ok_or(ffi::VK_ERROR_UNKNOWN)?;
+
+        let session = unsafe { cmd.state.video.vid.as_ref() }
+            .ok_or(ffi::VK_ERROR_UNKNOWN)?;
+
+        let coloc_total = u64::from(coloc_size)
+            .checked_mul(u64::from(self.num_pic_slots))
+            .ok_or(ffi::VK_ERROR_UNKNOWN)?;
+
+        if session.mems.iter().any(|m| m.addr == 0)
+            || coloc_total > session.mems[0].size_B
+            || u64::from(mbhist_size) > session.mems[1].size_B
+            || u64::from(history_size) > session.mems[2].size_B
+        {
+            return bad_input();
+        }
 
         let dst_iv = unsafe {
             ffi::nvk_image_view_from_handle(
@@ -547,28 +636,41 @@ impl VideoDecoder for Decoder {
         nvh264.gptimer_timeout_value = 81000000;
 
         nvh264.slice_count = h264_pic_info.sliceCount.into();
-        nvh264.stream_len = u32::try_from(frame_info.srcBufferRange).unwrap()
-            + std::mem::size_of_val(&EOS_ARRAY) as u32;
+        let src_range = to_u32(frame_info.srcBufferRange)?;
+        nvh264.stream_len = src_range
+            .checked_add(std::mem::size_of_val(&EOS_ARRAY) as u32)
+            .ok_or(ffi::VK_ERROR_UNKNOWN)?;
 
         nvh264.mbhist_buffer_size = mbhist_size;
         nvh264.log2_max_pic_order_cnt_lsb_minus4 =
             sps.log2_max_pic_order_cnt_lsb_minus4.into();
         nvh264.delta_pic_order_always_zero_flag =
             sps.flags.delta_pic_order_always_zero_flag() as i32;
-        nvh264.frame_mbs_only_flag =
-            sps.flags.frame_mbs_only_flag().try_into().unwrap();
-        nvh264.PicWidthInMbs =
-            (sps.pic_width_in_mbs_minus1 + 1).try_into().unwrap();
+        nvh264.frame_mbs_only_flag = to_i32(sps.flags.frame_mbs_only_flag())?;
+        nvh264.PicWidthInMbs = to_i32(
+            sps.pic_width_in_mbs_minus1
+                .checked_add(1)
+                .ok_or(ffi::VK_ERROR_UNKNOWN)?,
+        )?;
 
-        nvh264.FrameHeightInMbs =
-            (sps.pic_height_in_map_units_minus1 + 1).try_into().unwrap();
+        nvh264.FrameHeightInMbs = to_i32(
+            sps.pic_height_in_map_units_minus1
+                .checked_add(1)
+                .ok_or(ffi::VK_ERROR_UNKNOWN)?,
+        )?;
         if nvh264.frame_mbs_only_flag == 0 {
-            nvh264.FrameHeightInMbs *= 2;
+            nvh264.FrameHeightInMbs = nvh264
+                .FrameHeightInMbs
+                .checked_mul(2)
+                .ok_or(ffi::VK_ERROR_UNKNOWN)?;
         }
 
         nvh264.set_tileFormat(1);
 
         let y_log2 = dst_img.planes[0].nil.levels[0].tiling.y_log2;
+        if y_log2 == 0 {
+            return bad_input();
+        }
         nvh264.set_gob_height((y_log2 - 1).into());
 
         nvh264.entropy_coding_mode_flag =
@@ -587,12 +689,12 @@ impl VideoDecoder for Decoder {
             pps.flags.transform_8x8_mode_flag() as _;
         nvh264.pitch_luma = dst_img.planes[0].nil.levels[0].row_stride_B;
         nvh264.pitch_chroma = dst_img.planes[1].nil.levels[0].row_stride_B;
-        nvh264.luma_bot_offset =
-            u32::try_from(nvh264.PicWidthInMbs).unwrap() * 16;
-        assert!(nvh264.pitch_chroma % 2 == 0);
+        nvh264.luma_bot_offset = to_u32(nvh264.PicWidthInMbs)? * 16;
+        if nvh264.pitch_chroma % 2 != 0 {
+            return bad_input();
+        }
         nvh264.chroma_bot_offset = nvh264.pitch_chroma / 2;
 
-        assert!(history_size & 0xff == 0);
         nvh264.HistBufferSize = history_size >> 8;
 
         let is_field = std_pic_info.flags.field_pic_flag() != 0;
@@ -649,12 +751,20 @@ impl VideoDecoder for Decoder {
         // final entry marking the end of the last slice. Vulkan's pSliceOffsets
         // only has sliceCount entries (the slice starts), so reading index
         // [sliceCount] is out of bounds.
-        let mut slice_offsets = [0; 256];
-        for i in 0..h264_pic_info.sliceCount as usize {
-            slice_offsets[i] = unsafe { *h264_pic_info.pSliceOffsets.add(i) };
+        let slice_count = h264_pic_info.sliceCount as usize;
+        let max_slices = i64::from(nvh264.PicWidthInMbs)
+            * i64::from(nvh264.FrameHeightInMbs);
+        if slice_count == 0
+            || slice_count as i64 > max_slices
+            || h264_pic_info.pSliceOffsets.is_null()
+        {
+            return bad_input();
         }
-        slice_offsets[h264_pic_info.sliceCount as usize] =
-            u32::try_from(frame_info.srcBufferRange).unwrap();
+        let mut slice_offsets = Vec::with_capacity(slice_count + 1);
+        for i in 0..slice_count {
+            slice_offsets.push(unsafe { *h264_pic_info.pSliceOffsets.add(i) });
+        }
+        slice_offsets.push(src_range);
 
         let mut luma_base = [0; 17];
         let mut chroma_base = [0; 17];
@@ -663,7 +773,7 @@ impl VideoDecoder for Decoder {
             &mut nvh264,
             &frame_info,
             (&mut luma_base, &mut chroma_base),
-        );
+        )?;
 
         let dst_key = slot_key(&frame_info.dstPictureResource);
         let dst_layer = dst_key.layer;
@@ -675,9 +785,9 @@ impl VideoDecoder for Decoder {
         let cur_pic_idx = self.set_current_picture_slot(
             dst_key,
             setup_slot_index,
-            &std_pic_info,
+            std_pic_info,
             nvh264.frame_mbs_only_flag == 0,
-        );
+        )?;
         nvh264.set_CurrPicIdx(cur_pic_idx);
         nvh264.set_CurrColIdx(cur_pic_idx);
 
@@ -687,11 +797,9 @@ impl VideoDecoder for Decoder {
         );
 
         luma_base[cur_pic_idx as usize] =
-            plane_layer_base(dst_img_ptr, 0, dst_layer);
+            plane_layer_base(dst_img_ptr, 0, dst_layer)?;
         chroma_base[cur_pic_idx as usize] =
-            plane_layer_base(dst_img_ptr, 1, dst_layer);
-
-        let session = unsafe { cmd.state.video.vid.as_ref().unwrap() };
+            plane_layer_base(dst_img_ptr, 1, dst_layer)?;
 
         let src_buffer =
             unsafe { ffi::nvk_buffer_from_handle(frame_info.srcBuffer) };
@@ -719,7 +827,10 @@ impl VideoDecoder for Decoder {
             gptimer_on: 1,
             err_conceal_on: 1,
             mbtimer_on: 1,
-            error_frm_idx: self.frame_num % u32::from(sps.max_num_ref_frames),
+            error_frm_idx: self
+                .frame_num
+                .checked_rem(sps.max_num_ref_frames.into())
+                .unwrap_or(0),
             ret_error: 0,
             ec_intra_frame_using_pslc: 0,
             all_intra_frame: 0,
@@ -727,11 +838,11 @@ impl VideoDecoder for Decoder {
         });
 
         push.push_mthd(clc5b0::SetDrvPicSetupOffset {
-            offset: addr_hi(pic_gpu_address),
+            offset: addr_hi(pic_gpu_address)?,
         });
 
         push.push_mthd(clc5b0::SetInBufBaseOffset {
-            offset: addr_hi(src_address),
+            offset: addr_hi(src_address)?,
         });
 
         push.push_mthd(clc5b0::SetPictureIndex {
@@ -739,19 +850,19 @@ impl VideoDecoder for Decoder {
         });
 
         push.push_mthd(clc5b0::SetSliceOffsetsBufOffset {
-            offset: addr_hi(slice_offsets_address),
+            offset: addr_hi(slice_offsets_address)?,
         });
 
         push.push_mthd(clc5b0::SetColocDataOffset {
-            offset: addr_hi(session.mems[0].addr),
+            offset: addr_hi(session.mems[0].addr)?,
         });
 
         push.push_mthd(clc5b0::SetHistoryOffset {
-            offset: addr_hi(session.mems[2].addr),
+            offset: addr_hi(session.mems[2].addr)?,
         });
 
         push.push_mthd(clc5b0::SetNvdecStatusOffset {
-            offset: addr_hi(mbstatus_address),
+            offset: addr_hi(mbstatus_address)?,
         });
 
         for (i, &offset) in luma_base.iter().enumerate() {
@@ -763,7 +874,7 @@ impl VideoDecoder for Decoder {
         }
 
         push.push_mthd(clc5b0::H264SetMbhistBufOffset {
-            offset: addr_hi(session.mems[1].addr),
+            offset: addr_hi(session.mems[1].addr)?,
         });
 
         push.push_mthd(clc5b0::Execute {
@@ -774,6 +885,11 @@ impl VideoDecoder for Decoder {
 
         nvk_cmd_buffer_push(cmd, push);
         self.frame_num = self.frame_num.wrapping_add(1);
+
+        let second_field = std_pic_info.flags.complementary_field_pair() != 0;
+        if setup_slot_index < 0 && (!is_field || second_field) {
+            self.release_slot(dst_key);
+        }
 
         Ok(())
     }

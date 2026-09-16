@@ -15,7 +15,7 @@ macro_rules! vk_find_struct_const(
                 }
             };
 
-            unsafe { *s }
+            unsafe { s.as_ref() }.copied()
         }
     }
 );
