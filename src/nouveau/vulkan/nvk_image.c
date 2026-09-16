@@ -810,7 +810,7 @@ nvk_image_can_compress(const struct nvk_physical_device *pdev,
    /* In similar vein, we currently don't do multiplanar dedicated allocations
     * so we can't do compression for multi-plane YCbCr images.
     */
-   if (image->plane_count > 1 && !image->separate_zs)
+   if (image->plane_count > 1)
       return false;
 
    /* The API for VK_EXT_image_drm_format_modifier requires that we report the
