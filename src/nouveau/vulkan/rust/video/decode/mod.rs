@@ -33,7 +33,7 @@ pub extern "C" fn nvk_video_create_video_session(
     vid: &mut ffi::nvk_video_session,
 ) {
     vid.rust = Box::into_raw(Box::new(SessionData {
-        decoder: Box::new(h264::Decoder::default()),
+        decoder: Box::new(h264::Decoder::new(vid.vk.max_dpb_slots)),
     }))
     .cast();
 }
