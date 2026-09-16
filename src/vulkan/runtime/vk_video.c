@@ -284,6 +284,8 @@ vk_video_deep_copy_h265_pps(struct vk_video_h265_pps *dst,
 
 #define FIND(PARAMSET, SS, SET, ID)                                     \
    static struct vk_video_##SET *find_##SS##_##SET(const struct vk_video_session_parameters *params, uint32_t id) { \
+      if (params == NULL)                                               \
+         return NULL;                                                   \
       for (unsigned i = 0; i < params->SS.SET##_count; i++) {           \
          if (params->SS.SET[i].base.ID == id)                           \
             return &params->SS.SET[i];                                  \
