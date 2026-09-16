@@ -17,6 +17,9 @@
 #include "nvkmd/nvkmd.h"
 
 #include "util/format/u_format.h"
+#include "util/log.h"
+
+#include "vk_enum_to_str.h"
 
 #include "clb097.h"
 
@@ -132,21 +135,38 @@ write_desc(struct nvk_descriptor_writer *w, uint32_t binding, uint32_t elem,
    memcpy(dst, desc_data, desc_size);
 }
 
+static uint8_t
+sampled_image_desc_count(uint64_t size_B)
+{
+   const uint64_t count = size_B / sizeof(struct nvk_sampled_image_descriptor);
+   return MIN2(count, NVK_MAX_IMAGE_PLANES);
+}
+
 static void
 get_sampled_image_view_desc(VkDescriptorType descriptor_type,
                             const VkDescriptorImageInfo *const info,
                             struct nvk_sampled_image_descriptor *desc,
+                            uint8_t desc_count,
                             uint8_t *plane_count)
 {
    STATIC_ASSERT(NVK_MAX_SAMPLER_PLANES <= NVK_MAX_IMAGE_PLANES);
+   assert(desc_count <= NVK_MAX_IMAGE_PLANES);
 
-   *plane_count = 1;
+   *plane_count = MIN2(1, desc_count);
 
    if (descriptor_type != VK_DESCRIPTOR_TYPE_SAMPLER &&
        info && info->imageView != VK_NULL_HANDLE) {
       VK_FROM_HANDLE(nvk_image_view, view, info->imageView);
 
-      *plane_count = view->plane_count;
+      if (unlikely(view->plane_count > desc_count)) {
+         mesa_logw_once("Image view (format %s, aspects 0x%x) has %u planes "
+                        "but only %u fit in this descriptor. Dropping the "
+                        "rest.", vk_Format_to_str(view->vk.format),
+                        (unsigned)view->vk.aspects, view->plane_count,
+                        desc_count);
+      }
+
+      *plane_count = MIN2(view->plane_count, desc_count);
       for (uint8_t plane = 0; plane < *plane_count; plane++) {
          assert(view->planes[plane].sampled.desc_index > 0);
          assert(view->planes[plane].sampled.desc_index < (1 << 20));
@@ -158,7 +178,7 @@ get_sampled_image_view_desc(VkDescriptorType descriptor_type,
        descriptor_type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER) {
       VK_FROM_HANDLE(nvk_sampler, sampler, info->sampler);
 
-      *plane_count = MAX2(*plane_count, sampler->plane_count);
+      *plane_count = MIN2(MAX2(*plane_count, sampler->plane_count), desc_count);
 
       for (uint8_t plane = 0; plane < *plane_count; plane++) {
          /* We need to replicate the last sampler plane out to all image
@@ -178,21 +198,26 @@ write_sampled_image_view_desc(struct nvk_descriptor_writer *w,
                               uint32_t binding, uint32_t elem,
                               VkDescriptorType descriptor_type)
 {
+   const struct nvk_descriptor_set_binding_layout *binding_layout =
+      &w->layout->binding[binding];
    VkDescriptorImageInfo info = *_info;
 
    if (descriptor_type == VK_DESCRIPTOR_TYPE_SAMPLER ||
        descriptor_type == VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER) {
-      const struct nvk_descriptor_set_binding_layout *binding_layout =
-         &w->layout->binding[binding];
       if (binding_layout->immutable_samplers != NULL) {
          info.sampler = nvk_sampler_to_handle(
             binding_layout->immutable_samplers[elem]);
       }
    }
 
+   /* The binding's stride is only widened for immutable YCbCr samplers, so
+    * this is 4 bytes for almost every binding.
+    */
    uint8_t plane_count;
    struct nvk_sampled_image_descriptor desc[NVK_MAX_IMAGE_PLANES] = { };
-   get_sampled_image_view_desc(descriptor_type, &info, desc, &plane_count);
+   get_sampled_image_view_desc(descriptor_type, &info, desc,
+                               sampled_image_desc_count(binding_layout->stride),
+                               &plane_count);
    write_desc(w, binding, elem, desc, plane_count * sizeof(desc[0]));
 }
 
@@ -1078,12 +1103,12 @@ nvk_GetDescriptorEXT(VkDevice _device,
          .sampler = *pDescriptorInfo->data.pSampler,
       };
       uint8_t plane_count;
-      struct nvk_sampled_image_descriptor desc = { };
-      get_sampled_image_view_desc(VK_DESCRIPTOR_TYPE_SAMPLER,
-                                  &info, &desc, &plane_count);
-      assert(plane_count == 1);
-      assert(sizeof(desc) <= dataSize);
-      memcpy(pDescriptor, &desc, sizeof(desc));
+      struct nvk_sampled_image_descriptor desc[NVK_MAX_IMAGE_PLANES] = { };
+      get_sampled_image_view_desc(VK_DESCRIPTOR_TYPE_SAMPLER, &info, desc,
+                                  sampled_image_desc_count(dataSize),
+                                  &plane_count);
+      assert(plane_count * sizeof(desc[0]) <= dataSize);
+      memcpy(pDescriptor, desc, plane_count * sizeof(desc[0]));
       break;
    }
 
@@ -1092,7 +1117,8 @@ nvk_GetDescriptorEXT(VkDevice _device,
       struct nvk_sampled_image_descriptor desc[NVK_MAX_IMAGE_PLANES] = { };
       get_sampled_image_view_desc(pDescriptorInfo->type,
                                   pDescriptorInfo->data.pCombinedImageSampler,
-                                  desc, &plane_count);
+                                  desc, sampled_image_desc_count(dataSize),
+                                  &plane_count);
       assert(plane_count <= NVK_MAX_IMAGE_PLANES);
       assert(plane_count * sizeof(desc[0]) <= dataSize);
       memcpy(pDescriptor, desc, plane_count * sizeof(desc[0]));
@@ -1101,13 +1127,13 @@ nvk_GetDescriptorEXT(VkDevice _device,
 
    case VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE: {
       uint8_t plane_count;
-      struct nvk_sampled_image_descriptor desc = {};
+      struct nvk_sampled_image_descriptor desc[NVK_MAX_IMAGE_PLANES] = {};
       get_sampled_image_view_desc(pDescriptorInfo->type,
-                                  pDescriptorInfo->data.pSampledImage,
-                                  &desc, &plane_count);
-      assert(plane_count == 1);
-      assert(sizeof(desc) <= dataSize);
-      memcpy(pDescriptor, &desc, sizeof(desc));
+                                  pDescriptorInfo->data.pSampledImage, desc,
+                                  sampled_image_desc_count(dataSize),
+                                  &plane_count);
+      assert(plane_count * sizeof(desc[0]) <= dataSize);
+      memcpy(pDescriptor, desc, plane_count * sizeof(desc[0]));
       break;
    }
 
@@ -1173,13 +1199,13 @@ nvk_GetDescriptorEXT(VkDevice _device,
 
    case VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT: {
       uint8_t plane_count;
-      struct nvk_sampled_image_descriptor desc = {};
+      struct nvk_sampled_image_descriptor desc[NVK_MAX_IMAGE_PLANES] = {};
       get_sampled_image_view_desc(pDescriptorInfo->type,
-                                  pDescriptorInfo->data.pInputAttachmentImage,
-                                  &desc, &plane_count);
-      assert(plane_count == 1);
-      assert(sizeof(desc) <= dataSize);
-      memcpy(pDescriptor, &desc, sizeof(desc));
+                                  pDescriptorInfo->data.pInputAttachmentImage, desc,
+                                  sampled_image_desc_count(dataSize),
+                                  &plane_count);
+      assert(plane_count * sizeof(desc[0]) <= dataSize);
+      memcpy(pDescriptor, desc, plane_count * sizeof(desc[0]));
       break;
    }
 
