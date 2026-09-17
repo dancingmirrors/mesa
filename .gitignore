@@ -1,9 +1,11 @@
-.cache
-.vscode*
 *.kdev4
+*.mda.tar
+*.out
 *.pyc
 *.pyo
-*.out
-/build
+.cache
 .venv/
-*.mda.tar
+.vscode*
+/build
+i686-cross.*
+x86_64.sh
