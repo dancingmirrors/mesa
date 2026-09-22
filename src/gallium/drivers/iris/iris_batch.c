@@ -650,11 +650,18 @@ iris_finish_batch(struct iris_batch *batch)
        * bug workaround, so invalidate indirect state pointers in order to
        * save ourselves the overhead of restoring constants redundantly when
        * the next render batch is executed.
+       *
+       * XXX
        */
+      uint32_t isp_flags = PIPE_CONTROL_INDIRECT_STATE_POINTERS_DISABLE |
+                           PIPE_CONTROL_STALL_AT_SCOREBOARD |
+                           PIPE_CONTROL_CS_STALL;
+
+      if (batch->name == IRIS_BATCH_COMPUTE)
+         isp_flags &= ~PIPE_CONTROL_GRAPHICS_BITS;
+
       iris_emit_pipe_control_flush(batch, "ISP invalidate at batch end",
-                                   PIPE_CONTROL_INDIRECT_STATE_POINTERS_DISABLE |
-                                   PIPE_CONTROL_STALL_AT_SCOREBOARD |
-                                   PIPE_CONTROL_CS_STALL);
+                                   isp_flags);
    }
 
    add_aux_map_bos_to_batch(batch);
