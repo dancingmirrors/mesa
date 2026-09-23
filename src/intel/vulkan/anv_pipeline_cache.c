@@ -203,9 +203,13 @@ anv_shader_internal_deserialize(struct vk_pipeline_cache *cache,
    if (blob->overrun)
       return NULL;
 
+   /* If the disk cache has been altered, we want to make sure we don't do any
+    * OOB data read on the prog_data stack variable.
+    */
    union brw_any_prog_data prog_data;
-   memcpy(&prog_data, prog_data_bytes,
-          MIN2(sizeof(prog_data), prog_data_size));
+   prog_data_size = MIN2(sizeof(prog_data), prog_data_size);
+
+   memcpy(&prog_data, prog_data_bytes, prog_data_size);
    prog_data.base.relocs =
       blob_read_bytes(blob, prog_data.base.num_relocs *
                             sizeof(prog_data.base.relocs[0]));
