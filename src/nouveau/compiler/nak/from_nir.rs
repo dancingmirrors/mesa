@@ -21,6 +21,14 @@ use std::ops::Index;
 
 use compiler::bindings::shader_info__bindgen_ty_1__bindgen_ty_5 as shader_info_tess;
 
+
+fn weak_or_strong_load_order(access: gl_access_qualifier) -> MemOrder {
+    if DEBUG.weak_loads() && (access & ACCESS_VOLATILE) == 0 {
+        MemOrder::Weak
+    } else {
+        MemOrder::Strong(MemScope::GPU)
+    }
+}
 fn init_info_from_nir(
     nak: &nak_compiler,
     nir: &nir_shader,
@@ -2838,7 +2846,7 @@ impl<'a> ShaderFromNir<'a> {
                 let mem_order = if (intrin.access() & ACCESS_CAN_REORDER) != 0 {
                     MemOrder::Constant
                 } else {
-                    MemOrder::Strong(MemScope::GPU)
+                    weak_or_strong_load_order(intrin.access())
                 };
                 let cache_op = LdCacheOp::select(
                     self.sm,
@@ -2868,7 +2876,7 @@ impl<'a> ShaderFromNir<'a> {
                 let mem_order = if (intrin.access() & ACCESS_CAN_REORDER) != 0 {
                     MemOrder::Constant
                 } else {
-                    MemOrder::Strong(MemScope::GPU)
+                    weak_or_strong_load_order(intrin.access())
                 };
 
                 let comps = intrin.num_components;
@@ -2901,7 +2909,7 @@ impl<'a> ShaderFromNir<'a> {
                 let mem_order = if (intrin.access() & ACCESS_CAN_REORDER) != 0 {
                     MemOrder::Constant
                 } else {
-                    MemOrder::Strong(MemScope::GPU)
+                    weak_or_strong_load_order(intrin.access())
                 };
 
                 let comps = intrin.num_components;
@@ -3311,7 +3319,7 @@ impl<'a> ShaderFromNir<'a> {
                 let order = if intrin.access() & ACCESS_CAN_REORDER != 0 {
                     MemOrder::Constant
                 } else {
-                    MemOrder::Strong(MemScope::GPU)
+                    weak_or_strong_load_order(intrin.access())
                 };
                 let access = MemAccess {
                     mem_type: MemType::from_size(size_B, false),
@@ -3680,7 +3688,12 @@ impl<'a> ShaderFromNir<'a> {
                     };
                     b.push_op(OpMemBar { scope: mem_scope });
                 }
-                if (modes & nir_var_mem_global) != 0
+                let ivall_modes = if DEBUG.weak_loads() {
+                    nir_var_mem_global | nir_var_mem_ssbo | nir_var_image
+                } else {
+                    nir_var_mem_global
+                };
+                if (modes & ivall_modes) != 0
                     && (semantics & NIR_MEMORY_ACQUIRE) != 0
                 {
                     b.push_op(OpCCtl {

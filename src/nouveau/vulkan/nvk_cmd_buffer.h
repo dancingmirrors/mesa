@@ -15,6 +15,8 @@
 
 #include "util/u_dynarray.h"
 
+#include "nvk_perf.h"
+
 #include "vk_command_buffer.h"
 #include "clc597.h"
 
@@ -277,10 +279,25 @@ struct nvk_cmd_buffer {
    struct util_dynarray pushes;
 
    uint8_t prev_subc;
+
+   struct util_dynarray perf_marks;
+   struct util_dynarray perf_mems;
+   struct nvk_cmd_mem *perf_mem;
+   uint32_t perf_mem_offset;
+   uint8_t perf_mode;
+   uint8_t perf_last_kind;
+   uint32_t perf_wg;
 };
 
 VK_DEFINE_HANDLE_CASTS(nvk_cmd_buffer, vk.base, VkCommandBuffer,
                        VK_OBJECT_TYPE_COMMAND_BUFFER)
+
+static inline void
+nvk_perf_mark(struct nvk_cmd_buffer *cmd, enum nvk_perf_kind kind)
+{
+   if (unlikely(cmd->perf_mode != 0))
+      nvk_perf_mark_slow(cmd, kind);
+}
 
 extern const struct vk_command_buffer_ops nvk_cmd_buffer_ops;
 

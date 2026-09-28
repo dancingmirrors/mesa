@@ -213,6 +213,10 @@ nvk_queue_submit_exec(struct nvk_queue *queue,
    struct nvk_device *dev = nvk_queue_device(queue);
    VkResult result;
 
+   nvk_perf_add(&dev->perf, NVK_PERF_CTR_SUBMITS, 1);
+   nvk_perf_add(&dev->perf, NVK_PERF_CTR_CMDBUFS, submit->command_buffer_count);
+   nvk_perf_maybe_dump(dev);
+
    if (submit->command_buffer_count > 0) {
       nvk_descriptor_table_flush_map(dev, &dev->images);
       nvk_descriptor_table_flush_map(dev, &dev->samplers);

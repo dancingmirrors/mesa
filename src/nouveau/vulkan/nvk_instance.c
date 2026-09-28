@@ -97,10 +97,23 @@ nvk_init_debug_flags(struct nvk_instance *instance)
       { "no_compression", NVK_DEBUG_NO_COMPRESSION },
       { "no_cmd_mem_cache", NVK_DEBUG_NO_CMD_MEM_CACHE },
       { "push_log", NVK_DEBUG_PUSH_LOG },
+      { "perf_log", NVK_DEBUG_PERF_LOG },
+      { "perf_gpu_time", NVK_DEBUG_PERF_GPU_TIME },
+      { "perf_gpu_time_fine", NVK_DEBUG_PERF_GPU_TIME_FINE },
+      { "no_app_barriers", NVK_DEBUG_HACK_NO_APP_BARRIERS },
+      { "no_wfi", NVK_DEBUG_HACK_NO_WFI },
+      { "wfi_only", NVK_DEBUG_HACK_WFI_ONLY },
+      { "no_tex_inval", NVK_DEBUG_HACK_NO_TEX_INVAL },
+      { "no_shader_inval", NVK_DEBUG_HACK_NO_SHADER_INVAL },
       { NULL, 0 },
    };
 
    instance->debug_flags = parse_debug_string(os_get_option("NVK_DEBUG"), flags);
+
+   if (instance->debug_flags & NVK_DEBUG_PERF_GPU_TIME_FINE)
+      instance->debug_flags |= NVK_DEBUG_PERF_GPU_TIME;
+   if (instance->debug_flags & NVK_DEBUG_PERF_GPU_TIME)
+      instance->debug_flags |= NVK_DEBUG_PERF_LOG;
 
    if (instance->debug_flags != 0) {
       char buf[256] = {0};

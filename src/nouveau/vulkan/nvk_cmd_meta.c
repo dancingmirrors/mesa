@@ -267,6 +267,8 @@ nvk_CmdBlitImage2(VkCommandBuffer commandBuffer,
                   const VkBlitImageInfo2 *pBlitImageInfo)
 {
    VK_FROM_HANDLE(nvk_cmd_buffer, cmd, commandBuffer);
+
+   nvk_perf_mark(cmd, NVK_PERF_KIND_GFX_MISC);
    struct nvk_device *dev = nvk_cmd_buffer_device(cmd);
 
    struct nvk_meta_save_gfx save;
@@ -282,6 +284,8 @@ nvk_CmdResolveImage2(VkCommandBuffer commandBuffer,
                      const VkResolveImageInfo2 *pResolveImageInfo)
 {
    VK_FROM_HANDLE(nvk_cmd_buffer, cmd, commandBuffer);
+
+   nvk_perf_mark(cmd, NVK_PERF_KIND_GFX_MISC);
    struct nvk_device *dev = nvk_cmd_buffer_device(cmd);
 
    struct nvk_meta_save_gfx save;
@@ -424,6 +428,8 @@ nvk_CmdCopyImageToMemoryKHR(VkCommandBuffer commandBuffer,
    VK_FROM_HANDLE(nvk_cmd_buffer, cmd, commandBuffer);
    VK_FROM_HANDLE(nvk_image, src, pCopyMemoryInfo->image);
 
+   nvk_perf_mark(cmd, NVK_PERF_KIND_COPY);
+
    VkQueueFlags queue_flags = nvk_cmd_buffer_queue_flags(cmd);
    if ((queue_flags & VK_QUEUE_COMPUTE_BIT) &&
        nvk_meta_image_copy_compute_supported(src)) {
@@ -457,6 +463,8 @@ nvk_CmdCopyMemoryToImageKHR(VkCommandBuffer commandBuffer,
 {
    VK_FROM_HANDLE(nvk_cmd_buffer, cmd, commandBuffer);
    VK_FROM_HANDLE(nvk_image, dst, pCopyMemoryInfo->image);
+
+   nvk_perf_mark(cmd, NVK_PERF_KIND_COPY);
 
    VkQueueFlags queue_flags = nvk_cmd_buffer_queue_flags(cmd);
    if ((queue_flags & VK_QUEUE_GRAPHICS_BIT) &&
@@ -502,6 +510,8 @@ nvk_CmdCopyImage2(VkCommandBuffer commandBuffer,
    VK_FROM_HANDLE(nvk_image, src, pCopyImageInfo->srcImage);
    VK_FROM_HANDLE(nvk_image, dst, pCopyImageInfo->dstImage);
 
+   nvk_perf_mark(cmd, NVK_PERF_KIND_COPY);
+
    VkQueueFlags queue_flags = nvk_cmd_buffer_queue_flags(cmd);
    if ((queue_flags & VK_QUEUE_GRAPHICS_BIT) &&
        nvk_meta_image_copy_gfx_supported(src) &&
@@ -536,6 +546,8 @@ nvk_CmdCopyMemoryKHR(VkCommandBuffer commandBuffer,
 {
    VK_FROM_HANDLE(nvk_cmd_buffer, cmd, commandBuffer);
 
+   nvk_perf_mark(cmd, NVK_PERF_KIND_COPY);
+
    VkQueueFlags queue_flags = nvk_cmd_buffer_queue_flags(cmd);
    if (queue_flags & VK_QUEUE_COMPUTE_BIT) {
       nvk_cmd_copy_memory_meta(cmd, pCopyMemoryInfo);
@@ -565,6 +577,8 @@ nvk_CmdFillMemoryKHR(VkCommandBuffer commandBuffer,
                      uint32_t data)
 {
    VK_FROM_HANDLE(nvk_cmd_buffer, cmd, commandBuffer);
+
+   nvk_perf_mark(cmd, NVK_PERF_KIND_COPY);
 
    VkQueueFlags queue_flags = nvk_cmd_buffer_queue_flags(cmd);
    if (queue_flags & VK_QUEUE_COMPUTE_BIT) {

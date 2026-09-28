@@ -16,6 +16,7 @@
 #include "vk_device.h"
 #include "vk_meta.h"
 #include "vk_queue.h"
+#include "nvk_perf.h"
 
 struct nvk_physical_device;
 struct nvkmd_dev;
@@ -70,6 +71,8 @@ struct nvk_device {
 
    struct nvk_shader *copy_queries;
    struct nvk_shader *copy_indirect;
+
+   struct nvk_perf_stats perf;
 };
 
 VK_DEFINE_HANDLE_CASTS(nvk_device, vk.base, VkDevice, VK_OBJECT_TYPE_DEVICE)
