@@ -245,6 +245,9 @@ nvk_CreateDevice(VkPhysicalDevice physicalDevice,
 
    init_dispatch_tables(dev);
 
+   dev->perf.enabled = (pdev->debug_flags & NVK_DEBUG_PERF_LOG) != 0;
+   simple_mtx_init(&dev->perf.mtx, mtx_plain);
+
    nvk_cmd_mem_cache_init(&dev->cmd_mem_cache);
 
    dev->vk.shader_ops = &nvk_device_shader_ops;
@@ -449,6 +452,8 @@ nvk_DestroyDevice(VkDevice _device, const VkAllocationCallbacks *pAllocator)
 
    if (!dev)
       return;
+
+   simple_mtx_destroy(&dev->perf.mtx);
 
    const struct nvk_physical_device *pdev = nvk_device_physical(dev);
 

@@ -73,6 +73,8 @@ nvk_files = files(
   'nvk_mme.h',
   'nvk_nir_lower_descriptors.c',
   'nvk_nir_lower_mesh_shader.c',
+  'nvk_perf.c',
+  'nvk_perf.h',
   'nvk_physical_device.c',
   'nvk_physical_device.h',
   'nvk_private.h',

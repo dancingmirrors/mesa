@@ -956,6 +956,8 @@ nvk_CmdUpdateMemoryKHR(VkCommandBuffer commandBuffer,
 {
    VK_FROM_HANDLE(nvk_cmd_buffer, cmd, commandBuffer);
 
+   nvk_perf_mark(cmd, NVK_PERF_KIND_COPY);
+
    uint64_t dst_addr = pDstRange->address;
    uint8_t subc = nvk_cmd_buffer_last_subchannel(cmd);
 

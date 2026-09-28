@@ -1181,6 +1181,8 @@ nvk_CmdBeginRendering(VkCommandBuffer commandBuffer,
    const struct nvk_physical_device *pdev = nvk_device_physical(dev);
    struct nvk_rendering_state *render = &cmd->state.gfx.render;
 
+   nvk_perf_mark(cmd, NVK_PERF_KIND_GFX_MISC);
+
    memset(render, 0, sizeof(*render));
 
    render->flags = pRenderingInfo->flags;
@@ -4400,6 +4402,11 @@ nvk_cmd_flush_gfx_cbufs(struct nvk_cmd_buffer *cmd)
 static void
 nvk_cmd_flush_gfx_state(struct nvk_cmd_buffer *cmd)
 {
+   struct nvk_device *dev = nvk_cmd_buffer_device(cmd);
+
+   nvk_perf_add(&dev->perf, NVK_PERF_CTR_DRAWS, 1);
+   nvk_perf_mark(cmd, NVK_PERF_KIND_GFX);
+
    nvk_cmd_buffer_flush_push_descriptors(cmd, &cmd->state.gfx.descriptors);
    nvk_cmd_flush_gfx_dynamic_state(cmd);
    nvk_cmd_flush_gfx_shaders(cmd);

@@ -150,6 +150,8 @@ nvk_CmdClearAttachments(VkCommandBuffer commandBuffer,
                         const VkClearRect *pRects)
 {
    VK_FROM_HANDLE(nvk_cmd_buffer, cmd, commandBuffer);
+
+   nvk_perf_mark(cmd, NVK_PERF_KIND_GFX_MISC);
    const struct vk_dynamic_graphics_state *dyn = &cmd->vk.dynamic_graphics_state;
 
    struct nv_push *p = nvk_cmd_buffer_push(cmd, 4 + attachmentCount * 4);
@@ -357,6 +359,8 @@ nvk_CmdClearColorImage(VkCommandBuffer commandBuffer,
 {
    VK_FROM_HANDLE(nvk_cmd_buffer, cmd, commandBuffer);
    struct nvk_device *dev = nvk_cmd_buffer_device(cmd);
+
+   nvk_perf_mark(cmd, NVK_PERF_KIND_GFX_MISC);
    const struct nvk_physical_device *pdev = nvk_device_physical(dev);
    VK_FROM_HANDLE(nvk_image, image, _image);
 
@@ -394,6 +398,8 @@ nvk_CmdClearDepthStencilImage(VkCommandBuffer commandBuffer,
 {
    VK_FROM_HANDLE(nvk_cmd_buffer, cmd, commandBuffer);
    VK_FROM_HANDLE(nvk_image, image, _image);
+
+   nvk_perf_mark(cmd, NVK_PERF_KIND_GFX_MISC);
 
    const VkClearValue clear_value = {
       .depthStencil = *pDepthStencil,

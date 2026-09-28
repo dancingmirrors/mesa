@@ -51,6 +51,15 @@ enum nvk_debug {
 
    /* Keep a ring of the last few submits per context and dump it when a submit fails */
    NVK_DEBUG_PUSH_LOG = 1ull << 11,
+
+   NVK_DEBUG_PERF_LOG = 1ull << 12,
+   NVK_DEBUG_PERF_GPU_TIME = 1ull << 13,
+   NVK_DEBUG_PERF_GPU_TIME_FINE = 1ull << 14,
+   NVK_DEBUG_HACK_NO_APP_BARRIERS = 1ull << 15,
+   NVK_DEBUG_HACK_NO_WFI = 1ull << 16,
+   NVK_DEBUG_HACK_WFI_ONLY = 1ull << 17,
+   NVK_DEBUG_HACK_NO_TEX_INVAL = 1ull << 18,
+   NVK_DEBUG_HACK_NO_SHADER_INVAL = 1ull << 19,
 };
 
 enum nvk_experimental {

@@ -307,6 +307,14 @@ nvk_CmdDispatchBase(VkCommandBuffer commandBuffer,
                     uint32_t groupCountZ)
 {
    VK_FROM_HANDLE(nvk_cmd_buffer, cmd, commandBuffer);
+   struct nvk_device *dev = nvk_cmd_buffer_device(cmd);
+
+   nvk_perf_add(&dev->perf, NVK_PERF_CTR_DISPATCHES, 1);
+   nvk_perf_add(&dev->perf, NVK_PERF_CTR_WORKGROUPS,
+                (int64_t)groupCountX * groupCountY * groupCountZ);
+   cmd->perf_wg = (uint32_t)MIN2((uint64_t)groupCountX * groupCountY * groupCountZ,
+                                 UINT32_MAX);
+   nvk_perf_mark(cmd, NVK_PERF_KIND_CS);
 
    uint32_t base_workgroup[3] = { baseGroupX, baseGroupY, baseGroupZ };
    uint32_t global_size[3] = { groupCountX, groupCountY, groupCountZ };
@@ -461,6 +469,9 @@ nvk_CmdDispatchIndirect2KHR(VkCommandBuffer commandBuffer,
    const struct nvk_physical_device *pdev = nvk_device_physical(dev);
 
    uint64_t dispatch_addr = pInfo->addressRange.address;
+
+   nvk_perf_add(&dev->perf, NVK_PERF_CTR_DISPATCHES, 1);
+   nvk_perf_mark(cmd, NVK_PERF_KIND_CS);
 
    /* We set these through the MME */
    uint32_t base_workgroup[3] = { 0, 0, 0 };

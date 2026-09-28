@@ -60,6 +60,10 @@ nvk_destroy_cmd_buffer(struct vk_command_buffer *vk_cmd_buffer)
    nvk_descriptor_state_fini(cmd, &cmd->state.gfx.descriptors);
    nvk_descriptor_state_fini(cmd, &cmd->state.cs.descriptors);
 
+   nvk_perf_harvest_cmd_buffer(cmd);
+   util_dynarray_fini(&cmd->perf_marks);
+   util_dynarray_fini(&cmd->perf_mems);
+
    nvk_cmd_pool_free_mem_list(pool, &cmd->owned_mem);
    nvk_cmd_pool_free_gart_mem_list(pool, &cmd->owned_gart_mem);
    nvk_cmd_pool_free_qmd_list(pool, &cmd->owned_qmd);
@@ -100,6 +104,9 @@ nvk_create_cmd_buffer(struct vk_command_pool *vk_pool,
    list_inithead(&cmd->owned_qmd);
    cmd->pushes = UTIL_DYNARRAY_INIT;
    cmd->copy_memory_indirect_temps = UTIL_DYNARRAY_INIT;
+   cmd->perf_marks = UTIL_DYNARRAY_INIT;
+   cmd->perf_mems = UTIL_DYNARRAY_INIT;
+   cmd->perf_last_kind = NVK_PERF_KIND_END;
 
    cmd->prev_subc = ffs(nvk_cmd_buffer_subchannel_mask(cmd)) - 1;
 
@@ -120,6 +127,8 @@ nvk_reset_cmd_buffer(struct vk_command_buffer *vk_cmd_buffer,
 
    nvk_descriptor_state_fini(cmd, &cmd->state.gfx.descriptors);
    nvk_descriptor_state_fini(cmd, &cmd->state.cs.descriptors);
+
+   nvk_perf_harvest_cmd_buffer(cmd);
 
    nvk_cmd_pool_free_mem_list(pool, &cmd->owned_mem);
    nvk_cmd_pool_free_gart_mem_list(pool, &cmd->owned_gart_mem);
@@ -361,6 +370,7 @@ nvk_BeginCommandBuffer(VkCommandBuffer commandBuffer,
    VkQueueFlags queue_flags = nvk_cmd_buffer_queue_flags(cmd);
 
    nvk_reset_cmd_buffer(&cmd->vk, 0);
+   nvk_perf_init_cmd_buffer(cmd);
 
    if (cmd->vk.level == VK_COMMAND_BUFFER_LEVEL_SECONDARY)
       cmd->state.inherited_pipeline_statistics =
@@ -397,6 +407,7 @@ nvk_EndCommandBuffer(VkCommandBuffer commandBuffer)
 {
    VK_FROM_HANDLE(nvk_cmd_buffer, cmd, commandBuffer);
 
+   nvk_perf_end_cmd_buffer(cmd);
    nvk_cmd_buffer_flush_push(cmd, false);
 
    /* We only need to flush the memory objects we own because, if there are
@@ -624,8 +635,24 @@ nvk_cmd_flush_wait_dep(struct nvk_cmd_buffer *cmd,
    if (!(engines & (NVKMD_ENGINE_3D | NVKMD_ENGINE_COMPUTE)))
       barriers &= ~NVK_BARRIER_FLUSH_SHADER_DATA;
 
+   if (pdev->debug_flags & NVK_DEBUG_HACK_NO_WFI)
+      barriers &= ~(NVK_BARRIER_WFI | NVK_BARRIER_FLUSH_SHADER_DATA);
+   if (pdev->debug_flags & NVK_DEBUG_HACK_WFI_ONLY)
+      barriers &= ~NVK_BARRIER_FLUSH_SHADER_DATA;
+
    if (!barriers)
       return;
+
+   const bool emits_wait = (barriers & NVK_BARRIER_FLUSH_SHADER_DATA) ||
+                           ((barriers & NVK_BARRIER_WFI) && wait);
+   if (barriers & NVK_BARRIER_FLUSH_SHADER_DATA)
+      nvk_perf_add(&dev->perf, NVK_PERF_CTR_FLUSH_WFI, 1);
+   else if ((barriers & NVK_BARRIER_WFI) && wait)
+      nvk_perf_add(&dev->perf, NVK_PERF_CTR_WFI, 1);
+   if (barriers & NVK_BARRIER_HOST_WFI_INVALIDATE_SYSMEM)
+      nvk_perf_add(&dev->perf, NVK_PERF_CTR_HOST_SYNC, 1);
+   if (emits_wait)
+      nvk_perf_mark(cmd, NVK_PERF_KIND_BAR_WAIT);
 
    if (barriers & NVK_BARRIER_FLUSH_SHADER_DATA) {
       struct nv_push *p = nvk_cmd_buffer_push(cmd, 2);
@@ -686,6 +713,9 @@ nvk_cmd_flush_wait_dep(struct nvk_cmd_buffer *cmd,
       }
       }
    }
+
+   if (emits_wait)
+      nvk_perf_mark(cmd, NVK_PERF_KIND_BAR_INVAL);
 
    if (barriers & NVK_BARRIER_HOST_WFI_INVALIDATE_SYSMEM) {
       struct nv_push *p = nvk_cmd_buffer_push(cmd, 8);
@@ -778,8 +808,27 @@ nvk_cmd_invalidate_deps(struct nvk_cmd_buffer *cmd,
    if (!(engines & NVKMD_ENGINE_COMPUTE))
       barriers &= ~NVK_BARRIER_INVALIDATE_QMD_DATA;
 
+   if (pdev->debug_flags & NVK_DEBUG_HACK_NO_TEX_INVAL)
+      barriers &= ~NVK_BARRIER_INVALIDATE_TEX_DATA;
+   if (pdev->debug_flags & NVK_DEBUG_HACK_NO_SHADER_INVAL)
+      barriers &= ~(NVK_BARRIER_INVALIDATE_SHADER_DATA |
+                    NVK_BARRIER_INVALIDATE_CONSTANT);
+
    if (!barriers)
       return;
+
+   if (barriers & NVK_BARRIER_INVALIDATE_TEX_DATA)
+      nvk_perf_add(&dev->perf, NVK_PERF_CTR_INVAL_TEX, 1);
+   if (barriers & NVK_BARRIER_INVALIDATE_SHADER_DATA)
+      nvk_perf_add(&dev->perf, NVK_PERF_CTR_INVAL_SHADER, 1);
+   if (barriers & NVK_BARRIER_INVALIDATE_CONSTANT)
+      nvk_perf_add(&dev->perf, NVK_PERF_CTR_INVAL_CONST, 1);
+   if (barriers & NVK_BARRIER_INVALIDATE_MME_DATA)
+      nvk_perf_add(&dev->perf, NVK_PERF_CTR_INVAL_MME, 1);
+   if (barriers & NVK_BARRIER_INVALIDATE_QMD_DATA)
+      nvk_perf_add(&dev->perf, NVK_PERF_CTR_INVAL_QMD, 1);
+   if (barriers & NVK_BARRIER_HOST_WFI_FLUSH_SYSMEM)
+      nvk_perf_add(&dev->perf, NVK_PERF_CTR_HOST_SYNC, 1);
 
    struct nv_push *p = nvk_cmd_buffer_push(cmd, 24);
 
@@ -892,6 +941,15 @@ nvk_CmdPipelineBarrier2(VkCommandBuffer commandBuffer,
                         const VkDependencyInfo *pDependencyInfo)
 {
    VK_FROM_HANDLE(nvk_cmd_buffer, cmd, commandBuffer);
+   struct nvk_device *dev = nvk_cmd_buffer_device(cmd);
+   const struct nvk_physical_device *pdev = nvk_device_physical(dev);
+
+   nvk_perf_add(&dev->perf, NVK_PERF_CTR_BARRIER_CALLS, 1);
+
+   if (pdev->debug_flags & NVK_DEBUG_HACK_NO_APP_BARRIERS) {
+      nvk_cmd_image_layout_transition(cmd, pDependencyInfo);
+      return;
+   }
 
    nvk_cmd_flush_wait_dep(cmd, pDependencyInfo, true);
    nvk_cmd_image_layout_transition(cmd, pDependencyInfo);
