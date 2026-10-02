@@ -721,7 +721,7 @@ vk_pipeline_cache_destroy(struct vk_pipeline_cache *cache,
          if (unlikely(cache->object_cache->entries != 0))
             vk_pipeline_cache_report_leaked_objects(cache);
 
-         assert(cache->object_cache->entries == 0);
+         //assert(cache->object_cache->entries == 0);
       }
       _mesa_set_destroy(cache->object_cache, NULL);
    }

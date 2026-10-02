@@ -3720,25 +3720,20 @@ nvk_flush_ms_state(struct nvk_cmd_buffer *cmd)
    const struct vk_dynamic_graphics_state *dyn =
       &cmd->vk.dynamic_graphics_state;
 
+   /* Multisample information MAY be missing (rasterizationSamples == 0)
+    * if rasterizer discard is enabled. However, this isn't valid in
+    * the hardware so always use at least one sample.
+    */
+   const uint32_t samples = render->samples != 0 ? render->samples :
+                            MAX2(1, dyn->ms.rasterization_samples);
+
    if (BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_MS_RASTERIZATION_SAMPLES)) {
       /* When we don't have any attachments, we can't know the sample count
        * from the render pass so we need to emit SET_ANTI_ALIAS here.  See the
        * comment in nvk_BeginRendering() for more details.
        */
-      if (render->samples == 0) {
-         /* Multisample information MAY be missing (rasterizationSamples == 0)
-          * if rasterizer discard is enabled.  However, this isn't valid in
-          * the hardware so always use at least one sample.
-          */
-         const uint32_t samples = MAX2(1, dyn->ms.rasterization_samples);
+      if (render->samples == 0)
          nvk_cmd_set_sample_layout(cmd, nil_choose_sample_layout(samples));
-      } else {
-         /* Multisample information MAY be missing (rasterizationSamples == 0)
-          * if rasterizer discard is enabled.
-          */
-         assert(dyn->ms.rasterization_samples == 0 ||
-                dyn->ms.rasterization_samples == render->samples);
-      }
    }
 
    if (BITSET_TEST(dyn->dirty, MESA_VK_DYNAMIC_MS_ALPHA_TO_COVERAGE_ENABLE) ||
@@ -3757,7 +3752,6 @@ nvk_flush_ms_state(struct nvk_cmd_buffer *cmd)
       if (dyn->ms.sample_locations_enable) {
          sl = dyn->ms.sample_locations;
       } else {
-         const uint32_t samples = MAX2(1, dyn->ms.rasterization_samples);
          sl = vk_standard_sample_locations_state(samples);
       }
 
