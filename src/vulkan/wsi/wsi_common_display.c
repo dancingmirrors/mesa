@@ -3710,23 +3710,26 @@ wsi_display_init_wsi(struct wsi_device *wsi_device,
       wsi->fd = -1;
 
    if (wsi->fd >= 0) {
-      if (drmSetClientCap(wsi->fd, DRM_CLIENT_CAP_ATOMIC, 1) != 0) {
+      bool atomic = drmSetClientCap(wsi->fd, DRM_CLIENT_CAP_ATOMIC, 1) == 0;
+
+      /* Drop master, so that others (vkAcquireDRMDisplayEXT, KMS-native
+       * compositors after a VT switch) can get master when they open. The
+       * fd stays open even if KHR_display gets disabled below.
+       */
+      int ret = drmDropMaster(wsi->fd);
+      if (ret != 0) {
+         /* Leave a debug note, but ignore it -- if you ask for KHR_display, and
+          * are the second client (not master), but can later acquire a master
+          * fd by whatever means (systemd-logind, whatever), that should be
+          * allowed.
+          */
+         wsi_display_debug("wsi_display_init_wsi: drm fd %d failed to drop master", wsi->fd);
+      }
+
+      if (!atomic) {
          wsi_display_debug("wsi_display_init_wsi: drm fd %d has no atomic "
                            "modesetting, disabling KHR_display", wsi->fd);
          wsi->fd = -1;
-      } else {
-         /* Drop master, so that others (vkAcquireDRMDisplayEXT, KMS-native
-          * compositors after a VT switch) can get master when they open.
-          */
-         int ret = drmDropMaster(wsi->fd);
-         if (ret != 0) {
-            /* Leave a debug note, but ignore it -- if you ask for KHR_display, and
-             * are the second client (not master), but can later acquire a master
-             * fd by whatever means (systemd-logind, whatever), that should be
-             * allowed.
-             */
-            wsi_display_debug("wsi_display_init_wsi: drm fd %d failed to drop master", wsi->fd);
-         }
       }
    }
 

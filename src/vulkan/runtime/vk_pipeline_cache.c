@@ -718,8 +718,14 @@ vk_pipeline_cache_destroy(struct vk_pipeline_cache *cache,
             vk_pipeline_cache_object_unref(cache->base.device, (void *)entry->key);
          }
       } else {
-         if (unlikely(cache->object_cache->entries != 0))
+         if (unlikely(cache->object_cache->entries != 0)) {
             vk_pipeline_cache_report_leaked_objects(cache);
+
+            set_foreach(cache->object_cache, entry) {
+               struct vk_pipeline_cache_object *object = (void *)entry->key;
+               p_atomic_set(&object->weak_owner, NULL);
+            }
+         }
 
          //assert(cache->object_cache->entries == 0);
       }
