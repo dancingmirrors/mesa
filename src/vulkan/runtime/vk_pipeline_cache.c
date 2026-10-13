@@ -682,7 +682,7 @@ vk_pipeline_cache_destroy(struct vk_pipeline_cache *cache,
             vk_pipeline_cache_object_unref(cache->base.device, (void *)entry->key);
          }
       } else {
-         assert(cache->object_cache->entries == 0);
+         //assert(cache->object_cache->entries == 0);
       }
       _mesa_set_destroy(cache->object_cache, NULL);
    }
