@@ -149,9 +149,11 @@ VA_DRIVER_INIT_FUNC(VADriverContextP ctx)
       break;
    }
 #else
+#if !VA_CHECK_VERSION(1, 23, 0)
    case VA_DISPLAY_ANDROID:
       FREE(drv);
       return VA_STATUS_ERROR_UNIMPLEMENTED;
+#endif
    case VA_DISPLAY_GLX:
    case VA_DISPLAY_X11:
 #ifdef GALLIUM_ZINK
